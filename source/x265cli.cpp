@@ -369,7 +369,7 @@ namespace X265_NS {
 #undef H1
         if (level < X265_LOG_DEBUG)
             printf("\nUse --fullhelp for a full listing (or --log-level full --help)\n");
-        printf("\n\nComplete documentation may be found at http://x265.readthedocs.org/en/default/cli.html\n");
+        printf("\n\nComplete documentation may be found at https://x265.readthedocs.io/en/master/cli.html\n");
         exit(1);
     }
 
