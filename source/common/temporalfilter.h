@@ -33,7 +33,7 @@
 #include "yuv.h"
 #include "motion.h"
 
-using namespace X265_NS;
+namespace X265_NS {
 
 const int s_interpolationFilter[16][8] =
 {
@@ -185,4 +185,5 @@ public:
 
 };
 
+}
 #endif
