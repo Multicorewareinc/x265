@@ -1602,13 +1602,12 @@ Slice decision options
 
 	Values:
 	0 - flush the encoder only when all the input pictures are over.
-	1 - flush all the frames even when the input is not over. 
-	    slicetype decision may change with this option.
+	1 - flush all the frames even when the input is not over. Slicetype decision may change with this option.
 	2 - flush the slicetype decided frames only.   
 
 .. option:: --fades, --no-fades
 
-	Detect and handle fade-in regions. Default disabled.
+	Detect and handle fade-in regions. Defaults disabled.
 
 Quality, rate control and rate distortion options
 =================================================
@@ -2415,7 +2414,7 @@ VUI fields must be manually specified.
 .. option:: --hdr10-opt, --no-hdr10-opt
 
 	Enable block-level luma and chroma QP optimization for HDR10 content
-	as suggested in ITU-T H-series Recommendations – Supplement 15.
+	as suggested in ITU-T H-series Recommendations ï¿½ Supplement 15.
 	Source video should have HDR10 characteristics such as 10-bit depth 4:2:0
 	with Bt.2020 color primaries and SMPTE ST.2084 transfer characteristics.
 	It is recommended that AQ-mode be enabled along with this feature. Default disabled.
