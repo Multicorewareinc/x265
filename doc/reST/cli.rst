@@ -762,6 +762,7 @@ Mode decision / Analysis
 
 Options which affect the coding unit quad-tree, sometimes referred to as
 the prediction quad-tree.
+--------------------------------------------------------------------------------------------------
 
 .. option:: --ctu, -s <64|32|16>
 
@@ -923,8 +924,9 @@ the prediction quad-tree.
 
 	Only effective at RD levels 5 and 6
 
-Analysis re-use options, to improve performance when encoding the same
-sequence multiple times (presumably at varying bitrates). The encoder
+Analysis re-use options
+-----------------------
+These options improve performance when encoding the same sequence multiple times (presumably at varying bitrates). The encoder
 will not reuse analysis if slice type parameters do not match.
 
 .. option:: --analysis-save <filename>
@@ -1051,8 +1053,8 @@ will not reuse analysis if slice type parameters do not match.
 	
 	Level 3 - Level 2 + Search around the other AMVP cand.
 
-Options which affect the transform unit quad-tree, sometimes referred to
-as the residual quad-tree (RQT).
+Options which affect the transform unit quad-tree, sometimes referred to as the residual quad-tree (RQT).
+---------------------------------------------------------------------------------------------------------
 
 .. option:: --rdoq-level <0|1|2>, --no-rdoq-level
 
@@ -2415,7 +2417,7 @@ VUI fields must be manually specified.
 .. option:: --hdr10-opt, --no-hdr10-opt
 
 	Enable block-level luma and chroma QP optimization for HDR10 content
-	as suggested in ITU-T H-series Recommendations – Supplement 15.
+	as suggested in ITU-T H-series Recommendations ï¿½ Supplement 15.
 	Source video should have HDR10 characteristics such as 10-bit depth 4:2:0
 	with Bt.2020 color primaries and SMPTE ST.2084 transfer characteristics.
 	It is recommended that AQ-mode be enabled along with this feature. Default disabled.
