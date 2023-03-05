@@ -65,6 +65,8 @@
 #   endif
 #endif
 
+#define mangle(name) EXTERN_ASM # name
+
 #ifdef __APPLE__
 .macro endfunc
 ELF .size \name, . - \name
