@@ -28,40 +28,41 @@
 #define PFX2(prefix, name) PFX3(prefix, name)
 #define PFX(name)          PFX2(X265_NS, name)
 
+
 #ifdef __APPLE__
-#define PREFIX 1
+#   define PREFIX 1
 #endif
 
 #ifdef PREFIX
-#define EXTERN_ASM _
-#define HAVE_AS_FUNC 0
+#   define EXTERN_ASM _
+#   define HAVE_AS_FUNC 0
 #elif defined __clang__
-#define EXTERN_ASM
-#define HAVE_AS_FUNC 0
-#define PREFIX 1
+#   define EXTERN_ASM
+#   define HAVE_AS_FUNC 0
+#   define PREFIX 1
 #else
-#define EXTERN_ASM
-#define HAVE_AS_FUNC 1
+#   define EXTERN_ASM
+#   define HAVE_AS_FUNC 1
 #endif
 
 #ifdef __ELF__
-#define ELF
+#   define ELF
 #else
-#ifdef PREFIX
-#define ELF #
-#else
-#define ELF @
-#endif
+#   ifdef PREFIX
+#       define ELF #
+#   else
+#       define ELF @
+#   endif
 #endif
 
 #if HAVE_AS_FUNC
-#define FUNC
+#   define FUNC
 #else
-#ifdef PREFIX
-#define FUNC #
-#else
-#define FUNC @
-#endif
+#   ifdef PREFIX
+#       define FUNC #
+#   else
+#       define FUNC @
+#   endif
 #endif
 
 #ifdef __APPLE__
