@@ -22,6 +22,7 @@ include(CheckIncludeFiles)
 include(CheckFunctionExists)
 include(CheckSymbolExists)
 include(CheckCXXCompilerFlag)
+include(CheckCSourceCompiles)
 
 option(FPROFILE_GENERATE "Compile executable to generate usage data" OFF)
 option(FPROFILE_USE "Compile executable using generated usage data" OFF)
@@ -486,8 +487,11 @@ if(WIN32)
         # intrinsics introduced after XP
         add_definitions(-D_WIN32_WINNT=_WIN32_WINNT_WINXP -D_WIN32_WINNT_WIN7=0x0601)
     else(WINXP_SUPPORT)
-        # default to targeting Windows 7 for the NUMA APIs
-        add_definitions(-D_WIN32_WINNT=_WIN32_WINNT_WIN7)
+        check_c_source_compiles("#include <windows.h>\n#if !defined(_WIN32_WINNT) || _WIN32_WINNT < 0x0601\n#error NOPE\n#endif\nint main(void) {return 0;}" COMPILES_WIN7)
+        if(NOT COMPILES_WIN7)
+            # default to targeting Windows 7 for the NUMA APIs
+            add_definitions(-D_WIN32_WINNT=_WIN32_WINNT_WIN7)
+        endif()
     endif(WINXP_SUPPORT)
 endif()
 
