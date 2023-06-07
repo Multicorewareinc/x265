@@ -71,7 +71,7 @@
 # define strcasecmp _stricmp
 #endif
 
-#if defined(_WIN32_WINNT) && _WIN32_WINNT >= _WIN32_WINNT_WIN7
+#ifdef USE_WIN32_AFFINITY
 const uint64_t m1 = 0x5555555555555555; //binary: 0101...
 const uint64_t m2 = 0x3333333333333333; //binary: 00110011..
 const uint64_t m3 = 0x0f0f0f0f0f0f0f0f; //binary:  4 zeros,  4 ones ...
@@ -262,14 +262,14 @@ ThreadPool* ThreadPool::allocThreadPools(x265_param* p, int& numPools, bool isTh
     int numNumaNodes = X265_MIN(getNumaNodeCount(), MAX_NODE_NUM);
     bool bNumaSupport = false;
 
-#if defined(_WIN32_WINNT) && _WIN32_WINNT >= _WIN32_WINNT_WIN7 
+#ifdef USE_WIN32_AFFINITY
     bNumaSupport = true;
 #elif HAVE_LIBNUMA
     bNumaSupport = numa_available() >= 0;
 #endif
 
 
-#if defined(_WIN32_WINNT) && _WIN32_WINNT >= _WIN32_WINNT_WIN7
+#ifdef USE_WIN32_AFFINITY
     PGROUP_AFFINITY groupAffinityPointer = new GROUP_AFFINITY;
     for (int i = 0; i < numNumaNodes; i++)
     {
@@ -475,7 +475,7 @@ bool ThreadPool::create(int numThreads, int maxProviders, uint64_t nodeMask)
 {
     X265_CHECK(numThreads <= MAX_POOL_THREADS, "a single thread pool cannot have more than MAX_POOL_THREADS threads\n");
 
-#if defined(_WIN32_WINNT) && _WIN32_WINNT >= _WIN32_WINNT_WIN7 
+#ifdef USE_WIN32_AFFINITY
     memset(&m_groupAffinity, 0, sizeof(GROUP_AFFINITY));
     for (int i = 0; i < getNumaNodeCount(); i++)
     {
@@ -568,7 +568,7 @@ void ThreadPool::setCurrentThreadAffinity()
 
 void ThreadPool::setThreadNodeAffinity(void *numaMask)
 {
-#if defined(_WIN32_WINNT) && _WIN32_WINNT >= _WIN32_WINNT_WIN7 
+#ifdef USE_WIN32_AFFINITY
     UNREFERENCED_PARAMETER(numaMask);
     GROUP_AFFINITY groupAffinity;
     memset(&groupAffinity, 0, sizeof(GROUP_AFFINITY));
@@ -597,7 +597,7 @@ void ThreadPool::setThreadNodeAffinity(void *numaMask)
 /* static */
 int ThreadPool::getNumaNodeCount()
 {
-#if defined(_WIN32_WINNT) && _WIN32_WINNT >= _WIN32_WINNT_WIN7 
+#ifdef USE_WIN32_AFFINITY
     ULONG num = 1;
     if (GetNumaHighestNodeNumber(&num))
         num++;
@@ -615,7 +615,7 @@ int ThreadPool::getNumaNodeCount()
 /* static */
 int ThreadPool::getCpuCount()
 {
-#if defined(_WIN32_WINNT) && _WIN32_WINNT >= _WIN32_WINNT_WIN7
+#ifdef USE_WIN32_AFFINITY
     enum { MAX_NODE_NUM = 127 };
     int cpus = 0;
     int numNumaNodes = X265_MIN(getNumaNodeCount(), MAX_NODE_NUM);
