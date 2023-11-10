@@ -372,7 +372,6 @@ if(GCC)
             endif()
         endif()
     endif(ENABLE_AGGRESSIVE_CHECKS)
-    execute_process(COMMAND ${CMAKE_CXX_COMPILER} -dumpversion OUTPUT_VARIABLE CC_VERSION)
 endif(GCC)
 
 find_package(Nasm)
