@@ -178,13 +178,12 @@ public:
         m_payloadType = USER_DATA_UNREGISTERED;
         m_payloadSize = 0;
     }
-    static const uint8_t m_uuid_iso_iec_11578[ISO_IEC_11578_LEN];
     uint8_t *m_userData;
     void writeSEI(const SPS&)
     {
         for (uint32_t i = 0; i < ISO_IEC_11578_LEN; i++)
-            WRITE_CODE(m_uuid_iso_iec_11578[i], 8, "sei.uuid_iso_iec_11578[i]");
-        for (uint32_t i = 0; i < m_payloadSize; i++)
+            WRITE_CODE(m_userData[i], 8, "sei.uuid_iso_iec_11578[i]");
+        for (uint32_t i = 16; i < m_payloadSize; i++)
             WRITE_CODE(m_userData[i], 8, "user_data");
     }
 };

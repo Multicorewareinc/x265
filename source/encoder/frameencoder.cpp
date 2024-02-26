@@ -801,7 +801,7 @@ void FrameEncoder::compressFrame()
     for (int i = 0; i < m_frame->m_userSEI.numPayloads; i++)
     {
         x265_sei_payload *payload = &m_frame->m_userSEI.payloads[i];
-        if (payload->payloadType == USER_DATA_UNREGISTERED)
+        if (payload->payloadType == USER_DATA_UNREGISTERED && payload->payloadSize >= 16)
         {
             SEIuserDataUnregistered sei;
             sei.m_userData = payload->payload;
