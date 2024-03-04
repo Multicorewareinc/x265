@@ -1090,6 +1090,7 @@ void setupSvePrimitives(EncoderPrimitives &p)
     setupDCTPrimitives_neon(p);
     setupLoopFilterPrimitives_neon(p);
     setupIntraPrimitives_neon(p);
+    setupSaoPrimitives_sve(p);
 
     CHROMA_420_PU_FILTER_PIXEL_TO_SHORT_NEON(p2s[NONALIGNED]);
     CHROMA_420_PU_SVE_FILTER_PIXEL_TO_SHORT(p2s[NONALIGNED]);
@@ -1506,6 +1507,7 @@ void setupSve2Primitives(EncoderPrimitives &p)
     setupDCTPrimitives_neon(p);
     setupLoopFilterPrimitives_neon(p);
     setupIntraPrimitives_neon(p);
+    setupSaoPrimitives_sve2(p);
 
     CHROMA_420_PU_FILTER_PIXEL_TO_SHORT_NEON(p2s[NONALIGNED]);
     CHROMA_420_PU_SVE_FILTER_PIXEL_TO_SHORT(p2s[NONALIGNED]);

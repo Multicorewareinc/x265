@@ -268,12 +268,12 @@ if(GCC)
 	        set(ARM_ARGS -O3 -march=armv8-a+sve2 -fPIC -flax-vector-conversions)
             add_definitions(-DHAVE_SVE2)
             add_definitions(-DHAVE_SVE)
-            add_definitions(-DHAVE_NEON) # for NEON c/c++ primitives, as currently there is no implementation that use SVE2
+            add_definitions(-DHAVE_NEON) # for NEON c/c++ primitives, because not all functions are optimized with SVE
         elseif(CPU_HAS_SVE OR CROSS_COMPILE_SVE)
             message(STATUS "Found SVE")
 	        set(ARM_ARGS -O3 -march=armv8-a+sve -fPIC -flax-vector-conversions)
             add_definitions(-DHAVE_SVE)
-            add_definitions(-DHAVE_NEON) # for NEON c/c++ primitives, as currently there is no implementation that use SVE
+            add_definitions(-DHAVE_NEON) # for NEON c/c++ primitives, because not all functions are optimized with SVE
         elseif(CPU_HAS_NEON)
             message(STATUS "Found NEON")
             set(ARM_ARGS -fPIC -flax-vector-conversions)
