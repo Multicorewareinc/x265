@@ -27,6 +27,7 @@
 #include "cpu.h"
 #include "loopfilter.h"
 #include "ipfilter8.h"
+#include "dct.h"
 
 namespace X265_NS {
 // private x265 namespace
@@ -200,6 +201,20 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask)
         CHROMA_444(64, 32, lsx)
         CHROMA_444(64, 48, lsx)
         CHROMA_444(64, 64, lsx)
+
+        //dct
+        p.cu[BLOCK_32x32].dct  = PFX(dct32_lsx);
+        p.cu[BLOCK_16x16].dct  = PFX(dct16_lsx);
+        p.cu[BLOCK_8x8].dct    = PFX(dct8_lsx);
+        p.cu[BLOCK_4x4].dct    = PFX(dct4_lsx);
+        p.cu[BLOCK_4x4].idct   = PFX(idct4_lsx);
+        p.cu[BLOCK_8x8].idct   = PFX(idct8_lsx);
+        p.cu[BLOCK_16x16].idct = PFX(idct16_lsx);
+        p.cu[BLOCK_32x32].idct = PFX(idct32_lsx);
+        p.dst4x4               = PFX(dst4_lsx);
+        p.idst4x4              = PFX(idst4_lsx);
+        p.scanPosLast          = PFX(scanPosLast_lsx);
+        p.costCoeffNxN         = PFX(costCoeffNxN_lsx);
     }
 #endif /* HAVE_LSX */
 
@@ -267,6 +282,12 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask)
         CHROMA_444(64, 32, lasx)
         CHROMA_444(64, 48, lasx)
         CHROMA_444(64, 64, lasx)
+
+        //dct
+        p.cu[BLOCK_16x16].dct  = PFX(dct16_lasx);
+        p.cu[BLOCK_32x32].dct  = PFX(dct32_lasx);
+        p.cu[BLOCK_16x16].idct = PFX(idct16_lasx);
+        p.cu[BLOCK_32x32].idct = PFX(idct32_lasx);
     }
 #endif /* HAVE_LASX */
 }
