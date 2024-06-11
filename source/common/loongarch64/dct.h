@@ -48,6 +48,14 @@ uint32_t PFX(quant_lsx)(const int16_t* coef, const int32_t* quantCoeff, int32_t*
 void PFX(dequant_normal_lsx)(const int16_t* quantCoef, int16_t* coef, int num, int scale, int shift);
 void PFX(dequant_scaling_lsx)(const int16_t* quantCoef, const int32_t* deQuantCoef, int16_t* coef, int num, int per, int shift);
 uint32_t PFX(nquant_lsx)(const int16_t* coef, const int32_t* quantCoeff, int16_t* qCoef, int qBits, int add, int numCoeff);
+int PFX(count_nonzero_32_lsx)(const int16_t* quantCoeff);
+int PFX(count_nonzero_16_lsx)(const int16_t* quantCoeff);
+int PFX(count_nonzero_8_lsx)(const int16_t* quantCoeff);
+int PFX(count_nonzero_4_lsx)(const int16_t* quantCoeff);
+uint32_t PFX(costC1C2Flag_lsx)(uint16_t *absCoeff, intptr_t numNonZero, uint8_t *baseCtxMod, intptr_t ctxOffset);
+uint32_t PFX(costCoeffRemain_lsx)(uint16_t *absCoeff, int numNonZero, int idx);
+uint32_t PFX(findPosFirstLast_lsx)(const int16_t *dstCoeff, const intptr_t trSize, const uint16_t scanTbl[16]);
+void PFX(denoiseDct_lsx)(int16_t* dctCoef, uint32_t* resSum, const uint16_t* offset, int numCoeff);
 
 void PFX(dct16_lasx)(const int16_t* src, int16_t* dst, intptr_t srcStride);
 void PFX(dct32_lasx)(const int16_t* src, int16_t* dst, intptr_t srcStride);
@@ -57,6 +65,12 @@ uint32_t PFX(quant_lasx)(const int16_t* coef, const int32_t* quantCoeff, int32_t
 void PFX(dequant_normal_lasx)(const int16_t* quantCoef, int16_t* coef, int num, int scale, int shift);
 void PFX(dequant_scaling_lasx)(const int16_t* quantCoef, const int32_t* deQuantCoef, int16_t* coef, int num, int per, int shift);
 uint32_t PFX(nquant_lasx)(const int16_t* coef, const int32_t* quantCoeff, int16_t* qCoef, int qBits, int add, int numCoeff);
+int PFX(count_nonzero_32_lasx)(const int16_t* quantCoeff);
+int PFX(count_nonzero_16_lasx)(const int16_t* quantCoeff);
+int PFX(count_nonzero_8_lasx)(const int16_t* quantCoeff);
+int PFX(count_nonzero_4_lasx)(const int16_t* quantCoeff);
+uint32_t PFX(findPosFirstLast_lasx)(const int16_t *dstCoeff, const intptr_t trSize, const uint16_t scanTbl[16]);
+void PFX(denoiseDct_lasx)(int16_t* dctCoef, uint32_t* resSum, const uint16_t* offset, int numCoeff);
 
 #ifdef __cplusplus
 }

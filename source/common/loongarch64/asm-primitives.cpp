@@ -219,6 +219,14 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask)
         p.dequant_normal       = PFX(dequant_normal_lsx);
         p.dequant_scaling      = PFX(dequant_scaling_lsx);
         p.nquant               = PFX(nquant_lsx);
+        p.cu[BLOCK_32x32].count_nonzero = PFX(count_nonzero_32_lsx);
+        p.cu[BLOCK_16x16].count_nonzero = PFX(count_nonzero_16_lsx);
+        p.cu[BLOCK_8x8].count_nonzero   = PFX(count_nonzero_8_lsx);
+        p.cu[BLOCK_4x4].count_nonzero   = PFX(count_nonzero_4_lsx);
+        p.costC1C2Flag         = PFX(costC1C2Flag_lsx);
+        p.costCoeffRemain      = PFX(costCoeffRemain_lsx);
+        p.findPosFirstLast     = PFX(findPosFirstLast_lsx);
+        p.denoiseDct           = PFX(denoiseDct_lsx);
     }
 #endif /* HAVE_LSX */
 
@@ -296,6 +304,12 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask)
         p.dequant_normal       = PFX(dequant_normal_lasx);
         p.dequant_scaling      = PFX(dequant_scaling_lasx);
         p.nquant               = PFX(nquant_lasx);
+        p.cu[BLOCK_32x32].count_nonzero = PFX(count_nonzero_32_lasx);
+        p.cu[BLOCK_16x16].count_nonzero = PFX(count_nonzero_16_lasx);
+        p.cu[BLOCK_8x8].count_nonzero   = PFX(count_nonzero_8_lasx);
+        p.cu[BLOCK_4x4].count_nonzero   = PFX(count_nonzero_4_lasx);
+        p.findPosFirstLast     = PFX(findPosFirstLast_lasx);
+        p.denoiseDct           = PFX(denoiseDct_lasx);
     }
 #endif /* HAVE_LASX */
 }
