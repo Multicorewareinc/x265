@@ -215,6 +215,10 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask)
         p.idst4x4              = PFX(idst4_lsx);
         p.scanPosLast          = PFX(scanPosLast_lsx);
         p.costCoeffNxN         = PFX(costCoeffNxN_lsx);
+        p.quant                = PFX(quant_lsx);
+        p.dequant_normal       = PFX(dequant_normal_lsx);
+        p.dequant_scaling      = PFX(dequant_scaling_lsx);
+        p.nquant               = PFX(nquant_lsx);
     }
 #endif /* HAVE_LSX */
 
@@ -288,6 +292,10 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask)
         p.cu[BLOCK_32x32].dct  = PFX(dct32_lasx);
         p.cu[BLOCK_16x16].idct = PFX(idct16_lasx);
         p.cu[BLOCK_32x32].idct = PFX(idct32_lasx);
+        p.quant                = PFX(quant_lasx);
+        p.dequant_normal       = PFX(dequant_normal_lasx);
+        p.dequant_scaling      = PFX(dequant_scaling_lasx);
+        p.nquant               = PFX(nquant_lasx);
     }
 #endif /* HAVE_LASX */
 }
