@@ -29,6 +29,7 @@
 #include "ipfilter8.h"
 #include "dct.h"
 #include "pixel.h"
+#include "intrapred.h"
 
 #define ASSIGN2(func, fname) \
     func[ALIGNED] = PFX(fname); \
@@ -349,6 +350,149 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask)
         CHROMA_PU_422(24, 64, lsx);
         CHROMA_PU_422(32, 16, lsx);
         CHROMA_PU_422(8,  64, lsx);
+
+        // intra_pred
+        p.cu[BLOCK_4x4].intra_pred[2] = PFX(intra_pred_ang4_2_lsx);
+        p.cu[BLOCK_4x4].intra_pred[3] = PFX(intra_pred_ang4_3_lsx);
+        p.cu[BLOCK_4x4].intra_pred[4] = PFX(intra_pred_ang4_4_lsx);
+        p.cu[BLOCK_4x4].intra_pred[5] = PFX(intra_pred_ang4_5_lsx);
+        p.cu[BLOCK_4x4].intra_pred[6] = PFX(intra_pred_ang4_6_lsx);
+        p.cu[BLOCK_4x4].intra_pred[7] = PFX(intra_pred_ang4_7_lsx);
+        p.cu[BLOCK_4x4].intra_pred[8] = PFX(intra_pred_ang4_8_lsx);
+        p.cu[BLOCK_4x4].intra_pred[9] = PFX(intra_pred_ang4_9_lsx);
+        p.cu[BLOCK_4x4].intra_pred[10] = PFX(intra_pred_ang4_10_lsx);
+        p.cu[BLOCK_4x4].intra_pred[11] = PFX(intra_pred_ang4_11_lsx);
+        p.cu[BLOCK_4x4].intra_pred[12] = PFX(intra_pred_ang4_12_lsx);
+        p.cu[BLOCK_4x4].intra_pred[13] = PFX(intra_pred_ang4_13_lsx);
+        p.cu[BLOCK_4x4].intra_pred[14] = PFX(intra_pred_ang4_14_lsx);
+        p.cu[BLOCK_4x4].intra_pred[15] = PFX(intra_pred_ang4_15_lsx);
+        p.cu[BLOCK_4x4].intra_pred[16] = PFX(intra_pred_ang4_16_lsx);
+        p.cu[BLOCK_4x4].intra_pred[17] = PFX(intra_pred_ang4_17_lsx);
+        p.cu[BLOCK_4x4].intra_pred[18] = PFX(intra_pred_ang4_18_lsx);
+        p.cu[BLOCK_4x4].intra_pred[19] = PFX(intra_pred_ang4_19_lsx);
+        p.cu[BLOCK_4x4].intra_pred[20] = PFX(intra_pred_ang4_20_lsx);
+        p.cu[BLOCK_4x4].intra_pred[21] = PFX(intra_pred_ang4_21_lsx);
+        p.cu[BLOCK_4x4].intra_pred[22] = PFX(intra_pred_ang4_22_lsx);
+        p.cu[BLOCK_4x4].intra_pred[23] = PFX(intra_pred_ang4_23_lsx);
+        p.cu[BLOCK_4x4].intra_pred[24] = PFX(intra_pred_ang4_24_lsx);
+        p.cu[BLOCK_4x4].intra_pred[25] = PFX(intra_pred_ang4_25_lsx);
+        p.cu[BLOCK_4x4].intra_pred[26] = PFX(intra_pred_ang4_26_lsx);
+        p.cu[BLOCK_4x4].intra_pred[27] = PFX(intra_pred_ang4_27_lsx);
+        p.cu[BLOCK_4x4].intra_pred[28] = PFX(intra_pred_ang4_28_lsx);
+        p.cu[BLOCK_4x4].intra_pred[29] = PFX(intra_pred_ang4_29_lsx);
+        p.cu[BLOCK_4x4].intra_pred[30] = PFX(intra_pred_ang4_30_lsx);
+        p.cu[BLOCK_4x4].intra_pred[31] = PFX(intra_pred_ang4_31_lsx);
+        p.cu[BLOCK_4x4].intra_pred[32] = PFX(intra_pred_ang4_32_lsx);
+        p.cu[BLOCK_4x4].intra_pred[33] = PFX(intra_pred_ang4_33_lsx);
+        p.cu[BLOCK_4x4].intra_pred[34] = PFX(intra_pred_ang4_34_lsx);
+
+        p.cu[BLOCK_8x8].intra_pred[2] = PFX(intra_pred_ang8_2_lsx);
+        p.cu[BLOCK_8x8].intra_pred[3] = PFX(intra_pred_ang8_3_lsx);
+        p.cu[BLOCK_8x8].intra_pred[4] = PFX(intra_pred_ang8_4_lsx);
+        p.cu[BLOCK_8x8].intra_pred[5] = PFX(intra_pred_ang8_5_lsx);
+        p.cu[BLOCK_8x8].intra_pred[6] = PFX(intra_pred_ang8_6_lsx);
+        p.cu[BLOCK_8x8].intra_pred[7] = PFX(intra_pred_ang8_7_lsx);
+        p.cu[BLOCK_8x8].intra_pred[8] = PFX(intra_pred_ang8_8_lsx);
+        p.cu[BLOCK_8x8].intra_pred[9] = PFX(intra_pred_ang8_9_lsx);
+        p.cu[BLOCK_8x8].intra_pred[10] = PFX(intra_pred_ang8_10_lsx);
+        p.cu[BLOCK_8x8].intra_pred[11] = PFX(intra_pred_ang8_11_lsx);
+        p.cu[BLOCK_8x8].intra_pred[12] = PFX(intra_pred_ang8_12_lsx);
+        p.cu[BLOCK_8x8].intra_pred[13] = PFX(intra_pred_ang8_13_lsx);
+        p.cu[BLOCK_8x8].intra_pred[14] = PFX(intra_pred_ang8_14_lsx);
+        p.cu[BLOCK_8x8].intra_pred[15] = PFX(intra_pred_ang8_15_lsx);
+        p.cu[BLOCK_8x8].intra_pred[16] = PFX(intra_pred_ang8_16_lsx);
+        p.cu[BLOCK_8x8].intra_pred[17] = PFX(intra_pred_ang8_17_lsx);
+        p.cu[BLOCK_8x8].intra_pred[18] = PFX(intra_pred_ang8_18_lsx);
+        p.cu[BLOCK_8x8].intra_pred[19] = PFX(intra_pred_ang8_17_lsx);
+        p.cu[BLOCK_8x8].intra_pred[20] = PFX(intra_pred_ang8_16_lsx);
+        p.cu[BLOCK_8x8].intra_pred[21] = PFX(intra_pred_ang8_15_lsx);
+        p.cu[BLOCK_8x8].intra_pred[22] = PFX(intra_pred_ang8_14_lsx);
+        p.cu[BLOCK_8x8].intra_pred[23] = PFX(intra_pred_ang8_13_lsx);
+        p.cu[BLOCK_8x8].intra_pred[24] = PFX(intra_pred_ang8_12_lsx);
+        p.cu[BLOCK_8x8].intra_pred[25] = PFX(intra_pred_ang8_11_lsx);
+        p.cu[BLOCK_8x8].intra_pred[26] = PFX(intra_pred_ang8_26_lsx);
+        p.cu[BLOCK_8x8].intra_pred[27] = PFX(intra_pred_ang8_9_lsx);
+        p.cu[BLOCK_8x8].intra_pred[28] = PFX(intra_pred_ang8_8_lsx);
+        p.cu[BLOCK_8x8].intra_pred[29] = PFX(intra_pred_ang8_7_lsx);
+        p.cu[BLOCK_8x8].intra_pred[30] = PFX(intra_pred_ang8_6_lsx);
+        p.cu[BLOCK_8x8].intra_pred[31] = PFX(intra_pred_ang8_5_lsx);
+        p.cu[BLOCK_8x8].intra_pred[32] = PFX(intra_pred_ang8_4_lsx);
+        p.cu[BLOCK_8x8].intra_pred[33] = PFX(intra_pred_ang8_3_lsx);
+        p.cu[BLOCK_8x8].intra_pred[34] = PFX(intra_pred_ang8_34_lsx);
+
+        p.cu[BLOCK_16x16].intra_pred[2] = PFX(intra_pred_ang16_2_lsx);
+        p.cu[BLOCK_16x16].intra_pred[3] = PFX(intra_pred_ang16_3_lsx);
+        p.cu[BLOCK_16x16].intra_pred[4] = PFX(intra_pred_ang16_4_lsx);
+        p.cu[BLOCK_16x16].intra_pred[5] = PFX(intra_pred_ang16_5_lsx);
+        p.cu[BLOCK_16x16].intra_pred[6] = PFX(intra_pred_ang16_6_lsx);
+        p.cu[BLOCK_16x16].intra_pred[7] = PFX(intra_pred_ang16_7_lsx);
+        p.cu[BLOCK_16x16].intra_pred[8] = PFX(intra_pred_ang16_8_lsx);
+        p.cu[BLOCK_16x16].intra_pred[9] = PFX(intra_pred_ang16_9_lsx);
+        p.cu[BLOCK_16x16].intra_pred[10] = PFX(intra_pred_ang16_10_lsx);
+        p.cu[BLOCK_16x16].intra_pred[11] = PFX(intra_pred_ang16_11_lsx);
+        p.cu[BLOCK_16x16].intra_pred[12] = PFX(intra_pred_ang16_12_lsx);
+        p.cu[BLOCK_16x16].intra_pred[13] = PFX(intra_pred_ang16_13_lsx);
+        p.cu[BLOCK_16x16].intra_pred[14] = PFX(intra_pred_ang16_14_lsx);
+        p.cu[BLOCK_16x16].intra_pred[15] = PFX(intra_pred_ang16_15_lsx);
+        p.cu[BLOCK_16x16].intra_pred[16] = PFX(intra_pred_ang16_16_lsx);
+        p.cu[BLOCK_16x16].intra_pred[17] = PFX(intra_pred_ang16_17_lsx);
+        p.cu[BLOCK_16x16].intra_pred[18] = PFX(intra_pred_ang16_18_lsx);
+        p.cu[BLOCK_16x16].intra_pred[19] = PFX(intra_pred_ang16_19_lsx);
+        p.cu[BLOCK_16x16].intra_pred[20] = PFX(intra_pred_ang16_20_lsx);
+        p.cu[BLOCK_16x16].intra_pred[21] = PFX(intra_pred_ang16_21_lsx);
+        p.cu[BLOCK_16x16].intra_pred[22] = PFX(intra_pred_ang16_22_lsx);
+        p.cu[BLOCK_16x16].intra_pred[23] = PFX(intra_pred_ang16_23_lsx);
+        p.cu[BLOCK_16x16].intra_pred[24] = PFX(intra_pred_ang16_24_lsx);
+        p.cu[BLOCK_16x16].intra_pred[25] = PFX(intra_pred_ang16_25_lsx);
+        p.cu[BLOCK_16x16].intra_pred[26] = PFX(intra_pred_ang16_26_lsx);
+        p.cu[BLOCK_16x16].intra_pred[27] = PFX(intra_pred_ang16_27_lsx);
+        p.cu[BLOCK_16x16].intra_pred[28] = PFX(intra_pred_ang16_28_lsx);
+        p.cu[BLOCK_16x16].intra_pred[29] = PFX(intra_pred_ang16_29_lsx);
+        p.cu[BLOCK_16x16].intra_pred[30] = PFX(intra_pred_ang16_30_lsx);
+        p.cu[BLOCK_16x16].intra_pred[31] = PFX(intra_pred_ang16_31_lsx);
+        p.cu[BLOCK_16x16].intra_pred[32] = PFX(intra_pred_ang16_32_lsx);
+        p.cu[BLOCK_16x16].intra_pred[33] = PFX(intra_pred_ang16_33_lsx);
+        p.cu[BLOCK_16x16].intra_pred[34] = PFX(intra_pred_ang16_2_lsx);
+
+        p.cu[BLOCK_32x32].intra_pred[2] = PFX(intra_pred_ang32_2_lsx);
+        p.cu[BLOCK_32x32].intra_pred[3] = PFX(intra_pred_ang32_3_lsx);
+        p.cu[BLOCK_32x32].intra_pred[4] = PFX(intra_pred_ang32_4_lsx);
+        p.cu[BLOCK_32x32].intra_pred[5] = PFX(intra_pred_ang32_5_lsx);
+        p.cu[BLOCK_32x32].intra_pred[6] = PFX(intra_pred_ang32_6_lsx);
+        p.cu[BLOCK_32x32].intra_pred[7] = PFX(intra_pred_ang32_7_lsx);
+        p.cu[BLOCK_32x32].intra_pred[8] = PFX(intra_pred_ang32_8_lsx);
+        p.cu[BLOCK_32x32].intra_pred[9] = PFX(intra_pred_ang32_9_lsx);
+        p.cu[BLOCK_32x32].intra_pred[10] = PFX(intra_pred_ang32_10_lsx);
+        p.cu[BLOCK_32x32].intra_pred[11] = PFX(intra_pred_ang32_11_lsx);
+        p.cu[BLOCK_32x32].intra_pred[12] = PFX(intra_pred_ang32_12_lsx);
+        p.cu[BLOCK_32x32].intra_pred[13] = PFX(intra_pred_ang32_13_lsx);
+        p.cu[BLOCK_32x32].intra_pred[14] = PFX(intra_pred_ang32_14_lsx);
+        p.cu[BLOCK_32x32].intra_pred[15] = PFX(intra_pred_ang32_15_lsx);
+        p.cu[BLOCK_32x32].intra_pred[16] = PFX(intra_pred_ang32_16_lsx);
+        p.cu[BLOCK_32x32].intra_pred[17] = PFX(intra_pred_ang32_17_lsx);
+        p.cu[BLOCK_32x32].intra_pred[18] = PFX(intra_pred_ang32_18_lsx);
+        p.cu[BLOCK_32x32].intra_pred[19] = PFX(intra_pred_ang32_19_lsx);
+        p.cu[BLOCK_32x32].intra_pred[20] = PFX(intra_pred_ang32_20_lsx);
+        p.cu[BLOCK_32x32].intra_pred[21] = PFX(intra_pred_ang32_21_lsx);
+        p.cu[BLOCK_32x32].intra_pred[22] = PFX(intra_pred_ang32_22_lsx);
+        p.cu[BLOCK_32x32].intra_pred[23] = PFX(intra_pred_ang32_23_lsx);
+        p.cu[BLOCK_32x32].intra_pred[24] = PFX(intra_pred_ang32_24_lsx);
+        p.cu[BLOCK_32x32].intra_pred[25] = PFX(intra_pred_ang32_25_lsx);
+        p.cu[BLOCK_32x32].intra_pred[26] = PFX(intra_pred_ang32_26_lsx);
+        p.cu[BLOCK_32x32].intra_pred[27] = PFX(intra_pred_ang32_27_lsx);
+        p.cu[BLOCK_32x32].intra_pred[28] = PFX(intra_pred_ang32_28_lsx);
+        p.cu[BLOCK_32x32].intra_pred[29] = PFX(intra_pred_ang32_29_lsx);
+        p.cu[BLOCK_32x32].intra_pred[30] = PFX(intra_pred_ang32_30_lsx);
+        p.cu[BLOCK_32x32].intra_pred[31] = PFX(intra_pred_ang32_31_lsx);
+        p.cu[BLOCK_32x32].intra_pred[32] = PFX(intra_pred_ang32_32_lsx);
+        p.cu[BLOCK_32x32].intra_pred[33] = PFX(intra_pred_ang32_33_lsx);
+        p.cu[BLOCK_32x32].intra_pred[34] = PFX(intra_pred_ang32_34_lsx);
+
+        //intra_pred_dc
+        p.cu[BLOCK_4x4].intra_pred[DC_IDX] = PFX(intra_pred_dc4_lsx);
+        p.cu[BLOCK_8x8].intra_pred[DC_IDX] = PFX(intra_pred_dc8_lsx);
+        p.cu[BLOCK_16x16].intra_pred[DC_IDX] = PFX(intra_pred_dc16_lsx);
+        p.cu[BLOCK_32x32].intra_pred[DC_IDX] = PFX(intra_pred_dc32_lsx);
     }
 #endif /* HAVE_LSX */
 
@@ -467,6 +611,50 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask)
         ASSIGN2(p.chroma[X265_CSP_I422].pu[CHROMA_422_32x32].addAvg, addAvg_32x32_lasx);
         ASSIGN2(p.chroma[X265_CSP_I422].pu[CHROMA_422_32x48].addAvg, addAvg_32x48_lasx);
         ASSIGN2(p.chroma[X265_CSP_I422].pu[CHROMA_422_32x64].addAvg, addAvg_32x64_lasx);
+
+        //intra_pred
+        p.cu[BLOCK_8x8].intra_pred[3] = PFX(intra_pred_ang8_3_lasx);
+        p.cu[BLOCK_8x8].intra_pred[4] = PFX(intra_pred_ang8_4_lasx);
+        p.cu[BLOCK_8x8].intra_pred[5] = PFX(intra_pred_ang8_5_lasx);
+        p.cu[BLOCK_8x8].intra_pred[6] = PFX(intra_pred_ang8_6_lasx);
+        p.cu[BLOCK_8x8].intra_pred[7] = PFX(intra_pred_ang8_7_lasx);
+        p.cu[BLOCK_8x8].intra_pred[8] = PFX(intra_pred_ang8_8_lasx);
+        p.cu[BLOCK_8x8].intra_pred[9] = PFX(intra_pred_ang8_9_lasx);
+        p.cu[BLOCK_8x8].intra_pred[11] = PFX(intra_pred_ang8_11_lasx);
+        p.cu[BLOCK_8x8].intra_pred[12] = PFX(intra_pred_ang8_12_lasx);
+        p.cu[BLOCK_8x8].intra_pred[13] = PFX(intra_pred_ang8_13_lasx);
+        p.cu[BLOCK_8x8].intra_pred[14] = PFX(intra_pred_ang8_14_lasx);
+        p.cu[BLOCK_8x8].intra_pred[15] = PFX(intra_pred_ang8_15_lasx);
+        p.cu[BLOCK_8x8].intra_pred[16] = PFX(intra_pred_ang8_16_lasx);
+        p.cu[BLOCK_8x8].intra_pred[17] = PFX(intra_pred_ang8_17_lasx);
+        p.cu[BLOCK_8x8].intra_pred[19] = PFX(intra_pred_ang8_19_lasx);
+        p.cu[BLOCK_8x8].intra_pred[20] = PFX(intra_pred_ang8_20_lasx);
+        p.cu[BLOCK_8x8].intra_pred[21] = PFX(intra_pred_ang8_21_lasx);
+        p.cu[BLOCK_8x8].intra_pred[22] = PFX(intra_pred_ang8_22_lasx);
+        p.cu[BLOCK_8x8].intra_pred[23] = PFX(intra_pred_ang8_23_lasx);
+        p.cu[BLOCK_8x8].intra_pred[24] = PFX(intra_pred_ang8_24_lasx);
+        p.cu[BLOCK_8x8].intra_pred[25] = PFX(intra_pred_ang8_25_lasx);
+        p.cu[BLOCK_8x8].intra_pred[27] = PFX(intra_pred_ang8_27_lasx);
+        p.cu[BLOCK_8x8].intra_pred[28] = PFX(intra_pred_ang8_28_lasx);
+        p.cu[BLOCK_8x8].intra_pred[29] = PFX(intra_pred_ang8_29_lasx);
+        p.cu[BLOCK_8x8].intra_pred[30] = PFX(intra_pred_ang8_30_lasx);
+        p.cu[BLOCK_8x8].intra_pred[31] = PFX(intra_pred_ang8_31_lasx);
+        p.cu[BLOCK_8x8].intra_pred[32] = PFX(intra_pred_ang8_32_lasx);
+        p.cu[BLOCK_8x8].intra_pred[33] = PFX(intra_pred_ang8_33_lasx);
+        p.cu[BLOCK_16x16].intra_pred[3] = PFX(intra_pred_ang16_3_lasx);
+        p.cu[BLOCK_16x16].intra_pred[4] = PFX(intra_pred_ang16_4_lasx);
+        p.cu[BLOCK_16x16].intra_pred[5] = PFX(intra_pred_ang16_5_lasx);
+        p.cu[BLOCK_16x16].intra_pred[6] = PFX(intra_pred_ang16_6_lasx);
+        p.cu[BLOCK_16x16].intra_pred[7] = PFX(intra_pred_ang16_7_lasx);
+        p.cu[BLOCK_16x16].intra_pred[8] = PFX(intra_pred_ang16_8_lasx);
+        p.cu[BLOCK_16x16].intra_pred[9] = PFX(intra_pred_ang16_9_lasx);
+        p.cu[BLOCK_16x16].intra_pred[11] = PFX(intra_pred_ang16_11_lasx);
+        p.cu[BLOCK_16x16].intra_pred[12] = PFX(intra_pred_ang16_12_lasx);
+        p.cu[BLOCK_16x16].intra_pred[13] = PFX(intra_pred_ang16_13_lasx);
+        p.cu[BLOCK_16x16].intra_pred[14] = PFX(intra_pred_ang16_14_lasx);
+        p.cu[BLOCK_16x16].intra_pred[15] = PFX(intra_pred_ang16_15_lasx);
+        p.cu[BLOCK_16x16].intra_pred[16] = PFX(intra_pred_ang16_16_lasx);
+        p.cu[BLOCK_16x16].intra_pred[17] = PFX(intra_pred_ang16_17_lasx);
     }
 #endif /* HAVE_LASX */
 }
