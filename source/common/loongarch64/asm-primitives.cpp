@@ -38,6 +38,173 @@
 namespace X265_NS {
 // private x265 namespace
 
+template<int size>
+int psyCost_pp_lsx(const pixel *source, intptr_t sstride, const pixel *recon, intptr_t rstride)
+{
+    static pixel zeroBuf[8] /* = { 0 } */;
+
+    if (size)
+    {
+        int dim = 1 << (size + 2);
+        uint32_t totEnergy = 0;
+        for (int i = 0; i < dim; i += 8)
+        {
+            for (int j = 0; j < dim; j += 8)
+            {
+                /* AC energy, measured by sa8d (AC + DC) minus SAD (DC) */
+                int sourceEnergy = PFX(pixel_sa8d_8x8_lsx)(source + i * sstride + j, sstride, zeroBuf, 0) -
+                                   (PFX(pixel_sad_8x8_lsx)(source + i * sstride + j, sstride, zeroBuf, 0) >> 2);
+                int reconEnergy =  PFX(pixel_sa8d_8x8_lsx)(recon + i * rstride + j, rstride, zeroBuf, 0) -
+                                   (PFX(pixel_sad_8x8_lsx)(recon + i * rstride + j, rstride, zeroBuf, 0) >> 2);
+
+                totEnergy += abs(sourceEnergy - reconEnergy);
+            }
+        }
+        return totEnergy;
+    }
+    else
+    {
+        int sourceEnergy = PFX(pixel_satd_4x4_lsx)(source, sstride, zeroBuf, 0) - (PFX(pixel_sad_4x4_lsx)(source, sstride, zeroBuf, 0) >> 2);
+        int reconEnergy = PFX(pixel_satd_4x4_lsx)(recon, rstride, zeroBuf, 0) - (PFX(pixel_sad_4x4_lsx)(recon, rstride, zeroBuf, 0) >> 2);
+        return abs(sourceEnergy - reconEnergy);
+    }
+}
+
+template<int size>
+int psyCost_pp_lasx(const pixel *source, intptr_t sstride, const pixel *recon, intptr_t rstride)
+{
+    static pixel zeroBuf[8] /* = { 0 } */;
+
+    if (size)
+    {
+        int dim = 1 << (size + 2);
+        uint32_t totEnergy = 0;
+        for (int i = 0; i < dim; i += 8)
+        {
+            for (int j = 0; j < dim; j += 8)
+            {
+                /* AC energy, measured by sa8d (AC + DC) minus SAD (DC) */
+                int sourceEnergy = PFX(pixel_sa8d_8x8_lasx)(source + i * sstride + j, sstride, zeroBuf, 0) -
+                                   (PFX(pixel_sad_8x8_lsx)(source + i * sstride + j, sstride, zeroBuf, 0) >> 2);
+                int reconEnergy =  PFX(pixel_sa8d_8x8_lasx)(recon + i * rstride + j, rstride, zeroBuf, 0) -
+                                   (PFX(pixel_sad_8x8_lsx)(recon + i * rstride + j, rstride, zeroBuf, 0) >> 2);
+
+                totEnergy += abs(sourceEnergy - reconEnergy);
+            }
+        }
+        return totEnergy;
+    }
+    else
+    {
+        int sourceEnergy = PFX(pixel_satd_4x4_lsx)(source, sstride, zeroBuf, 0) - (PFX(pixel_sad_4x4_lsx)(source, sstride, zeroBuf, 0) >> 2);
+        int reconEnergy = PFX(pixel_satd_4x4_lsx)(recon, rstride, zeroBuf, 0) - (PFX(pixel_sad_4x4_lsx)(recon, rstride, zeroBuf, 0) >> 2);
+        return abs(sourceEnergy - reconEnergy);
+    }
+}
+
+typedef void (*intra_pred_ang_lsx)(pixel* dst, intptr_t dstStride, const pixel* srcPix, int dirMode, int bFilter);
+
+intra_pred_ang_lsx PFX(intra_pred_ang8_19_lsx) = PFX(intra_pred_ang8_17_lsx);
+intra_pred_ang_lsx PFX(intra_pred_ang8_20_lsx) = PFX(intra_pred_ang8_16_lsx);
+intra_pred_ang_lsx PFX(intra_pred_ang8_21_lsx) = PFX(intra_pred_ang8_15_lsx);
+intra_pred_ang_lsx PFX(intra_pred_ang8_22_lsx) = PFX(intra_pred_ang8_14_lsx);
+intra_pred_ang_lsx PFX(intra_pred_ang8_23_lsx) = PFX(intra_pred_ang8_13_lsx);
+intra_pred_ang_lsx PFX(intra_pred_ang8_24_lsx) = PFX(intra_pred_ang8_12_lsx);
+intra_pred_ang_lsx PFX(intra_pred_ang8_25_lsx) = PFX(intra_pred_ang8_11_lsx);
+intra_pred_ang_lsx PFX(intra_pred_ang8_27_lsx) = PFX(intra_pred_ang8_9_lsx);
+intra_pred_ang_lsx PFX(intra_pred_ang8_28_lsx) = PFX(intra_pred_ang8_8_lsx);
+intra_pred_ang_lsx PFX(intra_pred_ang8_29_lsx) = PFX(intra_pred_ang8_7_lsx);
+intra_pred_ang_lsx PFX(intra_pred_ang8_30_lsx) = PFX(intra_pred_ang8_6_lsx);
+intra_pred_ang_lsx PFX(intra_pred_ang8_31_lsx) = PFX(intra_pred_ang8_5_lsx);
+intra_pred_ang_lsx PFX(intra_pred_ang8_32_lsx) = PFX(intra_pred_ang8_4_lsx);
+intra_pred_ang_lsx PFX(intra_pred_ang8_33_lsx) = PFX(intra_pred_ang8_3_lsx);
+
+intra_pred_ang_lsx PFX(intra_pred_ang16_34_lsx) = PFX(intra_pred_ang16_2_lsx);
+
+#define intra_pred_lsx(number)                                                 \
+intra_pred_ang_lsx intra_pred##number##_lsx[35] __attribute__((aligned(8)))= { \
+        NULL,                                                                  \
+        NULL,                                                                  \
+        PFX(intra_pred_ang##number##_2_lsx),                                   \
+        PFX(intra_pred_ang##number##_3_lsx),                                   \
+        PFX(intra_pred_ang##number##_4_lsx),                                   \
+        PFX(intra_pred_ang##number##_5_lsx),                                   \
+        PFX(intra_pred_ang##number##_6_lsx),                                   \
+        PFX(intra_pred_ang##number##_7_lsx),                                   \
+        PFX(intra_pred_ang##number##_8_lsx),                                   \
+        PFX(intra_pred_ang##number##_9_lsx),                                   \
+        PFX(intra_pred_ang##number##_10_lsx),                                  \
+        PFX(intra_pred_ang##number##_11_lsx),                                  \
+        PFX(intra_pred_ang##number##_12_lsx),                                  \
+        PFX(intra_pred_ang##number##_13_lsx),                                  \
+        PFX(intra_pred_ang##number##_14_lsx),                                  \
+        PFX(intra_pred_ang##number##_15_lsx),                                  \
+        PFX(intra_pred_ang##number##_16_lsx),                                  \
+        PFX(intra_pred_ang##number##_17_lsx),                                  \
+        PFX(intra_pred_ang##number##_18_lsx),                                  \
+        PFX(intra_pred_ang##number##_19_lsx),                                  \
+        PFX(intra_pred_ang##number##_20_lsx),                                  \
+        PFX(intra_pred_ang##number##_21_lsx),                                  \
+        PFX(intra_pred_ang##number##_22_lsx),                                  \
+        PFX(intra_pred_ang##number##_23_lsx),                                  \
+        PFX(intra_pred_ang##number##_24_lsx),                                  \
+        PFX(intra_pred_ang##number##_25_lsx),                                  \
+        PFX(intra_pred_ang##number##_26_lsx),                                  \
+        PFX(intra_pred_ang##number##_27_lsx),                                  \
+        PFX(intra_pred_ang##number##_28_lsx),                                  \
+        PFX(intra_pred_ang##number##_29_lsx),                                  \
+        PFX(intra_pred_ang##number##_30_lsx),                                  \
+        PFX(intra_pred_ang##number##_31_lsx),                                  \
+        PFX(intra_pred_ang##number##_32_lsx),                                  \
+        PFX(intra_pred_ang##number##_33_lsx),                                  \
+        PFX(intra_pred_ang##number##_34_lsx)                                   \
+};
+
+intra_pred_lsx(4);
+intra_pred_lsx(8);
+intra_pred_lsx(16);
+intra_pred_lsx(32);
+
+#define all_angs_pred_lsx(number1, number2)                                     \
+static void all_angs_pred##number1##_lsx(pixel *dest, pixel *refPix,            \
+                                        pixel *filtPix, int bLuma)              \
+{                                                                               \
+    const int size = number1;                                                   \
+    for (int mode = 2; mode <= 34; mode++)                                      \
+    {                                                                           \
+        pixel *srcPix  = (g_intraFilterFlags[mode] & size ? filtPix  : refPix); \
+        pixel *out = dest + ((mode - 2) << (number2));                          \
+                                                                                \
+        intra_pred##number1##_lsx[mode](out, size, srcPix, mode, bLuma);        \
+                                                                                \
+        bool modeHor = (mode < 18);                                             \
+        if (modeHor)                                                            \
+        {                                                                       \
+            if (size == 8)                                                      \
+            {                                                                   \
+                x265_transpose_8x8_lsx(out, out, size);                         \
+            }                                                                   \
+            else if (size == 16)                                                \
+            {                                                                   \
+                x265_transpose_16x16_lsx(out, out, size);                       \
+            }                                                                   \
+            else if (size == 32)                                                \
+            {                                                                   \
+                x265_transpose_32x32_lsx(out, out, size);                       \
+            }                                                                   \
+            else                                                                \
+            {                                                                   \
+                x265_transpose_4x4_lsx(out, out, size);                         \
+            }                                                                   \
+        }                                                                       \
+    }                                                                           \
+}
+
+all_angs_pred_lsx(4, 4)
+all_angs_pred_lsx(8, 6)
+all_angs_pred_lsx(16, 8)
+all_angs_pred_lsx(32, 10)
+
 #define LUMA(W, H, CPU) \
     p.pu[LUMA_ ## W ## x ## H].luma_vpp     = PFX(interp_8tap_vert_pp_ ## W ## x ## H ## _ ##CPU); \
     p.pu[LUMA_ ## W ## x ## H].luma_vps     = PFX(interp_8tap_vert_ps_ ## W ## x ## H ## _ ##CPU); \
@@ -79,6 +246,17 @@ namespace X265_NS {
     p.chroma[X265_CSP_I444].pu[LUMA_ ## W ## x ## H].p2s[NONALIGNED] = PFX(filterPixelToShort_ ## W ## x ## H ## _ ##CPU); \
     p.chroma[X265_CSP_I444].pu[LUMA_ ## W ## x ## H].p2s[ALIGNED] = PFX(filterPixelToShort_ ## W ## x ## H ## _ ##CPU);
 
+#define LUMA_CU(W, H, CPU) \
+    p.cu[BLOCK_ ## W ## x ## H].psy_cost_pp = psyCost_pp_ ##CPU<BLOCK_ ## W ## x ## H>; \
+    p.cu[BLOCK_ ## W ## x ## H].sse_pp      = PFX(pixel_sse_ ## W ## x ## H ##_ ## CPU); \
+    p.cu[BLOCK_ ## W ## x ## H].sse_ss      = PFX(pixel_sse_ss_ ## W ## x ## H ##_ ## CPU); \
+    p.cu[BLOCK_ ## W ## x ## H].var         = PFX(pixel_var_ ## W ## x ## H ##_ ## CPU); \
+    p.cu[BLOCK_ ## W ## x ## H].ssd_s[NONALIGNED] = PFX(pixel_ssd_s_## W ## x ## H ##_ ## CPU); \
+    p.cu[BLOCK_ ## W ## x ## H].ssd_s[ALIGNED] = PFX(pixel_ssd_s_## W ## x ## H ##_ ## CPU); \
+    p.cu[BLOCK_ ## W ## x ## H].transpose     = PFX(transpose_ ## W ## x ## H ##_ ## CPU); \
+    p.cu[BLOCK_ ## W ## x ## H].calcresidual[NONALIGNED] = PFX(pixel_getResidual_ ## W ## x ## H ##_ ## CPU); \
+    p.cu[BLOCK_ ## W ## x ## H].calcresidual[ALIGNED]    = PFX(pixel_getResidual_ ## W ## x ## H ##_ ## CPU);;
+
 #define LUMA_PU(W, H, CPU) \
     p.pu[LUMA_ ## W ## x ## H].addAvg[NONALIGNED] = PFX(addAvg_ ## W ## x ## H ## _ ##CPU); \
     p.pu[LUMA_ ## W ## x ## H].addAvg[ALIGNED] = PFX(addAvg_ ## W ## x ## H ## _ ##CPU);
@@ -90,6 +268,33 @@ namespace X265_NS {
 #define CHROMA_PU_422(W, H, CPU) \
     p.chroma[X265_CSP_I422].pu[CHROMA_422_ ## W ## x ## H].addAvg[NONALIGNED]  = PFX(addAvg_ ## W ## x ## H ## _ ##CPU); \
     p.chroma[X265_CSP_I422].pu[CHROMA_422_ ## W ## x ## H].addAvg[ALIGNED]  = PFX(addAvg_ ## W ## x ## H ## _ ##CPU);
+
+#define ALL_LUMA_PU_TYPED(prim, fncdef, fname, cpu) \
+    p.pu[LUMA_4x4].prim   = fncdef PFX(fname ## _4x4_ ## cpu); \
+    p.pu[LUMA_8x8].prim   = fncdef PFX(fname ## _8x8_ ## cpu); \
+    p.pu[LUMA_16x16].prim = fncdef PFX(fname ## _16x16_ ## cpu); \
+    p.pu[LUMA_32x32].prim = fncdef PFX(fname ## _32x32_ ## cpu); \
+    p.pu[LUMA_64x64].prim = fncdef PFX(fname ## _64x64_ ## cpu); \
+    p.pu[LUMA_8x4].prim   = fncdef PFX(fname ## _8x4_ ## cpu); \
+    p.pu[LUMA_4x8].prim   = fncdef PFX(fname ## _4x8_ ## cpu); \
+    p.pu[LUMA_16x8].prim  = fncdef PFX(fname ## _16x8_ ## cpu); \
+    p.pu[LUMA_8x16].prim  = fncdef PFX(fname ## _8x16_ ## cpu); \
+    p.pu[LUMA_16x32].prim = fncdef PFX(fname ## _16x32_ ## cpu); \
+    p.pu[LUMA_32x16].prim = fncdef PFX(fname ## _32x16_ ## cpu); \
+    p.pu[LUMA_64x32].prim = fncdef PFX(fname ## _64x32_ ## cpu); \
+    p.pu[LUMA_32x64].prim = fncdef PFX(fname ## _32x64_ ## cpu); \
+    p.pu[LUMA_16x12].prim = fncdef PFX(fname ## _16x12_ ## cpu); \
+    p.pu[LUMA_12x16].prim = fncdef PFX(fname ## _12x16_ ## cpu); \
+    p.pu[LUMA_16x4].prim  = fncdef PFX(fname ## _16x4_ ## cpu); \
+    p.pu[LUMA_4x16].prim  = fncdef PFX(fname ## _4x16_ ## cpu); \
+    p.pu[LUMA_32x24].prim = fncdef PFX(fname ## _32x24_ ## cpu); \
+    p.pu[LUMA_24x32].prim = fncdef PFX(fname ## _24x32_ ## cpu); \
+    p.pu[LUMA_32x8].prim  = fncdef PFX(fname ## _32x8_ ## cpu); \
+    p.pu[LUMA_8x32].prim  = fncdef PFX(fname ## _8x32_ ## cpu); \
+    p.pu[LUMA_64x48].prim = fncdef PFX(fname ## _64x48_ ## cpu); \
+    p.pu[LUMA_48x64].prim = fncdef PFX(fname ## _48x64_ ## cpu); \
+    p.pu[LUMA_64x16].prim = fncdef PFX(fname ## _64x16_ ## cpu); \
+    p.pu[LUMA_16x64].prim = fncdef PFX(fname ## _16x64_ ## cpu)
 
 void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask)
 {
@@ -498,11 +703,186 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask)
         p.cu[BLOCK_32x32].intra_pred[33] = PFX(intra_pred_ang32_33_lsx);
         p.cu[BLOCK_32x32].intra_pred[34] = PFX(intra_pred_ang32_34_lsx);
 
+        p.cu[BLOCK_4x4].intra_pred_allangs   = all_angs_pred4_lsx;
+        p.cu[BLOCK_8x8].intra_pred_allangs   = all_angs_pred8_lsx;
+        p.cu[BLOCK_16x16].intra_pred_allangs = all_angs_pred16_lsx;
+        p.cu[BLOCK_32x32].intra_pred_allangs = all_angs_pred32_lsx;
+
         //intra_pred_dc
         p.cu[BLOCK_4x4].intra_pred[DC_IDX] = PFX(intra_pred_dc4_lsx);
         p.cu[BLOCK_8x8].intra_pred[DC_IDX] = PFX(intra_pred_dc8_lsx);
         p.cu[BLOCK_16x16].intra_pred[DC_IDX] = PFX(intra_pred_dc16_lsx);
         p.cu[BLOCK_32x32].intra_pred[DC_IDX] = PFX(intra_pred_dc32_lsx);
+
+        // luma satd
+        ALL_LUMA_PU_TYPED(satd, , pixel_satd, lsx);
+
+        // chroma satd
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_2x2].satd   = NULL;
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_4x4].satd   = PFX(pixel_satd_4x4_lsx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_8x8].satd   = PFX(pixel_satd_8x8_lsx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_16x16].satd = PFX(pixel_satd_16x16_lsx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_32x32].satd = PFX(pixel_satd_32x32_lsx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_4x2].satd   = NULL;
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_2x4].satd   = NULL;
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_8x4].satd   = PFX(pixel_satd_8x4_lsx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_4x8].satd   = PFX(pixel_satd_4x8_lsx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_16x8].satd  = PFX(pixel_satd_16x8_lsx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_8x16].satd  = PFX(pixel_satd_8x16_lsx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_32x16].satd = PFX(pixel_satd_32x16_lsx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_16x32].satd = PFX(pixel_satd_16x32_lsx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_8x6].satd   = NULL;
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_6x8].satd   = NULL;
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_8x2].satd   = NULL;
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_2x8].satd   = NULL;
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_16x12].satd = PFX(pixel_satd_16x12_lsx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_12x16].satd = PFX(pixel_satd_12x16_lsx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_16x4].satd  = PFX(pixel_satd_16x4_lsx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_4x16].satd  = PFX(pixel_satd_4x16_lsx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_32x24].satd = PFX(pixel_satd_32x24_lsx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_24x32].satd = PFX(pixel_satd_24x32_lsx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_32x8].satd  = PFX(pixel_satd_32x8_lsx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_8x32].satd  = PFX(pixel_satd_8x32_lsx);
+
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_4x4].satd   = PFX(pixel_satd_4x4_lsx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_4x8].satd   = PFX(pixel_satd_4x8_lsx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_4x16].satd  = PFX(pixel_satd_4x16_lsx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_8x4].satd   = PFX(pixel_satd_8x4_lsx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_8x8].satd   = PFX(pixel_satd_8x8_lsx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_8x16].satd  = PFX(pixel_satd_8x16_lsx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_16x8].satd  = PFX(pixel_satd_16x8_lsx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_16x16].satd = PFX(pixel_satd_16x16_lsx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_2x4].satd   = NULL;
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_16x32].satd = PFX(pixel_satd_16x32_lsx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_32x64].satd = PFX(pixel_satd_32x64_lsx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_2x8].satd   = NULL;
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_8x32].satd  = PFX(pixel_satd_8x32_lsx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_32x32].satd = PFX(pixel_satd_32x32_lsx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_16x64].satd = PFX(pixel_satd_16x64_lsx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_8x12].satd  = PFX(pixel_satd_8x12_lsx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_6x16].satd  = NULL;
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_2x16].satd  = NULL;
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_16x24].satd = PFX(pixel_satd_16x24_lsx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_12x32].satd = PFX(pixel_satd_12x32_lsx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_4x32].satd  = PFX(pixel_satd_4x32_lsx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_32x48].satd = PFX(pixel_satd_32x48_lsx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_24x64].satd = PFX(pixel_satd_24x64_lsx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_32x16].satd = PFX(pixel_satd_32x16_lsx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_8x64].satd  = PFX(pixel_satd_8x64_lsx);
+
+        // sa8d
+        p.cu[BLOCK_4x4].sa8d   = PFX(pixel_satd_4x4_lsx);
+        p.cu[BLOCK_8x8].sa8d   = PFX(pixel_sa8d_8x8_lsx);
+        p.cu[BLOCK_16x16].sa8d = PFX(pixel_sa8d_16x16_lsx);
+        p.cu[BLOCK_32x32].sa8d = PFX(pixel_sa8d_32x32_lsx);
+        p.cu[BLOCK_64x64].sa8d = PFX(pixel_sa8d_64x64_lsx);
+        p.chroma[X265_CSP_I420].cu[BLOCK_8x8].sa8d       = PFX(pixel_satd_4x4_lsx);
+        p.chroma[X265_CSP_I420].cu[BLOCK_16x16].sa8d     = PFX(pixel_sa8d_16x16_lsx);
+        p.chroma[X265_CSP_I420].cu[BLOCK_32x32].sa8d     = PFX(pixel_sa8d_32x32_lsx);
+        p.chroma[X265_CSP_I420].cu[BLOCK_64x64].sa8d     = PFX(pixel_sa8d_64x64_lsx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_8x8].sa8d       = PFX(pixel_satd_4x8_lsx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_8x16].sa8d  = PFX(pixel_sa8d_8x16_lsx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_16x32].sa8d = PFX(pixel_sa8d_16x32_lsx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_32x64].sa8d = PFX(pixel_sa8d_32x64_lsx);
+
+        // sad_x4
+        ALL_LUMA_PU_TYPED(sad_x4, , pixel_sad_x4, lsx);
+
+        // sad
+        ALL_LUMA_PU_TYPED(sad, , pixel_sad, lsx);
+
+        LUMA_CU(4, 4, lsx);
+        LUMA_CU(8, 8, lsx);
+        LUMA_CU(16, 16, lsx);
+        LUMA_CU(32, 32, lsx);
+        LUMA_CU(64, 64, lsx);
+
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_4x4].sse_pp   = PFX(pixel_sse_4x4_lsx);
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_8x8].sse_pp   = PFX(pixel_sse_8x8_lsx);
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_16x16].sse_pp = PFX(pixel_sse_16x16_lsx);
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_32x32].sse_pp = PFX(pixel_sse_32x32_lsx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_4x8].sse_pp   = PFX(pixel_sse_4x8_lsx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_8x16].sse_pp  = PFX(pixel_sse_8x16_lsx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_16x32].sse_pp = PFX(pixel_sse_16x32_lsx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_32x64].sse_pp = PFX(pixel_sse_32x64_lsx);
+
+        p.weight_pp = PFX(weight_pp_lsx);
+        p.weight_sp = PFX(weight_sp_lsx);
+
+        p.cu[BLOCK_4x4].sub_ps   = PFX(pixel_sub_ps_4x4_lsx);
+        p.cu[BLOCK_8x8].sub_ps   = PFX(pixel_sub_ps_8x8_lsx);
+        p.cu[BLOCK_16x16].sub_ps = PFX(pixel_sub_ps_16x16_lsx);
+        p.cu[BLOCK_32x32].sub_ps = PFX(pixel_sub_ps_32x32_lsx);
+        p.cu[BLOCK_64x64].sub_ps = PFX(pixel_sub_ps_64x64_lsx);
+
+        // chroma sub_ps
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_4x4].sub_ps   = PFX(pixel_sub_ps_4x4_lsx);
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_8x8].sub_ps   = PFX(pixel_sub_ps_8x8_lsx);
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_16x16].sub_ps = PFX(pixel_sub_ps_16x16_lsx);
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_32x32].sub_ps = PFX(pixel_sub_ps_32x32_lsx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_4x8].sub_ps   = PFX(pixel_sub_ps_4x8_lsx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_8x16].sub_ps  = PFX(pixel_sub_ps_8x16_lsx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_16x32].sub_ps = PFX(pixel_sub_ps_16x32_lsx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_32x64].sub_ps = PFX(pixel_sub_ps_32x64_lsx);
+
+        p.cu[BLOCK_4x4].add_ps[NONALIGNED]   = PFX(pixel_add_ps_4x4_lsx);
+        p.cu[BLOCK_8x8].add_ps[NONALIGNED]   = PFX(pixel_add_ps_8x8_lsx);
+        p.cu[BLOCK_16x16].add_ps[NONALIGNED] = PFX(pixel_add_ps_16x16_lsx);
+        p.cu[BLOCK_32x32].add_ps[NONALIGNED] = PFX(pixel_add_ps_32x32_lsx);
+        p.cu[BLOCK_64x64].add_ps[NONALIGNED] = PFX(pixel_add_ps_64x64_lsx);
+
+        p.cu[BLOCK_4x4].add_ps[ALIGNED]   = PFX(pixel_add_ps_4x4_lsx);
+        p.cu[BLOCK_8x8].add_ps[ALIGNED]   = PFX(pixel_add_ps_8x8_lsx);
+        p.cu[BLOCK_16x16].add_ps[ALIGNED] = PFX(pixel_add_ps_16x16_lsx);
+        p.cu[BLOCK_32x32].add_ps[ALIGNED] = PFX(pixel_add_ps_32x32_lsx);
+        p.cu[BLOCK_64x64].add_ps[ALIGNED] = PFX(pixel_add_ps_64x64_lsx);
+
+        // chroma add_ps
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_4x4].add_ps[NONALIGNED]   = PFX(pixel_add_ps_4x4_lsx);
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_8x8].add_ps[NONALIGNED]   = PFX(pixel_add_ps_8x8_lsx);
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_16x16].add_ps[NONALIGNED] = PFX(pixel_add_ps_16x16_lsx);
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_32x32].add_ps[NONALIGNED] = PFX(pixel_add_ps_32x32_lsx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_4x8].add_ps[NONALIGNED]   = PFX(pixel_add_ps_4x8_lsx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_8x16].add_ps[NONALIGNED]  = PFX(pixel_add_ps_8x16_lsx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_16x32].add_ps[NONALIGNED] = PFX(pixel_add_ps_16x32_lsx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_32x64].add_ps[NONALIGNED] = PFX(pixel_add_ps_32x64_lsx);
+
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_4x4].add_ps[ALIGNED]   = PFX(pixel_add_ps_4x4_lsx);
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_8x8].add_ps[ALIGNED]   = PFX(pixel_add_ps_8x8_lsx);
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_16x16].add_ps[ALIGNED] = PFX(pixel_add_ps_16x16_lsx);
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_32x32].add_ps[ALIGNED] = PFX(pixel_add_ps_32x32_lsx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_4x8].add_ps[ALIGNED]   = PFX(pixel_add_ps_4x8_lsx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_8x16].add_ps[ALIGNED]  = PFX(pixel_add_ps_8x16_lsx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_16x32].add_ps[ALIGNED] = PFX(pixel_add_ps_16x32_lsx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_32x64].add_ps[ALIGNED] = PFX(pixel_add_ps_32x64_lsx);
+
+        // sad_x3
+        ALL_LUMA_PU_TYPED(sad_x3, , pixel_sad_x3, lsx);
+
+        // normFact_c
+        p.cu[BLOCK_8x8].normFact   = PFX(pixel_normFact_8x8_lsx);
+        p.cu[BLOCK_16x16].normFact = PFX(pixel_normFact_16x16_lsx);
+        p.cu[BLOCK_32x32].normFact = PFX(pixel_normFact_32x32_lsx);
+        p.cu[BLOCK_64x64].normFact = PFX(pixel_normFact_64x64_lsx);
+
+        p.planecopy_cp = PFX(pixel_planecopy_cp_lsx);
+        p.planecopy_sp = PFX(pixel_planecopy_sp_lsx);
+        p.planecopy_sp_shl = PFX(pixel_planecopy_sp_shl_lsx);
+        p.planecopy_pp_shr = PFX(pixel_planecopy_pp_shr_lsx);
+
+        p.scale1D_128to64[NONALIGNED] = PFX(scale1D_128to64_lsx);
+        p.scale1D_128to64[ALIGNED] = PFX(scale1D_128to64_lsx);
+        p.scale2D_64to32 = PFX(scale2D_64to32_lsx);
+
+        // ssimDist
+        p.cu[BLOCK_4x4].ssimDist   = x265_ssimDist4_lsx;
+        p.cu[BLOCK_8x8].ssimDist   = x265_ssimDist8_lsx;
+        p.cu[BLOCK_16x16].ssimDist = x265_ssimDist16_lsx;
+        p.cu[BLOCK_32x32].ssimDist = x265_ssimDist32_lsx;
+        p.cu[BLOCK_64x64].ssimDist = x265_ssimDist64_lsx;
+
+        p.ssim_end_4 = PFX(ssim_end4_lsx);
+        p.ssim_4x4x2_core = PFX(ssim_4x4x2_lsx);
     }
 #endif /* HAVE_LSX */
 
@@ -671,6 +1051,221 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask)
         p.cu[BLOCK_16x16].intra_pred[15] = PFX(intra_pred_ang16_15_lasx);
         p.cu[BLOCK_16x16].intra_pred[16] = PFX(intra_pred_ang16_16_lasx);
         p.cu[BLOCK_16x16].intra_pred[17] = PFX(intra_pred_ang16_17_lasx);
+
+        // luma satd
+        p.pu[LUMA_4x8].satd   = PFX(pixel_satd_4x8_lasx);
+        p.pu[LUMA_4x16].satd  = PFX(pixel_satd_4x16_lasx);
+        p.pu[LUMA_8x8].satd   = PFX(pixel_satd_8x8_lasx);
+        p.pu[LUMA_8x16].satd  = PFX(pixel_satd_8x16_lasx);
+        p.pu[LUMA_8x32].satd  = PFX(pixel_satd_8x32_lasx);
+        p.pu[LUMA_12x16].satd = PFX(pixel_satd_12x16_lasx);
+        p.pu[LUMA_16x8].satd  = PFX(pixel_satd_16x8_lasx);
+        p.pu[LUMA_16x16].satd = PFX(pixel_satd_16x16_lasx);
+        p.pu[LUMA_16x32].satd = PFX(pixel_satd_16x32_lasx);
+        p.pu[LUMA_16x64].satd = PFX(pixel_satd_16x64_lasx);
+        p.pu[LUMA_24x32].satd = PFX(pixel_satd_24x32_lasx);
+        p.pu[LUMA_32x8].satd  = PFX(pixel_satd_32x8_lasx);
+        p.pu[LUMA_32x16].satd = PFX(pixel_satd_32x16_lasx);
+        p.pu[LUMA_32x24].satd = PFX(pixel_satd_32x24_lasx);
+        p.pu[LUMA_32x32].satd = PFX(pixel_satd_32x32_lasx);
+        p.pu[LUMA_32x64].satd = PFX(pixel_satd_32x64_lasx);
+        p.pu[LUMA_48x64].satd = PFX(pixel_satd_48x64_lasx);
+        p.pu[LUMA_64x16].satd = PFX(pixel_satd_64x16_lasx);
+        p.pu[LUMA_64x32].satd = PFX(pixel_satd_64x32_lasx);
+        p.pu[LUMA_64x48].satd = PFX(pixel_satd_64x48_lasx);
+        p.pu[LUMA_64x64].satd = PFX(pixel_satd_64x64_lasx);
+
+        // chroma satd
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_4x8].satd   = PFX(pixel_satd_4x8_lasx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_4x16].satd  = PFX(pixel_satd_4x16_lasx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_8x16].satd  = PFX(pixel_satd_8x16_lasx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_8x8].satd   = PFX(pixel_satd_8x8_lasx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_16x8].satd  = PFX(pixel_satd_16x8_lasx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_16x16].satd = PFX(pixel_satd_16x16_lasx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_8x32].satd  = PFX(pixel_satd_8x32_lasx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_16x32].satd = PFX(pixel_satd_16x32_lasx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_16x32].satd = PFX(pixel_satd_16x64_lasx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_32x8].satd  = PFX(pixel_satd_32x8_lasx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_32x16].satd = PFX(pixel_satd_32x16_lasx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_32x24].satd = PFX(pixel_satd_32x24_lasx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_32x32].satd = PFX(pixel_satd_32x32_lasx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_8x32].satd  = PFX(pixel_satd_8x32_lasx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_12x16].satd = PFX(pixel_satd_12x16_lasx);
+        p.chroma[X265_CSP_I420].pu[CHROMA_420_24x32].satd = PFX(pixel_satd_24x32_lasx);
+
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_4x8].satd   = PFX(pixel_satd_4x8_lasx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_4x16].satd  = PFX(pixel_satd_4x16_lasx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_8x8].satd   = PFX(pixel_satd_8x8_lasx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_8x16].satd  = PFX(pixel_satd_8x16_lasx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_16x8].satd  = PFX(pixel_satd_16x8_lasx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_16x16].satd = PFX(pixel_satd_16x16_lasx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_8x32].satd  = PFX(pixel_satd_8x32_lasx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_8x64].satd  = PFX(pixel_satd_8x64_lasx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_16x24].satd = PFX(pixel_satd_16x24_lasx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_16x32].satd = PFX(pixel_satd_16x32_lasx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_16x64].satd = PFX(pixel_satd_16x64_lasx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_32x16].satd = PFX(pixel_satd_32x16_lasx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_32x32].satd = PFX(pixel_satd_32x32_lasx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_32x64].satd = PFX(pixel_satd_32x64_lasx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_32x48].satd = PFX(pixel_satd_32x48_lasx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_8x32].satd  = PFX(pixel_satd_8x32_lasx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_8x64].satd  = PFX(pixel_satd_8x64_lasx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_4x32].satd  = PFX(pixel_satd_4x32_lasx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_12x32].satd = PFX(pixel_satd_12x32_lasx);
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_24x64].satd = PFX(pixel_satd_24x64_lasx);
+
+        p.pu[LUMA_24x32].sad = x265_pixel_sad_24x32_lasx;
+        p.pu[LUMA_32x8].sad  = x265_pixel_sad_32x8_lasx;
+        p.pu[LUMA_32x16].sad = x265_pixel_sad_32x16_lasx;
+        p.pu[LUMA_32x24].sad = x265_pixel_sad_32x24_lasx;
+        p.pu[LUMA_32x32].sad = x265_pixel_sad_32x32_lasx;
+        p.pu[LUMA_32x64].sad = x265_pixel_sad_32x64_lasx;
+        p.pu[LUMA_48x64].sad = x265_pixel_sad_48x64_lasx;
+        p.pu[LUMA_64x16].sad = x265_pixel_sad_64x16_lasx;
+        p.pu[LUMA_64x32].sad = x265_pixel_sad_64x32_lasx;
+        p.pu[LUMA_64x48].sad = x265_pixel_sad_64x48_lasx;
+        p.pu[LUMA_64x64].sad = x265_pixel_sad_64x64_lasx;
+
+        // sad_x4
+        p.pu[LUMA_8x4].sad_x4   = x265_pixel_sad_x4_8x4_lasx;
+        p.pu[LUMA_8x8].sad_x4   = x265_pixel_sad_x4_8x8_lasx;
+        p.pu[LUMA_8x16].sad_x4  = x265_pixel_sad_x4_8x16_lasx;
+        p.pu[LUMA_8x32].sad_x4  = x265_pixel_sad_x4_8x32_lasx;
+        p.pu[LUMA_12x16].sad_x4 = x265_pixel_sad_x4_12x16_lasx;
+        p.pu[LUMA_16x4].sad_x4  = x265_pixel_sad_x4_16x4_lasx;
+        p.pu[LUMA_16x8].sad_x4  = x265_pixel_sad_x4_16x8_lasx;
+        p.pu[LUMA_16x12].sad_x4 = x265_pixel_sad_x4_16x12_lasx;
+        p.pu[LUMA_16x16].sad_x4 = x265_pixel_sad_x4_16x16_lasx;
+        p.pu[LUMA_16x32].sad_x4 = x265_pixel_sad_x4_16x32_lasx;
+        p.pu[LUMA_16x64].sad_x4 = x265_pixel_sad_x4_16x64_lasx;
+        p.pu[LUMA_24x32].sad_x4 = x265_pixel_sad_x4_24x32_lasx;
+        p.pu[LUMA_32x8].sad_x4  = x265_pixel_sad_x4_32x8_lasx;
+        p.pu[LUMA_32x16].sad_x4 = x265_pixel_sad_x4_32x16_lasx;
+        p.pu[LUMA_32x24].sad_x4 = x265_pixel_sad_x4_32x24_lasx;
+        p.pu[LUMA_32x32].sad_x4 = x265_pixel_sad_x4_32x32_lasx;
+        p.pu[LUMA_32x64].sad_x4 = x265_pixel_sad_x4_32x64_lasx;
+        p.pu[LUMA_64x16].sad_x4 = x265_pixel_sad_x4_64x16_lasx;
+        p.pu[LUMA_64x32].sad_x4 = x265_pixel_sad_x4_64x32_lasx;
+        p.pu[LUMA_64x48].sad_x4 = x265_pixel_sad_x4_64x48_lasx;
+        p.pu[LUMA_64x64].sad_x4 = x265_pixel_sad_x4_64x64_lasx;
+        p.pu[LUMA_48x64].sad_x4 = x265_pixel_sad_x4_48x64_lasx;
+
+        // sad_x3
+        p.pu[LUMA_12x16].sad_x3 = x265_pixel_sad_x3_12x16_lasx;
+        p.pu[LUMA_16x8].sad_x3  = x265_pixel_sad_x3_16x8_lasx;
+        p.pu[LUMA_16x12].sad_x3 = x265_pixel_sad_x3_16x12_lasx;
+        p.pu[LUMA_16x16].sad_x3 = x265_pixel_sad_x3_16x16_lasx;
+        p.pu[LUMA_16x32].sad_x3 = x265_pixel_sad_x3_16x32_lasx;
+        p.pu[LUMA_16x64].sad_x3 = x265_pixel_sad_x3_16x64_lasx;
+        p.pu[LUMA_24x32].sad_x3 = x265_pixel_sad_x3_24x32_lasx;
+        p.pu[LUMA_32x8].sad_x3  = x265_pixel_sad_x3_32x8_lasx;
+        p.pu[LUMA_32x24].sad_x3 = x265_pixel_sad_x3_32x24_lasx;
+        p.pu[LUMA_32x16].sad_x3 = x265_pixel_sad_x3_32x16_lasx;
+        p.pu[LUMA_32x32].sad_x3 = x265_pixel_sad_x3_32x32_lasx;
+        p.pu[LUMA_32x64].sad_x3 = x265_pixel_sad_x3_32x64_lasx;
+        p.pu[LUMA_64x16].sad_x3 = x265_pixel_sad_x3_64x16_lasx;
+        p.pu[LUMA_64x32].sad_x3 = x265_pixel_sad_x3_64x32_lasx;
+        p.pu[LUMA_64x48].sad_x3 = x265_pixel_sad_x3_64x48_lasx;
+        p.pu[LUMA_64x64].sad_x3 = x265_pixel_sad_x3_64x64_lasx;
+        p.pu[LUMA_48x64].sad_x3 = x265_pixel_sad_x3_48x64_lasx;
+
+        // sa8d
+        p.cu[BLOCK_8x8].sa8d   = PFX(pixel_sa8d_8x8_lasx);
+        p.cu[BLOCK_16x16].sa8d = PFX(pixel_sa8d_16x16_lasx);
+        p.cu[BLOCK_32x32].sa8d = PFX(pixel_sa8d_32x32_lasx);
+        p.cu[BLOCK_64x64].sa8d = PFX(pixel_sa8d_64x64_lasx);
+        p.chroma[X265_CSP_I420].cu[BLOCK_16x16].sa8d     = PFX(pixel_sa8d_16x16_lasx);
+        p.chroma[X265_CSP_I420].cu[BLOCK_32x32].sa8d     = PFX(pixel_sa8d_32x32_lasx);
+        p.chroma[X265_CSP_I420].cu[BLOCK_64x64].sa8d     = PFX(pixel_sa8d_64x64_lasx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_8x8].sa8d       = PFX(pixel_satd_4x8_lasx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_8x16].sa8d  = PFX(pixel_sa8d_8x16_lasx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_16x32].sa8d = PFX(pixel_sa8d_16x32_lasx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_32x64].sa8d = PFX(pixel_sa8d_32x64_lasx);
+
+        // psy_cost_pp
+        p.cu[BLOCK_4x4].psy_cost_pp   = psyCost_pp_lasx<BLOCK_4x4>;
+        p.cu[BLOCK_8x8].psy_cost_pp   = psyCost_pp_lasx<BLOCK_8x8>;
+        p.cu[BLOCK_16x16].psy_cost_pp = psyCost_pp_lasx<BLOCK_16x16>;
+        p.cu[BLOCK_32x32].psy_cost_pp = psyCost_pp_lasx<BLOCK_32x32>;
+        p.cu[BLOCK_64x64].psy_cost_pp = psyCost_pp_lasx<BLOCK_64x64>;
+
+        p.cu[BLOCK_32x32].sub_ps = PFX(pixel_sub_ps_32x32_lasx);
+        p.cu[BLOCK_64x64].sub_ps = PFX(pixel_sub_ps_64x64_lasx);
+
+        // chroma sub_ps
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_32x32].sub_ps = PFX(pixel_sub_ps_32x32_lasx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_32x64].sub_ps = PFX(pixel_sub_ps_32x64_lasx);
+
+        p.cu[BLOCK_16x16].add_ps[NONALIGNED] = PFX(pixel_add_ps_16x16_lasx);
+        p.cu[BLOCK_32x32].add_ps[NONALIGNED] = PFX(pixel_add_ps_32x32_lasx);
+        p.cu[BLOCK_64x64].add_ps[NONALIGNED] = PFX(pixel_add_ps_64x64_lsx);
+
+        p.cu[BLOCK_16x16].add_ps[ALIGNED] = PFX(pixel_add_ps_16x16_lasx);
+        p.cu[BLOCK_32x32].add_ps[ALIGNED] = PFX(pixel_add_ps_32x32_lasx);
+        p.cu[BLOCK_64x64].add_ps[ALIGNED] = PFX(pixel_add_ps_64x64_lasx);
+
+        // chroma add_ps
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_16x16].add_ps[NONALIGNED] = PFX(pixel_add_ps_16x16_lasx);
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_32x32].add_ps[NONALIGNED] = PFX(pixel_add_ps_32x32_lasx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_16x32].add_ps[NONALIGNED] = PFX(pixel_add_ps_16x32_lasx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_32x64].add_ps[NONALIGNED] = PFX(pixel_add_ps_32x64_lasx);
+
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_16x16].add_ps[ALIGNED] = PFX(pixel_add_ps_16x16_lasx);
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_32x32].add_ps[ALIGNED] = PFX(pixel_add_ps_32x32_lasx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_16x32].add_ps[ALIGNED] = PFX(pixel_add_ps_16x32_lasx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_32x64].add_ps[ALIGNED] = PFX(pixel_add_ps_32x64_lasx);
+
+        // var
+        p.cu[BLOCK_8x8].var   = PFX(pixel_var_8x8_lasx);
+        p.cu[BLOCK_16x16].var = PFX(pixel_var_16x16_lasx);
+        p.cu[BLOCK_32x32].var = PFX(pixel_var_32x32_lasx);
+        p.cu[BLOCK_64x64].var = PFX(pixel_var_64x64_lasx);
+
+        // sse_pp
+        p.cu[BLOCK_16x16].sse_pp = PFX(pixel_sse_16x16_lasx);
+        p.cu[BLOCK_32x32].sse_pp = PFX(pixel_sse_32x32_lasx);
+        p.cu[BLOCK_64x64].sse_pp = PFX(pixel_sse_64x64_lasx);
+
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_16x16].sse_pp = PFX(pixel_sse_16x16_lasx);
+        p.chroma[X265_CSP_I420].cu[BLOCK_420_32x32].sse_pp = PFX(pixel_sse_32x32_lasx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_16x32].sse_pp = PFX(pixel_sse_16x32_lasx);
+        p.chroma[X265_CSP_I422].cu[BLOCK_422_32x64].sse_pp = PFX(pixel_sse_32x64_lasx);
+
+        // sse_ss
+        p.cu[BLOCK_8x8].sse_ss = PFX(pixel_sse_ss_8x8_lasx);
+        p.cu[BLOCK_16x16].sse_ss = PFX(pixel_sse_ss_16x16_lasx);
+        p.cu[BLOCK_32x32].sse_ss = PFX(pixel_sse_ss_32x32_lasx);
+        p.cu[BLOCK_64x64].sse_ss = PFX(pixel_sse_ss_64x64_lasx);
+
+        // ssd_s
+        p.cu[BLOCK_16x16].ssd_s[NONALIGNED] = PFX(pixel_ssd_s_16x16_lasx);
+        p.cu[BLOCK_16x16].ssd_s[ALIGNED]    = PFX(pixel_ssd_s_16x16_lasx);
+        p.cu[BLOCK_32x32].ssd_s[NONALIGNED] = PFX(pixel_ssd_s_32x32_lasx);
+        p.cu[BLOCK_32x32].ssd_s[ALIGNED]    = PFX(pixel_ssd_s_32x32_lasx);
+        p.cu[BLOCK_64x64].ssd_s[NONALIGNED] = PFX(pixel_ssd_s_64x64_lasx);
+        p.cu[BLOCK_64x64].ssd_s[ALIGNED]    = PFX(pixel_ssd_s_64x64_lasx);
+
+        // calcresidual
+        p.cu[BLOCK_64x64].calcresidual[NONALIGNED] = PFX(pixel_getResidual_64x64_lasx);
+        p.cu[BLOCK_32x32].calcresidual[NONALIGNED] = PFX(pixel_getResidual_32x32_lasx);
+        p.cu[BLOCK_64x64].calcresidual[ALIGNED] = PFX(pixel_getResidual_64x64_lasx);
+        p.cu[BLOCK_32x32].calcresidual[ALIGNED] = PFX(pixel_getResidual_32x32_lasx);
+
+        // normFact_c
+        p.cu[BLOCK_8x8].normFact   = PFX(pixel_normFact_8x8_lasx);
+        p.cu[BLOCK_16x16].normFact = PFX(pixel_normFact_16x16_lasx);
+        p.cu[BLOCK_32x32].normFact = PFX(pixel_normFact_32x32_lasx);
+        p.cu[BLOCK_64x64].normFact = PFX(pixel_normFact_64x64_lasx);
+
+        p.scale1D_128to64[NONALIGNED] = PFX(scale1D_128to64_lasx);
+        p.scale1D_128to64[ALIGNED] = PFX(scale1D_128to64_lasx);
+        p.scale2D_64to32 = PFX(scale2D_64to32_lasx);
+
+        // ssimDist
+        p.cu[BLOCK_8x8].ssimDist   = x265_ssimDist8_lasx;
+        p.cu[BLOCK_16x16].ssimDist = x265_ssimDist16_lasx;
+        p.cu[BLOCK_32x32].ssimDist = x265_ssimDist32_lasx;
+        p.cu[BLOCK_64x64].ssimDist = x265_ssimDist64_lasx;
     }
 #endif /* HAVE_LASX */
 }
