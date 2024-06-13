@@ -218,7 +218,7 @@ if(ENABLE_ASSEMBLY AND LOONGARCH64)
     enable_language(ASM)
 
     # add loongarch assembly/intrinsic files here
-    set(A_SRCS loopfilter.S ipfilter8.S dct.S mc-a.S intrapred8.S pixel.S ssd.S sad.S)
+    set(A_SRCS loopfilter.S ipfilter8.S dct.S mc-a.S intrapred8.S pixel.S ssd.S sad.S mc-a2.S)
 
     set(LOONGARCH64_ASMS "${A_SRCS}" CACHE INTERNAL "LOONGARCH64 Assembly Sources")
     foreach(SRC ${C_SRCS})

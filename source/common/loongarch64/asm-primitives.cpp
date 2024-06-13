@@ -883,6 +883,14 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask)
 
         p.ssim_end_4 = PFX(ssim_end4_lsx);
         p.ssim_4x4x2_core = PFX(ssim_4x4x2_lsx);
+
+        // mc
+        p.frameInitLowres    = PFX(frame_init_lowres_core_lsx);
+        p.frameInitLowerRes  = PFX(frame_init_lowres_core_lsx);
+        p.frameSubSampleLuma = PFX(frame_subsample_luma_lsx);
+
+        p.fix8Unpack = PFX(cutree_fix8_unpack_lsx);
+        p.fix8Pack   = PFX(cutree_fix8_pack_lsx);
     }
 #endif /* HAVE_LSX */
 
@@ -1266,6 +1274,14 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask)
         p.cu[BLOCK_16x16].ssimDist = x265_ssimDist16_lasx;
         p.cu[BLOCK_32x32].ssimDist = x265_ssimDist32_lasx;
         p.cu[BLOCK_64x64].ssimDist = x265_ssimDist64_lasx;
+
+        // mc
+        p.frameInitLowres    = PFX(frame_init_lowres_core_lasx);
+        p.frameInitLowerRes  = PFX(frame_init_lowres_core_lasx);
+        p.frameSubSampleLuma = PFX(frame_subsample_luma_lasx);
+
+        p.fix8Unpack = PFX(cutree_fix8_unpack_lasx);
+        p.fix8Pack   = PFX(cutree_fix8_pack_lasx);
     }
 #endif /* HAVE_LASX */
 }
