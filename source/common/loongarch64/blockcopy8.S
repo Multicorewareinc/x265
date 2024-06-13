@@ -2047,3 +2047,583 @@ function x265_copy_count_32_lasx
     bnez          t3,     1b
     or            a0,     zero,   t2
 endfunc
+
+function x265_cpy2Dto1D_shr_4x4_lsx
+    slli.d         a2,      a2,    1
+    fld.d          f0,      a1,    0
+    fldx.d         f1,      a1,    a2
+    vreplgr2vr.h   vr3,     a3
+    vilvl.d        vr2,     vr1,   vr0
+    vsrar.h        vr4,     vr2,   vr3
+    vst            vr4,     a0,    0
+
+    alsl.d         a1,      a2,    a1,   1
+
+    fld.d          f0,      a1,    0
+    fldx.d         f1,      a1,    a2
+    vreplgr2vr.h   vr3,     a3
+    vilvl.d        vr2,     vr1,   vr0
+    vsrar.h        vr4,     vr2,   vr3
+    vst            vr4,     a0,    16
+endfunc
+
+function x265_cpy2Dto1D_shr_8x8_lsx
+    slli.d         a2,      a2,    1
+.rept 4
+    vld            vr0,     a1,    0
+    vldx           vr1,     a1,    a2
+    vreplgr2vr.h   vr3,     a3
+    vsrar.h        vr4,     vr0,   vr3
+    vsrar.h        vr5,     vr1,   vr3
+    vst            vr4,     a0,    0
+    vst            vr5,     a0,    16
+    alsl.d         a1,      a2,    a1,   1
+    addi.d         a0,      a0,    32
+.endr
+endfunc
+
+function x265_cpy2Dto1D_shr_16x16_lsx
+    slli.d         a2,      a2,    1
+.rept 8
+    vld            vr0,     a1,    0
+    vld            vr1,     a1,    16
+    add.d          t1,      a1,    a2
+    vld            vr2,     t1,    0
+    vld            vr3,     t1,    16
+    vreplgr2vr.h   vr4,     a3
+    vsrar.h        vr5,     vr0,   vr4
+    vsrar.h        vr6,     vr1,   vr4
+    vsrar.h        vr7,     vr2,   vr4
+    vsrar.h        vr8,     vr3,   vr4
+    vst            vr5,     a0,    0
+    vst            vr6,     a0,    16
+    vst            vr7,     a0,    32
+    vst            vr8,     a0,    48
+    alsl.d         a1,      a2,    a1,   1
+    addi.d         a0,      a0,    64
+.endr
+endfunc
+
+function x265_cpy2Dto1D_shr_32x32_lsx
+    slli.d         a2,      a2,    1
+.rept 16
+    vld            vr0,     a1,    0
+    vld            vr1,     a1,    16
+    vld            vr10,    a1,    32
+    vld            vr11,    a1,    48
+    add.d          t1,      a1,    a2
+    vld            vr2,     t1,    0
+    vld            vr3,     t1,    16
+    vld            vr12,    t1,    32
+    vld            vr13,    t1,    48
+    vreplgr2vr.h   vr4,     a3
+
+.irp i, vr0, vr1, vr10, vr11, vr2, vr3, vr12, vr13
+    vsrar.h        \i,      \i,   vr4
+.endr
+
+    vst            vr0,     a0,    0
+    vst            vr1,     a0,    16
+    vst            vr10,    a0,    32
+    vst            vr11,    a0,    48
+    vst            vr2,     a0,    64
+    vst            vr3,     a0,    80
+    vst            vr12,    a0,    96
+    vst            vr13,    a0,    112
+    alsl.d         a1,      a2,    a1,   1
+    addi.d         a0,      a0,    128
+.endr
+endfunc
+
+function x265_cpy2Dto1D_shr_64x64_lsx
+    slli.d         a2,      a2,    1
+.rept 64
+    vld            vr0,     a1,    0
+    vld            vr1,     a1,    16
+    vld            vr2,     a1,    32
+    vld            vr3,     a1,    48
+    vld            vr4,     a1,    64
+    vld            vr5,     a1,    80
+    vld            vr6,     a1,    96
+    vld            vr7,     a1,    112
+    vreplgr2vr.h   vr8,     a3
+
+.irp i, vr0, vr1, vr2, vr3, vr4, vr5, vr6, vr7
+    vsrar.h        \i,      \i,    vr8
+.endr
+
+    vst            vr0,     a0,    0
+    vst            vr1,     a0,    16
+    vst            vr2,     a0,    32
+    vst            vr3,     a0,    48
+    vst            vr4,     a0,    64
+    vst            vr5,     a0,    80
+    vst            vr6,     a0,    96
+    vst            vr7,     a0,    112
+    add.d          a1,      a2,    a1
+    addi.d         a0,      a0,    128
+.endr
+endfunc
+
+function x265_cpy2Dto1D_shr_8x8_lasx
+    slli.d         a2,      a2,    1
+.rept 4
+    vld            vr0,     a1,    0
+    vldx           vr1,     a1,    a2
+    xvpermi.q      xr1,     xr0,   0x20
+    xvreplgr2vr.h  xr3,     a3
+    xvsrar.h       xr4,     xr1,   xr3
+    xvst           xr4,     a0,    0
+    alsl.d         a1,      a2,    a1,   1
+    addi.d         a0,      a0,    32
+.endr
+endfunc
+
+function x265_cpy2Dto1D_shr_16x16_lasx
+    slli.d         a2,      a2,    1
+.rept 8
+    xvld           xr0,     a1,    0
+    xvldx          xr1,     a1,    a2
+    xvreplgr2vr.h  xr4,     a3
+    xvsrar.h       xr6,     xr0,   xr4
+    xvsrar.h       xr8,     xr1,   xr4
+    xvst           xr6,     a0,    0
+    xvst           xr8,     a0,    32
+    alsl.d         a1,      a2,    a1,   1
+    addi.d         a0,      a0,    64
+.endr
+endfunc
+
+function x265_cpy2Dto1D_shr_32x32_lasx
+    slli.d         a2,      a2,    1
+.rept 16
+    xvld           xr0,     a1,    0
+    xvldx          xr1,     a1,    a2
+    addi.d         t1,      a1,    32
+    xvld           xr2,     t1,    0
+    xvldx          xr3,     t1,    a2
+    xvreplgr2vr.h  xr4,     a3
+    xvsrar.h       xr6,     xr0,   xr4
+    xvsrar.h       xr7,     xr2,   xr4
+    xvsrar.h       xr8,     xr1,   xr4
+    xvsrar.h       xr9,     xr3,   xr4
+    xvst           xr6,     a0,    0
+    xvst           xr7,     a0,    32
+    xvst           xr8,     a0,    64
+    xvst           xr9,     a0,    96
+    alsl.d         a1,      a2,    a1,   1
+    addi.d         a0,      a0,    128
+.endr
+endfunc
+
+function x265_cpy2Dto1D_shr_64x64_lasx
+    slli.d         a2,      a2,    1
+.rept 64
+    xvld           xr0,     a1,    0
+    xvld           xr1,     a1,    32
+    xvld           xr2,     a1,    64
+    xvld           xr3,     a1,    96
+    xvreplgr2vr.h  xr4,     a3
+    xvsrar.h       xr6,     xr0,   xr4
+    xvsrar.h       xr7,     xr1,   xr4
+    xvsrar.h       xr8,     xr2,   xr4
+    xvsrar.h       xr9,     xr3,   xr4
+    xvst           xr6,     a0,    0
+    xvst           xr7,     a0,    32
+    xvst           xr8,     a0,    64
+    xvst           xr9,     a0,    96
+    add.d          a1,      a2,    a1
+    addi.d         a0,      a0,    128
+.endr
+endfunc
+
+function x265_cpy1Dto2D_shl_4x4_lsx
+    slli.d         a2,      a2,    1
+    vld            vr0,     a1,    0
+    vld            vr1,     a1,    16
+    vreplgr2vr.h   vr3,     a3
+    vsll.h         vr4,     vr0,   vr3
+    vsll.h         vr5,     vr1,   vr3
+    vstelm.d       vr4,     a0,    0,    0
+    add.d          a0,      a0,    a2
+    vstelm.d       vr4,     a0,    0,    1
+    add.d          a0,      a0,    a2
+    vstelm.d       vr5,     a0,    0,    0
+    add.d          a0,      a0,    a2
+    vstelm.d       vr5,     a0,    0,    1
+endfunc
+
+function x265_cpy1Dto2D_shl_8x8_lsx
+    slli.d         a2,      a2,    1
+.rept 4
+    vld            vr0,     a1,    0
+    vld            vr1,     a1,    16
+    vreplgr2vr.h   vr3,     a3
+    vsll.h         vr4,     vr0,   vr3
+    vsll.h         vr5,     vr1,   vr3
+    vst            vr4,     a0,    0
+    vstx           vr5,     a0,    a2
+    alsl.d         a0,      a2,    a0,   1
+    addi.d         a1,      a1,    32
+.endr
+endfunc
+
+function x265_cpy1Dto2D_shl_16x16_lsx
+    slli.d         a2,      a2,    1
+.rept 8
+    vld            vr0,     a1,    0
+    vld            vr1,     a1,    16
+    vld            vr2,     a1,    32
+    vld            vr3,     a1,    48
+    vreplgr2vr.h   vr4,     a3
+    vsll.h         vr5,     vr0,   vr4
+    vsll.h         vr6,     vr1,   vr4
+    vsll.h         vr7,     vr2,   vr4
+    vsll.h         vr8,     vr3,   vr4
+    vst            vr5,     a0,    0
+    vst            vr6,     a0,    16
+    add.d          a0,      a2,    a0
+    vst            vr7,     a0,    0
+    vst            vr8,     a0,    16
+    add.d          a0,      a2,    a0
+    addi.d         a1,      a1,    64
+.endr
+endfunc
+
+function x265_cpy1Dto2D_shl_32x32_lsx
+    slli.d         a2,      a2,    1
+.rept 16
+    vld            vr0,     a1,    0
+    vld            vr1,     a1,    16
+    vld            vr10,    a1,    32
+    vld            vr11,    a1,    48
+    vld            vr2,     a1,    64
+    vld            vr3,     a1,    80
+    vld            vr12,    a1,    96
+    vld            vr13,    a1,    112
+    vreplgr2vr.h   vr4,     a3
+.irp i, vr0, vr1, vr10, vr11, vr2, vr3, vr12, vr13
+    vsll.h         \i,      \i,   vr4
+.endr
+    vst            vr0,     a0,    0
+    vst            vr1,     a0,    16
+    vst            vr10,    a0,    32
+    vst            vr11,    a0,    48
+    add.d          a0,      a0,    a2
+    vst            vr2,     a0,    0
+    vst            vr3,     a0,    16
+    vst            vr12,    a0,    32
+    vst            vr13,    a0,    48
+    add.d          a0,      a2,    a0
+    addi.d         a1,      a1,    128
+.endr
+endfunc
+
+function x265_cpy1Dto2D_shl_64x64_lsx
+    slli.d         a2,      a2,    1
+.rept 64
+    vld            vr0,     a1,    0
+    vld            vr1,     a1,    16
+    vld            vr2,     a1,    32
+    vld            vr3,     a1,    48
+    vld            vr4,     a1,    64
+    vld            vr5,     a1,    80
+    vld            vr6,     a1,    96
+    vld            vr7,     a1,    112
+    vreplgr2vr.h   vr8,     a3
+.irp i, vr0, vr1, vr2, vr3, vr4, vr5, vr6, vr7
+    vsll.h         \i,      \i,    vr8
+.endr
+    vst            vr0,     a0,    0
+    vst            vr1,     a0,    16
+    vst            vr2,     a0,    32
+    vst            vr3,     a0,    48
+    vst            vr4,     a0,    64
+    vst            vr5,     a0,    80
+    vst            vr6,     a0,    96
+    vst            vr7,     a0,    112
+    add.d          a0,      a2,    a0
+    addi.d         a1,      a1,    128
+.endr
+endfunc
+
+function x265_cpy1Dto2D_shl_8x8_lasx
+    slli.d         a2,      a2,    1
+
+.rept 2
+    xvld           xr0,     a1,    0
+    xvld           xr1,     a1,    32
+    xvreplgr2vr.h  xr3,     a3
+    xvsll.h        xr4,     xr0,   xr3
+    xvsll.h        xr5,     xr1,   xr3
+    vst            vr4,     a0,    0
+    xvpermi.q      xr6,     xr4,   0x01
+    vstx           vr6,     a0,    a2
+    alsl.d         a0,      a2,    a0,   1
+    vst            vr5,     a0,    0
+    xvpermi.q      xr6,     xr5,   0x01
+    vstx           vr6,     a0,    a2
+    alsl.d         a0,      a2,    a0,   1
+    addi.d         a1,      a1,    64
+.endr
+endfunc
+
+function x265_cpy1Dto2D_shl_16x16_lasx
+    slli.d         a2,      a2,    1
+.rept 4
+    xvld           xr0,     a1,    0
+    xvld           xr1,     a1,    32
+    xvld           xr2,     a1,    64
+    xvld           xr3,     a1,    96
+    xvreplgr2vr.h  xr4,     a3
+    xvsll.h        xr5,     xr0,   xr4
+    xvsll.h        xr6,     xr1,   xr4
+    xvsll.h        xr7,     xr2,   xr4
+    xvsll.h        xr8,     xr3,   xr4
+    xvst           xr5,     a0,    0
+    xvstx          xr6,     a0,    a2
+    alsl.d         a0,      a2,    a0,   1
+    xvst           xr7,     a0,    0
+    xvstx          xr8,     a0,    a2
+    alsl.d         a0,      a2,    a0,   1
+    addi.d         a1,      a1,    128
+.endr
+endfunc
+
+function x265_cpy1Dto2D_shl_32x32_lasx
+    slli.d         a2,      a2,    1
+.rept 16
+    xvld           xr0,     a1,    0
+    xvld           xr1,     a1,    32
+    xvld           xr2,     a1,    64
+    xvld           xr3,     a1,    96
+    xvreplgr2vr.h  xr4,     a3
+    xvsll.h        xr5,     xr0,   xr4
+    xvsll.h        xr6,     xr1,   xr4
+    xvsll.h        xr7,     xr2,   xr4
+    xvsll.h        xr8,     xr3,   xr4
+    xvst           xr5,     a0,    0
+    xvst           xr6,     a0,    32
+    add.d          a0,      a2,    a0
+    xvst           xr7,     a0,    0
+    xvst           xr8,     a0,    32
+    add.d          a0,      a2,    a0
+    addi.d         a1,      a1,    128
+.endr
+endfunc
+
+function x265_cpy1Dto2D_shl_64x64_lasx
+    slli.d         a2,      a2,    1
+.rept 64
+    xvld           xr0,     a1,    0
+    xvld           xr1,     a1,    32
+    xvld           xr2,     a1,    64
+    xvld           xr3,     a1,    96
+    xvreplgr2vr.h  xr4,     a3
+    xvsll.h        xr5,     xr0,   xr4
+    xvsll.h        xr6,     xr1,   xr4
+    xvsll.h        xr7,     xr2,   xr4
+    xvsll.h        xr8,     xr3,   xr4
+    xvst           xr5,     a0,    0
+    xvst           xr6,     a0,    32
+    xvst           xr7,     a0,    64
+    xvst           xr8,     a0,    96
+    add.d          a0,      a2,    a0
+    addi.d         a1,      a1,    128
+.endr
+endfunc
+
+function x265_cpy1Dto2D_shr_4x4_lsx
+    slli.d         a2,      a2,    1
+    vld            vr0,     a1,    0
+    vld            vr1,     a1,    16
+    vreplgr2vr.h   vr3,     a3
+    vsrar.h        vr4,     vr0,   vr3
+    vsrar.h        vr5,     vr1,   vr3
+    vstelm.d       vr4,     a0,    0,    0
+    add.d          a0,      a0,    a2
+    vstelm.d       vr4,     a0,    0,    1
+    add.d          a0,      a0,    a2
+    vstelm.d       vr5,     a0,    0,    0
+    add.d          a0,      a0,    a2
+    vstelm.d       vr5,     a0,    0,    1
+endfunc
+
+function x265_cpy1Dto2D_shr_8x8_lsx
+    slli.d         a2,      a2,    1
+.rept 4
+    vld            vr0,     a1,    0
+    vld            vr1,     a1,    16
+    vreplgr2vr.h   vr3,     a3
+    vsrar.h        vr4,     vr0,   vr3
+    vsrar.h        vr5,     vr1,   vr3
+    vst            vr4,     a0,    0
+    vstx           vr5,     a0,    a2
+    alsl.d         a0,      a2,    a0,   1
+    addi.d         a1,      a1,    32
+.endr
+endfunc
+
+function x265_cpy1Dto2D_shr_16x16_lsx
+    slli.d         a2,      a2,    1
+.rept 8
+    vld            vr0,     a1,    0
+    vld            vr1,     a1,    16
+    vld            vr2,     a1,    32
+    vld            vr3,     a1,    48
+    vreplgr2vr.h   vr4,     a3
+    vsrar.h        vr5,     vr0,   vr4
+    vsrar.h        vr6,     vr1,   vr4
+    vsrar.h        vr7,     vr2,   vr4
+    vsrar.h        vr8,     vr3,   vr4
+    vst            vr5,     a0,    0
+    vst            vr6,     a0,    16
+    add.d          a0,      a2,    a0
+    vst            vr7,     a0,    0
+    vst            vr8,     a0,    16
+    add.d          a0,      a2,    a0
+    addi.d         a1,      a1,    64
+.endr
+endfunc
+
+function x265_cpy1Dto2D_shr_32x32_lsx
+    slli.d         a2,      a2,    1
+.rept 16
+    vld            vr0,     a1,    0
+    vld            vr1,     a1,    16
+    vld            vr10,    a1,    32
+    vld            vr11,    a1,    48
+    vld            vr2,     a1,    64
+    vld            vr3,     a1,    80
+    vld            vr12,    a1,    96
+    vld            vr13,    a1,    112
+    vreplgr2vr.h   vr4,     a3
+.irp i, vr0, vr1, vr10, vr11, vr2, vr3, vr12, vr13
+    vsrar.h        \i,      \i,   vr4
+.endr
+    vst            vr0,     a0,    0
+    vst            vr1,     a0,    16
+    vst            vr10,    a0,    32
+    vst            vr11,    a0,    48
+    add.d          a0,      a0,    a2
+    vst            vr2,     a0,    0
+    vst            vr3,     a0,    16
+    vst            vr12,    a0,    32
+    vst            vr13,    a0,    48
+    add.d          a0,      a2,    a0
+    addi.d         a1,      a1,    128
+.endr
+endfunc
+
+function x265_cpy1Dto2D_shr_64x64_lsx
+    slli.d         a2,      a2,    1
+.rept 64
+    vld            vr0,     a1,    0
+    vld            vr1,     a1,    16
+    vld            vr2,     a1,    32
+    vld            vr3,     a1,    48
+    vld            vr4,     a1,    64
+    vld            vr5,     a1,    80
+    vld            vr6,     a1,    96
+    vld            vr7,     a1,    112
+    vreplgr2vr.h   vr8,     a3
+.irp i, vr0, vr1, vr2, vr3, vr4, vr5, vr6, vr7
+    vsrar.h        \i,      \i,    vr8
+.endr
+    vst            vr0,     a0,    0
+    vst            vr1,     a0,    16
+    vst            vr2,     a0,    32
+    vst            vr3,     a0,    48
+    vst            vr4,     a0,    64
+    vst            vr5,     a0,    80
+    vst            vr6,     a0,    96
+    vst            vr7,     a0,    112
+    add.d          a0,      a2,    a0
+    addi.d         a1,      a1,    128
+.endr
+endfunc
+
+function x265_cpy1Dto2D_shr_8x8_lasx
+    slli.d         a2,      a2,    1
+.rept 2
+    xvld           xr0,     a1,    0
+    xvld           xr1,     a1,    32
+    xvreplgr2vr.h  xr3,     a3
+    xvsrar.h       xr4,     xr0,   xr3
+    xvsrar.h       xr5,     xr1,   xr3
+    xvpermi.q      xr6,     xr4,   0x01
+    xvpermi.q      xr7,     xr5,   0x01
+    vst            vr4,     a0,    0
+    vstx           vr6,     a0,    a2
+    alsl.d         a0,      a2,    a0,   1
+    vst            vr5,     a0,    0
+    vstx           vr7,     a0,    a2
+    addi.d         a1,      a1,    64
+    alsl.d         a0,      a2,    a0,   1
+.endr
+endfunc
+
+function x265_cpy1Dto2D_shr_16x16_lasx
+    slli.d         a2,      a2,    1
+.rept 4
+    xvld           xr0,     a1,    0
+    xvld           xr1,     a1,    32
+    xvld           xr2,     a1,    64
+    xvld           xr3,     a1,    96
+    xvreplgr2vr.h  xr4,     a3
+    xvsrar.h       xr5,     xr0,   xr4
+    xvsrar.h       xr6,     xr1,   xr4
+    xvsrar.h       xr7,     xr2,   xr4
+    xvsrar.h       xr8,     xr3,   xr4
+    xvst           xr5,     a0,    0
+    xvstx          xr6,     a0,    a2
+    alsl.d         a0,      a2,    a0,   1
+    xvst           xr7,     a0,    0
+    xvstx          xr8,     a0,    a2
+    alsl.d         a0,      a2,    a0,   1
+    addi.d         a1,      a1,    128
+.endr
+endfunc
+
+function x265_cpy1Dto2D_shr_32x32_lasx
+    slli.d         a2,      a2,    1
+.rept 16
+    xvld           xr0,     a1,    0
+    xvld           xr1,     a1,    32
+    xvld           xr2,     a1,    64
+    xvld           xr3,     a1,    96
+    xvreplgr2vr.h  xr4,     a3
+    xvsrar.h       xr5,     xr0,   xr4
+    xvsrar.h       xr6,     xr1,   xr4
+    xvsrar.h       xr7,     xr2,   xr4
+    xvsrar.h       xr8,     xr3,   xr4
+    xvst           xr5,     a0,    0
+    xvst           xr6,     a0,    32
+    add.d          a0,      a2,    a0
+    xvst           xr7,     a0,    0
+    xvst           xr8,     a0,    32
+    add.d          a0,      a2,    a0
+    addi.d         a1,      a1,    128
+.endr
+endfunc
+
+function x265_cpy1Dto2D_shr_64x64_lasx
+    slli.d         a2,      a2,    1
+.rept 64
+    xvld           xr0,     a1,    0
+    xvld           xr1,     a1,    32
+    xvld           xr2,     a1,    64
+    xvld           xr3,     a1,    96
+    xvreplgr2vr.h  xr4,     a3
+    xvsrar.h       xr5,     xr0,   xr4
+    xvsrar.h       xr6,     xr1,   xr4
+    xvsrar.h       xr7,     xr2,   xr4
+    xvsrar.h       xr8,     xr3,   xr4
+    xvst           xr5,     a0,    0
+    xvst           xr6,     a0,    32
+    xvst           xr7,     a0,    64
+    xvst           xr8,     a0,    96
+    add.d          a0,      a2,    a0
+    addi.d         a1,      a1,    128
+.endr
+endfunc

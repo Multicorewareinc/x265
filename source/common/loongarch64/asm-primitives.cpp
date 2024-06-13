@@ -1,5 +1,5 @@
 /*****************************************************************************
- * Copyright (C) 2013-2024 MulticoreWare, Inc
+ * Copyright (C) 2024 MulticoreWare, Inc
  *
  * Authors: Hao Chen <chenhao@loongson.cn>
  *
@@ -257,6 +257,11 @@ all_angs_pred_lsx(32, 10)
     p.cu[BLOCK_ ## W ## x ## H].copy_ss     = PFX(blockcopy_ss_ ## W ## x ## H ##_ ## CPU); \
     p.cu[BLOCK_ ## W ## x ## H].copy_sp     = PFX(blockcopy_sp_ ## W ## x ## H ##_ ## CPU); \
     p.cu[BLOCK_ ## W ## x ## H].copy_ps     = PFX(blockcopy_ps_ ## W ## x ## H ##_ ## CPU); \
+    p.cu[BLOCK_ ## W ## x ## H].cpy2Dto1D_shl = PFX(cpy2Dto1D_shl_ ## W ## x ## H ##_ ## CPU); \
+    p.cu[BLOCK_ ## W ## x ## H].cpy2Dto1D_shr = PFX(cpy2Dto1D_shr_ ## W ## x ## H ##_ ## CPU); \
+    p.cu[BLOCK_ ## W ## x ## H].cpy1Dto2D_shl[NONALIGNED] = PFX(cpy1Dto2D_shl_ ## W ## x ## H ##_ ## CPU); \
+    p.cu[BLOCK_ ## W ## x ## H].cpy1Dto2D_shl[ALIGNED] = PFX(cpy1Dto2D_shl_ ## W ## x ## H ##_ ## CPU); \
+    p.cu[BLOCK_ ## W ## x ## H].cpy1Dto2D_shr = PFX(cpy1Dto2D_shr_ ## W ## x ## H ##_ ## CPU); \
     p.cu[BLOCK_ ## W ## x ## H].transpose     = PFX(transpose_ ## W ## x ## H ##_ ## CPU); \
     p.cu[BLOCK_ ## W ## x ## H].calcresidual[NONALIGNED] = PFX(pixel_getResidual_ ## W ## x ## H ##_ ## CPU); \
     p.cu[BLOCK_ ## W ## x ## H].calcresidual[ALIGNED]    = PFX(pixel_getResidual_ ## W ## x ## H ##_ ## CPU);;
@@ -1392,6 +1397,35 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask)
         //copy_cnt
         p.cu[BLOCK_16x16].copy_cnt = PFX(copy_count_16_lasx);
         p.cu[BLOCK_32x32].copy_cnt = PFX(copy_count_32_lasx);
+
+        // cpy2Dto1D_shl
+        p.cu[BLOCK_8x8].cpy2Dto1D_shl   = PFX(cpy2Dto1D_shl_8x8_lasx);
+        p.cu[BLOCK_16x16].cpy2Dto1D_shl = PFX(cpy2Dto1D_shl_16x16_lasx);
+        p.cu[BLOCK_32x32].cpy2Dto1D_shl = PFX(cpy2Dto1D_shl_32x32_lasx);
+        p.cu[BLOCK_64x64].cpy2Dto1D_shl = PFX(cpy2Dto1D_shl_64x64_lasx);
+
+        // cpy2Dto1D_shr
+        p.cu[BLOCK_8x8].cpy2Dto1D_shr   = PFX(cpy2Dto1D_shr_8x8_lasx);
+        p.cu[BLOCK_16x16].cpy2Dto1D_shr = PFX(cpy2Dto1D_shr_16x16_lasx);
+        p.cu[BLOCK_32x32].cpy2Dto1D_shr = PFX(cpy2Dto1D_shr_32x32_lasx);
+        p.cu[BLOCK_64x64].cpy2Dto1D_shr = PFX(cpy2Dto1D_shr_64x64_lasx);
+
+        // cpy1Dto2D_shl
+        p.cu[BLOCK_8x8].cpy1Dto2D_shl[NONALIGNED]   = PFX(cpy1Dto2D_shl_8x8_lasx);
+        p.cu[BLOCK_16x16].cpy1Dto2D_shl[NONALIGNED] = PFX(cpy1Dto2D_shl_16x16_lasx);
+        p.cu[BLOCK_32x32].cpy1Dto2D_shl[NONALIGNED] = PFX(cpy1Dto2D_shl_32x32_lasx);
+        p.cu[BLOCK_64x64].cpy1Dto2D_shl[NONALIGNED] = PFX(cpy1Dto2D_shl_64x64_lasx);
+
+        p.cu[BLOCK_8x8].cpy1Dto2D_shl[ALIGNED]   = PFX(cpy1Dto2D_shl_8x8_lasx);
+        p.cu[BLOCK_16x16].cpy1Dto2D_shl[ALIGNED] = PFX(cpy1Dto2D_shl_16x16_lasx);
+        p.cu[BLOCK_32x32].cpy1Dto2D_shl[ALIGNED] = PFX(cpy1Dto2D_shl_32x32_lasx);
+        p.cu[BLOCK_64x64].cpy1Dto2D_shl[ALIGNED] = PFX(cpy1Dto2D_shl_64x64_lasx);
+
+        // cpy1Dto2D_shr
+        p.cu[BLOCK_8x8].cpy1Dto2D_shr   = PFX(cpy1Dto2D_shr_8x8_lasx);
+        p.cu[BLOCK_16x16].cpy1Dto2D_shr = PFX(cpy1Dto2D_shr_16x16_lasx);
+        p.cu[BLOCK_32x32].cpy1Dto2D_shr = PFX(cpy1Dto2D_shr_32x32_lasx);
+        p.cu[BLOCK_64x64].cpy1Dto2D_shr = PFX(cpy1Dto2D_shr_64x64_lasx);
     }
 #endif /* HAVE_LASX */
 }

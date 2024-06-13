@@ -168,6 +168,34 @@ void x265_blockcopy_ps_64x64_lasx(int16_t* a, intptr_t stridea, const pixel* b, 
 uint32_t x265_copy_count_16_lasx(int16_t* coeff, const int16_t* residual, intptr_t resiStride);
 uint32_t x265_copy_count_32_lasx(int16_t* coeff, const int16_t* residual, intptr_t resiStride);
 
+FUNCDEF_TU(void, cpy2Dto1D_shl, lsx, int16_t *dst, const int16_t *src, intptr_t srcStride, int shift);
+
+void x265_cpy2Dto1D_shl_8x8_lasx(int16_t *dst, const int16_t *src, intptr_t srcStride, int shift);
+void x265_cpy2Dto1D_shl_16x16_lasx(int16_t *dst, const int16_t *src, intptr_t srcStride, int shift);
+void x265_cpy2Dto1D_shl_32x32_lasx(int16_t *dst, const int16_t *src, intptr_t srcStride, int shift);
+void x265_cpy2Dto1D_shl_64x64_lasx(int16_t *dst, const int16_t *src, intptr_t srcStride, int shift);
+
+FUNCDEF_TU(void, cpy2Dto1D_shr, lsx, int16_t *dst, const int16_t *src, intptr_t srcStride, int shift);
+
+void x265_cpy2Dto1D_shr_8x8_lasx(int16_t *dst, const int16_t *src, intptr_t srcStride, int shift);
+void x265_cpy2Dto1D_shr_16x16_lasx(int16_t *dst, const int16_t *src, intptr_t srcStride, int shift);
+void x265_cpy2Dto1D_shr_32x32_lasx(int16_t *dst, const int16_t *src, intptr_t srcStride, int shift);
+void x265_cpy2Dto1D_shr_64x64_lasx(int16_t *dst, const int16_t *src, intptr_t srcStride, int shift);
+
+FUNCDEF_TU(void, cpy1Dto2D_shl, lsx, int16_t *dst, const int16_t *src, intptr_t dstStride, int shift);
+
+void x265_cpy1Dto2D_shl_8x8_lasx(int16_t *dst, const int16_t *src, intptr_t dstStride, int shift);
+void x265_cpy1Dto2D_shl_16x16_lasx(int16_t *dst, const int16_t *src, intptr_t dstStride, int shift);
+void x265_cpy1Dto2D_shl_32x32_lasx(int16_t *dst, const int16_t *src, intptr_t dstStride, int shift);
+void x265_cpy1Dto2D_shl_64x64_lasx(int16_t *dst, const int16_t *src, intptr_t dstStride, int shift);
+
+FUNCDEF_TU(void, cpy1Dto2D_shr, lsx, int16_t *dst, const int16_t *src, intptr_t dstStride, int shift);
+
+void x265_cpy1Dto2D_shr_8x8_lasx(int16_t *dst, const int16_t *src, intptr_t dstStride, int shift);
+void x265_cpy1Dto2D_shr_16x16_lasx(int16_t *dst, const int16_t *src, intptr_t dstStride, int shift);
+void x265_cpy1Dto2D_shr_32x32_lasx(int16_t *dst, const int16_t *src, intptr_t dstStride, int shift);
+void x265_cpy1Dto2D_shr_64x64_lasx(int16_t *dst, const int16_t *src, intptr_t dstStride, int shift);
+
 #undef FUNCDEF_PU
 #undef FUNCDEF_CHROMA_PU
 
