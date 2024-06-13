@@ -214,11 +214,11 @@ if(ENABLE_ASSEMBLY AND LOONGARCH64)
         message(STATUS "Detected CXX compiler using -O3 optimization level")
     endif()
 
-    set(C_SRCS asm-primitives.cpp loopfilter.h ipfilter8.h dct.h pixel.h intrapred.h)
+    set(C_SRCS asm-primitives.cpp loopfilter.h ipfilter8.h dct.h pixel.h intrapred.h blockcopy8.h)
     enable_language(ASM)
 
     # add loongarch assembly/intrinsic files here
-    set(A_SRCS loopfilter.S ipfilter8.S dct.S mc-a.S intrapred8.S pixel.S ssd.S sad.S mc-a2.S)
+    set(A_SRCS loopfilter.S ipfilter8.S dct.S mc-a.S intrapred8.S pixel.S ssd.S sad.S mc-a2.S blockcopy8.S)
 
     set(LOONGARCH64_ASMS "${A_SRCS}" CACHE INTERNAL "LOONGARCH64 Assembly Sources")
     foreach(SRC ${C_SRCS})
