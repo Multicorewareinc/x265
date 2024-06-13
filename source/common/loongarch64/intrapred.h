@@ -30,6 +30,22 @@
 extern "C" {
 #endif /* __cplusplus */
 
+void x265_intra_filter_4x4_lsx(const pixel *samples, pixel *filtered);
+void x265_intra_filter_8x8_lsx(const pixel *samples, pixel *filtered);
+void x265_intra_filter_16x16_lsx(const pixel *samples, pixel *filtered);
+void x265_intra_filter_32x32_lsx(const pixel *samples, pixel *filtered);
+void x265_intra_filter_4x4_lasx(const pixel *samples, pixel *filtered);
+void x265_intra_filter_8x8_lasx(const pixel *samples, pixel *filtered);
+void x265_intra_filter_16x16_lasx(const pixel *samples, pixel *filtered);
+void x265_intra_filter_32x32_lasx(const pixel *samples, pixel *filtered);
+
+void x265_intra_pred_planar_4x4_lsx(pixel *dst, intptr_t dstStride, const pixel *srcPix, int /*dirMode*/, int /*bFilter*/);
+void x265_intra_pred_planar_8x8_lsx(pixel *dst, intptr_t dstStride, const pixel *srcPix, int /*dirMode*/, int /*bFilter*/);
+void x265_intra_pred_planar_16x16_lsx(pixel *dst, intptr_t dstStride, const pixel *srcPix, int /*dirMode*/, int /*bFilter*/);
+void x265_intra_pred_planar_32x32_lsx(pixel *dst, intptr_t dstStride, const pixel *srcPix, int /*dirMode*/, int /*bFilter*/);
+void x265_intra_pred_planar_16x16_lasx(pixel *dst, intptr_t dstStride, const pixel *srcPix, int /*dirMode*/, int /*bFilter*/);
+void x265_intra_pred_planar_32x32_lasx(pixel *dst, intptr_t dstStride, const pixel *srcPix, int /*dirMode*/, int /*bFilter*/);
+
 void x265_intra_pred_ang8_2_lsx(pixel* dst, intptr_t dstStride, const pixel* srcPix, int dirMode, int bFilter);
 void x265_intra_pred_ang8_3_lsx(pixel* dst, intptr_t dstStride, const pixel* srcPix, int dirMode, int bFilter);
 void x265_intra_pred_ang8_4_lsx(pixel* dst, intptr_t dstStride, const pixel* srcPix, int dirMode, int bFilter);

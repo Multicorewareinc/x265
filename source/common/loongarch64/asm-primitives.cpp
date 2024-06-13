@@ -352,6 +352,16 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask)
         CHROMA_PU_422(8,  64, lsx);
 
         // intra_pred
+        p.cu[BLOCK_4x4].intra_filter = PFX(intra_filter_4x4_lsx);
+        p.cu[BLOCK_8x8].intra_filter = PFX(intra_filter_8x8_lsx);
+        p.cu[BLOCK_16x16].intra_filter = PFX(intra_filter_16x16_lsx);
+        p.cu[BLOCK_32x32].intra_filter = PFX(intra_filter_32x32_lsx);
+
+        p.cu[BLOCK_4x4].intra_pred[PLANAR_IDX]   = PFX(intra_pred_planar_4x4_lsx);
+        p.cu[BLOCK_8x8].intra_pred[PLANAR_IDX]   = PFX(intra_pred_planar_8x8_lsx);
+        p.cu[BLOCK_16x16].intra_pred[PLANAR_IDX] = PFX(intra_pred_planar_16x16_lsx);
+        p.cu[BLOCK_32x32].intra_pred[PLANAR_IDX] = PFX(intra_pred_planar_32x32_lsx);
+
         p.cu[BLOCK_4x4].intra_pred[2] = PFX(intra_pred_ang4_2_lsx);
         p.cu[BLOCK_4x4].intra_pred[3] = PFX(intra_pred_ang4_3_lsx);
         p.cu[BLOCK_4x4].intra_pred[4] = PFX(intra_pred_ang4_4_lsx);
@@ -611,6 +621,12 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask)
         ASSIGN2(p.chroma[X265_CSP_I422].pu[CHROMA_422_32x32].addAvg, addAvg_32x32_lasx);
         ASSIGN2(p.chroma[X265_CSP_I422].pu[CHROMA_422_32x48].addAvg, addAvg_32x48_lasx);
         ASSIGN2(p.chroma[X265_CSP_I422].pu[CHROMA_422_32x64].addAvg, addAvg_32x64_lasx);
+
+        // intra_filter
+        p.cu[BLOCK_4x4].intra_filter = PFX(intra_filter_4x4_lasx);
+        p.cu[BLOCK_8x8].intra_filter = PFX(intra_filter_8x8_lasx);
+        p.cu[BLOCK_16x16].intra_filter = PFX(intra_filter_16x16_lasx);
+        p.cu[BLOCK_32x32].intra_filter = PFX(intra_filter_32x32_lasx);
 
         //intra_pred
         p.cu[BLOCK_8x8].intra_pred[3] = PFX(intra_pred_ang8_3_lasx);
