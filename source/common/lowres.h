@@ -71,11 +71,7 @@ struct ReferencePlanes
     inline pixel *lowresMC(intptr_t blockOffset, const MV& qmv, pixel *buf, intptr_t& outstride, bool hme)
     {
         intptr_t YStride = hme ? lumaStride / 2 : lumaStride;
-        pixel *plane[4];
-        for (int i = 0; i < 4; i++)
-        {
-            plane[i] = hme ? lowerResPlane[i] : lowresPlane[i];
-        }
+        pixel **plane = hme ? lowerResPlane : lowresPlane;
         if ((qmv.x | qmv.y) & 1)
         {
             int hpelA = (qmv.y & 2) | ((qmv.x & 2) >> 1);
@@ -98,11 +94,7 @@ struct ReferencePlanes
     inline int lowresQPelCost(pixel *fenc, intptr_t blockOffset, const MV& qmv, pixelcmp_t comp, bool hme)
     {
         intptr_t YStride = hme ? lumaStride / 2 : lumaStride;
-        pixel *plane[4];
-        for (int i = 0; i < 4; i++)
-        {
-            plane[i] = hme ? lowerResPlane[i] : lowresPlane[i];
-        }
+        pixel **plane = hme ? lowerResPlane : lowresPlane;
         if ((qmv.x | qmv.y) & 1)
         {
             ALIGN_VAR_16(pixel, subpelbuf[8 * 8]);
@@ -175,6 +167,7 @@ struct Lowres : public ReferencePlanes
 
     int    frameNum;         // Presentation frame number
     int    sliceType;        // Slice type decided by lookahead
+    int    sliceTypeReq;     // Slice type required as per the QP file
     int    width;            // width of lowres frame in pixels
     int    lines;            // height of lowres frame in pixel lines
     int    leadingBframes;   // number of leading B frames for P or I

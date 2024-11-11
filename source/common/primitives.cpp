@@ -215,7 +215,7 @@ void x265_report_simd(x265_param* param)
         int cpuid = param->cpuid;
 
         char buf[1000];
-        char *p = buf + sprintf(buf, "using cpu capabilities:");
+        char *p = buf + snprintf(buf, sizeof(buf), "using cpu capabilities:");
         char *none = p;
         for (int i = 0; X265_NS::cpu_names[i].flags; i++)
         {
@@ -236,11 +236,11 @@ void x265_report_simd(x265_param* param)
                 continue;
             if ((cpuid & X265_NS::cpu_names[i].flags) == X265_NS::cpu_names[i].flags
                 && (!i || X265_NS::cpu_names[i].flags != X265_NS::cpu_names[i - 1].flags))
-                p += sprintf(p, " %s", X265_NS::cpu_names[i].name);
+                p += snprintf(p, sizeof(buf) - (p - buf), " %s", X265_NS::cpu_names[i].name);
         }
 
         if (p == none)
-            sprintf(p, " none!");
+            snprintf(p, sizeof(buf) - (p - buf), " none!");
         x265_log(param, X265_LOG_INFO, "%s\n", buf);
     }
 }
@@ -258,8 +258,8 @@ void x265_setup_primitives(x265_param *param)
             primitives.cu[i].intra_pred_allangs = NULL;
 
 #if ENABLE_ASSEMBLY
-#if X265_ARCH_X86
-        setupInstrinsicPrimitives(primitives, param->cpuid);
+#if defined(X265_ARCH_X86) || defined(X265_ARCH_ARM64)
+        setupIntrinsicPrimitives(primitives, param->cpuid);
 #endif
         setupAssemblyPrimitives(primitives, param->cpuid);
 #endif

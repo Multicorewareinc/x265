@@ -30,7 +30,7 @@ using namespace X265_NS;
 
 /* marshal a single SEI message sei, storing the marshalled representation
 * in bitstream bs */
-void SEI::writeSEImessages(Bitstream& bs, const SPS& sps, NalUnitType nalUnitType, NALList& list, int isNested)
+void SEI::writeSEImessages(Bitstream& bs, const SPS& sps, NalUnitType nalUnitType, NALList& list, int isNested, int layer)
 {
     if (!isNested)
         bs.resetBits();
@@ -62,7 +62,7 @@ void SEI::writeSEImessages(Bitstream& bs, const SPS& sps, NalUnitType nalUnitTyp
     {
         if (nalUnitType != NAL_UNIT_UNSPECIFIED)
             bs.writeByteAlignment();
-        list.serialize(nalUnitType, bs, (1 + (nalUnitType == NAL_UNIT_CODED_SLICE_TSA_N)));
+        list.serialize(nalUnitType, bs, layer, (1 + (nalUnitType == NAL_UNIT_CODED_SLICE_TSA_N)));
     }
 }
 

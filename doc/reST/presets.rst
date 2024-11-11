@@ -21,16 +21,17 @@ achieve the best quality at your selected bit rate (or in the case of
 The presets adjust encoder parameters as shown in the following table.
 Any parameters below that are specified in your command-line will be 
 changed from the value specified by the preset.
-	0. ultrafast
-	1. superfast
-	2. veryfast
-	3. faster
-	4. fast
-	5. medium **(default)**
-	6. slow
-	7. slower
-	8. veryslow
-	9. placebo
+
+    0. ultrafast
+    1. superfast
+    2. veryfast
+    3. faster
+    4. fast
+    5. medium **(default)**
+    6. slow
+    7. slower
+    8. veryslow
+    9. placebo
 
 +-----------------+-----+-----+-----+-----+-----+-----+------+------+------+------+
 | preset          |  0  |  1  |  2  |   3 |   4 |   5 |   6  |   7  |   8  |  9   |
@@ -51,7 +52,7 @@ changed from the value specified by the preset.
 +-----------------+-----+-----+-----+-----+-----+-----+------+------+------+------+
 | ref             |  1  |  1  |  2  |   2 |   3 |   3 |   4  |   5  |   5  |  5   |
 +-----------------+-----+-----+-----+-----+-----+-----+------+------+------+------+
-| limit-refs      |  0  |  0  |  3  |   3 |   3 |   3 |   3  |   1  |   0  |  0   |
+| limit-refs      |  0  |  0  |  3  |   3 |   3 |   1 |   3  |   1  |   0  |  0   |
 +-----------------+-----+-----+-----+-----+-----+-----+------+------+------+------+
 | me              | dia | hex | hex | hex | hex | hex | star | star | star | star |
 +-----------------+-----+-----+-----+-----+-----+-----+------+------+------+------+
@@ -152,7 +153,7 @@ components.
     * :option:`--sao` 0
     * :option:`--psy-rd` 4.0
     * :option:`--psy-rdoq` 10.0
-    * :option:`--recursion-skip` 0
+    * :option:`--rskip` 0
     
 It also enables a specialised ratecontrol algorithm :option:`--rc-grain` 
 that strictly minimises QP fluctuations across frames, while still allowing 

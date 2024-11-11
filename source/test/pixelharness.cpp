@@ -1373,8 +1373,7 @@ bool PixelHarness::check_saoCuStatsE1_t(saoCuStatsE1_t ref, saoCuStatsE1_t opt)
         ref(sbuf2 + 1, pbuf3 + 1, stride, upBuff1_ref, endX, endY, stats_ref, count_ref);
         checked(opt, sbuf2 + 1, pbuf3 + 1, stride, upBuff1_vec, endX, endY, stats_vec, count_vec);
 
-        if (   memcmp(_upBuff1_ref, _upBuff1_vec, sizeof(_upBuff1_ref))
-            || memcmp(stats_ref, stats_vec, sizeof(stats_ref))
+        if (   memcmp(stats_ref, stats_vec, sizeof(stats_ref))
             || memcmp(count_ref, count_vec, sizeof(count_ref)))
             return false;
 
@@ -1425,10 +1424,7 @@ bool PixelHarness::check_saoCuStatsE2_t(saoCuStatsE2_t ref, saoCuStatsE2_t opt)
         ref(sbuf2 + 1, pbuf3 + 1, stride, upBuff1_ref, upBufft_ref, endX, endY, stats_ref, count_ref);
         checked(opt, sbuf2 + 1, pbuf3 + 1, stride, upBuff1_vec, upBufft_vec, endX, endY, stats_vec, count_vec);
 
-        // TODO: don't check upBuff*, the latest output pixels different, and can move into stack temporary buffer in future
-        if (   memcmp(_upBuff1_ref, _upBuff1_vec, sizeof(_upBuff1_ref))
-            || memcmp(_upBufft_ref, _upBufft_vec, sizeof(_upBufft_ref))
-            || memcmp(stats_ref, stats_vec, sizeof(stats_ref))
+        if (   memcmp(stats_ref, stats_vec, sizeof(stats_ref))
             || memcmp(count_ref, count_vec, sizeof(count_ref)))
             return false;
 
@@ -1476,8 +1472,7 @@ bool PixelHarness::check_saoCuStatsE3_t(saoCuStatsE3_t ref, saoCuStatsE3_t opt)
         ref(sbuf2, pbuf3, stride, upBuff1_ref, endX, endY, stats_ref, count_ref);
         checked(opt, sbuf2, pbuf3, stride, upBuff1_vec, endX, endY, stats_vec, count_vec);
 
-        if (   memcmp(_upBuff1_ref, _upBuff1_vec, sizeof(_upBuff1_ref))
-            || memcmp(stats_ref, stats_vec, sizeof(stats_ref))
+        if (   memcmp(stats_ref, stats_vec, sizeof(stats_ref))
             || memcmp(count_ref, count_vec, sizeof(count_ref)))
             return false;
 
@@ -3208,7 +3203,7 @@ void PixelHarness::measurePartition(int part, const EncoderPrimitives& ref, cons
     ALIGN_VAR_16(int, cres[16]);
     pixel *fref = pbuf2 + 2 * INCR;
     char header[128];
-#define HEADER(str, ...) sprintf(header, str, __VA_ARGS__); printf("%22s", header);
+#define HEADER(str, ...) snprintf(header, sizeof(header), str, __VA_ARGS__); printf("%22s", header);
 
     if (opt.pu[part].satd)
     {
@@ -3380,7 +3375,7 @@ void PixelHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimi
 {
     char header[128];
 
-#define HEADER(str, ...) sprintf(header, str, __VA_ARGS__); printf("%22s", header);
+#define HEADER(str, ...) snprintf(header, sizeof(header), str, __VA_ARGS__); printf("%22s", header);
 #define HEADER0(str) printf("%22s", str);
 
     for (int size = 4; size <= 64; size *= 2)

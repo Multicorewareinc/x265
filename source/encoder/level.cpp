@@ -60,6 +60,15 @@ LevelSpec levels[] =
     { MAX_UINT, MAX_UINT, MAX_UINT, MAX_UINT, MAX_UINT, MAX_UINT, 1, Level::LEVEL8_5, "8.5", 85 },
 };
 
+static inline int _confirm(x265_param* param, bool bflag, const char* message)
+{
+    if (!bflag)
+        return 0;
+
+    x265_log(param, X265_LOG_ERROR, "%s\n", message);
+    return 1;
+}
+
 /* determine minimum decoder level required to decode the described video */
 void determineLevel(const x265_param &param, VPS& vps)
 {
@@ -80,45 +89,74 @@ void determineLevel(const x265_param &param, VPS& vps)
         if (param.internalBitDepth <= 8)
         {
             if (vps.ptl.onePictureOnlyConstraintFlag)
-                vps.ptl.profileIdc = Profile::MAINSTILLPICTURE;
+                vps.ptl.profileIdc[0] = Profile::MAINSTILLPICTURE;
             else if (vps.ptl.intraConstraintFlag)
-                vps.ptl.profileIdc = Profile::MAINREXT; /* Main Intra */
+                vps.ptl.profileIdc[0] = Profile::MAINREXT; /* Main Intra */
             else 
-                vps.ptl.profileIdc = Profile::MAIN;
+                vps.ptl.profileIdc[0] = Profile::MAIN;
+
+#if ENABLE_ALPHA
+            if (param.numScalableLayers == 2)
+                vps.ptl.profileIdc[1] = Profile::SCALABLEMAIN;
+#endif
         }
         else if (param.internalBitDepth <= 10)
         {
             /* note there is no 10bit still picture profile */
             if (vps.ptl.intraConstraintFlag)
-                vps.ptl.profileIdc = Profile::MAINREXT; /* Main10 Intra */
+                vps.ptl.profileIdc[0] = Profile::MAINREXT; /* Main10 Intra */
             else
-                vps.ptl.profileIdc = Profile::MAIN10;
+                vps.ptl.profileIdc[0] = Profile::MAIN10;
+
+#if ENABLE_ALPHA
+            if (param.numScalableLayers == 2)
+                vps.ptl.profileIdc[1] = Profile::SCALABLEMAIN10;
+#endif
         }
     }
     else
-        vps.ptl.profileIdc = Profile::MAINREXT;
+        vps.ptl.profileIdc[0] = Profile::MAINREXT;
+
+#if ENABLE_MULTIVIEW
+    if (param.numViews == 2)
+        vps.ptl.profileIdc[1] = Profile::MULTIVIEWMAIN;
+#endif
+
+#if ENABLE_SCC_EXT
+    if (param.bEnableSCC)
+        vps.ptl.profileIdc[0] = Profile::MAINSCC;
 
     /* determine which profiles are compatible with this stream */
+    if (vps.ptl.profileIdc[0] == Profile::MAINSCC)
+    {
+        vps.ptl.onePictureOnlyConstraintFlag = false;
+        vps.ptl.intraConstraintFlag = param.keyframeMax <= 1 || vps.ptl.onePictureOnlyConstraintFlag;
+    }
+#endif
 
     memset(vps.ptl.profileCompatibilityFlag, 0, sizeof(vps.ptl.profileCompatibilityFlag));
-    vps.ptl.profileCompatibilityFlag[vps.ptl.profileIdc] = true;
-    if (vps.ptl.profileIdc == Profile::MAIN10 && param.internalBitDepth == 8)
+    vps.ptl.profileCompatibilityFlag[vps.ptl.profileIdc[0]] = true;
+    if (vps.ptl.profileIdc[0] == Profile::MAIN10 && param.internalBitDepth == 8)
         vps.ptl.profileCompatibilityFlag[Profile::MAIN] = true;
-    else if (vps.ptl.profileIdc == Profile::MAIN)
+    else if (vps.ptl.profileIdc[0] == Profile::MAIN)
         vps.ptl.profileCompatibilityFlag[Profile::MAIN10] = true;
-    else if (vps.ptl.profileIdc == Profile::MAINSTILLPICTURE)
+    else if (vps.ptl.profileIdc[0] == Profile::MAINSTILLPICTURE)
     {
         vps.ptl.profileCompatibilityFlag[Profile::MAIN] = true;
         vps.ptl.profileCompatibilityFlag[Profile::MAIN10] = true;
     }
-    else if (vps.ptl.profileIdc == Profile::MAINREXT)
+    else if (vps.ptl.profileIdc[0] == Profile::MAINREXT)
         vps.ptl.profileCompatibilityFlag[Profile::MAINREXT] = true;
+#if ENABLE_SCC_EXT
+    else if (vps.ptl.profileIdc[0] == Profile::MAINSCC)
+        vps.ptl.profileCompatibilityFlag[Profile::MAINSCC] = true;
+#endif
 
     uint32_t lumaSamples = param.sourceWidth * param.sourceHeight;
     uint32_t samplesPerSec = (uint32_t)(lumaSamples * ((double)param.fpsNum / param.fpsDenom));
     uint32_t bitrate = param.rc.vbvMaxBitrate ? param.rc.vbvMaxBitrate : param.rc.bitrate;
 
-    const uint32_t MaxDpbPicBuf = 6;
+    const uint32_t MaxDpbPicBuf = param.bEnableSCC ? 7 : 6;
     vps.ptl.levelIdc = Level::NONE;
     vps.ptl.tierFlag = Level::MAIN;
 
@@ -174,7 +212,7 @@ void determineLevel(const x265_param &param, VPS& vps)
         if (levels[i].levelEnum >= Level::LEVEL5 && param.maxCUSize < 32)
         {
             x265_log(&param, X265_LOG_WARNING, "level %s detected, but CTU size 16 is non-compliant\n", levels[i].name);
-            vps.ptl.profileIdc = Profile::NONE;
+            vps.ptl.profileIdc[0] = Profile::NONE;
             vps.ptl.levelIdc = Level::NONE;
             vps.ptl.tierFlag = Level::MAIN;
             x265_log(&param, X265_LOG_INFO, "NONE profile, Level-NONE (Main tier)\n");
@@ -186,7 +224,7 @@ void determineLevel(const x265_param &param, VPS& vps)
         if (numPocTotalCurr > 10)
         {
             x265_log(&param, X265_LOG_WARNING, "level %s detected, but NumPocTotalCurr (total references) is non-compliant\n", levels[i].name);
-            vps.ptl.profileIdc = Profile::NONE;
+            vps.ptl.profileIdc[0] = Profile::NONE;
             vps.ptl.levelIdc = Level::NONE;
             vps.ptl.tierFlag = Level::MAIN;
             x265_log(&param, X265_LOG_INFO, "NONE profile, Level-NONE (Main tier)\n");
@@ -217,14 +255,14 @@ void determineLevel(const x265_param &param, VPS& vps)
         break;
     }
 
-    static const char *profiles[] = { "None", "Main", "Main 10", "Main Still Picture", "RExt" };
+    static const char* profiles[] = { "None", "Main", "Main 10", "Main Still Picture", "RExt", "", "", "", "", "Main Scc" };
     static const char *tiers[]    = { "Main", "High" };
 
     char profbuf[64];
-    strcpy(profbuf, profiles[vps.ptl.profileIdc]);
+    strcpy(profbuf, profiles[vps.ptl.profileIdc[0]]);
 
     bool bStillPicture = false;
-    if (vps.ptl.profileIdc == Profile::MAINREXT)
+    if (vps.ptl.profileIdc[0] == Profile::MAINREXT)
     {
         if (vps.ptl.bitDepthConstraint > 12 && vps.ptl.intraConstraintFlag)
         {
@@ -277,6 +315,27 @@ void determineLevel(const x265_param &param, VPS& vps)
         if (vps.ptl.intraConstraintFlag && !bStillPicture)
             strcat(profbuf, " Intra");
     }
+
+#if ENABLE_SCC_EXT
+    if (vps.ptl.profileIdc[0] == Profile::MAINSCC)
+    {
+        if (param.internalCsp == X265_CSP_I420)
+        {
+            if (vps.ptl.bitDepthConstraint <= 8)
+                strcpy(profbuf, "Main Scc");
+            else if (vps.ptl.bitDepthConstraint <= 10)
+                strcpy(profbuf, "Main 10 Scc");
+        }
+        else if (param.internalCsp == X265_CSP_I444)
+        {
+            if (vps.ptl.bitDepthConstraint <= 8)
+                strcpy(profbuf, "Main 4:4:4 Scc");
+            else if (vps.ptl.bitDepthConstraint <= 10)
+                strcpy(profbuf, "Main 4:4:4 10 Scc");
+        }
+    }
+#endif
+
     x265_log(&param, X265_LOG_INFO, "%s profile, Level-%s (%s tier)\n",
              profbuf, levels[i].name, tiers[vps.ptl.tierFlag]);
 }
@@ -293,7 +352,7 @@ bool enforceLevel(x265_param& param, VPS& vps)
     for (uint32_t i = 0; i < vps.maxTempSubLayers; i++)
     {
         vps.numReorderPics[i] = (i == 0) ? ((param.bBPyramid && param.bframes > 1) ? 2 : !!param.bframes) : i;
-        vps.maxDecPicBuffering[i] = X265_MIN(MAX_NUM_REF, X265_MAX(vps.numReorderPics[i] + 2, (uint32_t)param.maxNumReferences) + 1);
+        vps.maxDecPicBuffering[i] = X265_MIN(MAX_NUM_REF, X265_MAX(vps.numReorderPics[i] + 2, (uint32_t)param.maxNumReferences) + 1) + !!param.bEnableSCC;
     }
 
     if (!!param.bEnableTemporalSubLayers)
@@ -409,7 +468,7 @@ bool enforceLevel(x265_param& param, VPS& vps)
     }
 
     /* The value of sps_max_dec_pic_buffering_minus1[ HighestTid ] + 1 shall be less than or equal to MaxDpbSize */
-    const uint32_t MaxDpbPicBuf = 6;
+    const uint32_t MaxDpbPicBuf = param.bEnableSCC ? 7 : 6;
     uint32_t maxDpbSize = MaxDpbPicBuf;
     if (!param.uhdBluray) /* Do not change MaxDpbPicBuf for UHD-Bluray */
     {
@@ -425,7 +484,7 @@ bool enforceLevel(x265_param& param, VPS& vps)
     while (vps.maxDecPicBuffering[vps.maxTempSubLayers - 1] > maxDpbSize && param.maxNumReferences > 1)
     {
         param.maxNumReferences--;
-        vps.maxDecPicBuffering[vps.maxTempSubLayers - 1] = X265_MIN(MAX_NUM_REF, X265_MAX(vps.numReorderPics[vps.maxTempSubLayers - 1] + 1, (uint32_t)param.maxNumReferences) + 1);
+        vps.maxDecPicBuffering[vps.maxTempSubLayers - 1] = X265_MIN(MAX_NUM_REF, X265_MAX(vps.numReorderPics[vps.maxTempSubLayers - 1] + 1, (uint32_t)param.maxNumReferences) + 1 + !!param.bEnableSCC);
     }
     if (param.maxNumReferences != savedRefCount)
         x265_log(&param, X265_LOG_WARNING, "Lowering max references to %d to meet level requirement\n", param.maxNumReferences);
@@ -520,7 +579,8 @@ int x265_param_apply_profile(x265_param *param, const char *profile)
     if (!strcmp(profile, "main") || !strcmp(profile, "main-intra") ||
         !strcmp(profile, "main10") || !strcmp(profile, "main10-intra") ||
         !strcmp(profile, "main12") || !strcmp(profile, "main12-intra") ||
-        !strcmp(profile, "mainstillpicture") || !strcmp(profile, "msp"))
+        !strcmp(profile, "mainstillpicture") || !strcmp(profile, "msp") ||
+        !strcmp(profile, "main-scc") || !strcmp(profile, "main10-scc"))
     {
         if (param->internalCsp != X265_CSP_I420)
         {
@@ -543,7 +603,8 @@ int x265_param_apply_profile(x265_param *param, const char *profile)
              !strcmp(profile, "main444-intra") || !strcmp(profile, "main444-stillpicture") ||
              !strcmp(profile, "main444-10") || !strcmp(profile, "main444-10-intra") ||
              !strcmp(profile, "main444-12") || !strcmp(profile, "main444-12-intra") ||
-             !strcmp(profile, "main444-16-intra") || !strcmp(profile, "main444-16-stillpicture"))
+             !strcmp(profile, "main444-16-intra") || !strcmp(profile, "main444-16-stillpicture") ||
+             !strcmp(profile, "main444-scc") || !strcmp(profile, "main444-10-scc"))
     {
         /* any color space allowed */
     }

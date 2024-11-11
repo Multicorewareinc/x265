@@ -100,6 +100,7 @@ struct RateControlEntry
     bool    isActive;
     double  amortizeFrames;
     double  amortizeFraction;
+    int  remainingVbvEndFrames;
     /* Required in 2-pass rate control */
     uint64_t expectedBits; /* total expected bits up to the current frame (current one excluded) */
     double   iCuCount;
@@ -136,6 +137,7 @@ public:
     double*     m_relativeComplexity;
     int         m_zoneBufferIdx;
 
+    int    m_totalFrames;
     bool   m_isAbr;
     bool   m_isVbv;
     bool   m_isCbr;
@@ -191,6 +193,8 @@ public:
     double  m_qCompress;
     int64_t m_totalBits;        /* total bits used for already encoded frames (after ammortization) */
     int64_t m_encodedBits;      /* bits used for encoded frames (without ammortization) */
+    int64_t m_encodedSegmentBits;      /* bits used for encoded frames in a segment*/
+    double  m_segDur;
     double  m_fps;
     int64_t m_satdCostWindow[50];
     int64_t m_encodedBitsWindow[50];
@@ -296,6 +300,7 @@ protected:
     double rateEstimateQscale(Frame* pic, RateControlEntry *rce); // main logic for calculating QP based on ABR
     double tuneAbrQScaleFromFeedback(double qScale);
     double tuneQScaleForZone(RateControlEntry *rce, double qScale); // Tune qScale to adhere to zone budget
+    double tuneQscaleForSBRC(Frame* curFrame, double q); // Tune qScale to adhere to segment budget
     void   accumPQpUpdate();
 
     int    getPredictorType(int lowresSliceType, int sliceType);
