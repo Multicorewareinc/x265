@@ -640,20 +640,20 @@ typedef enum
 #define X265_MAX_GOP_LENGTH 16
 #define MAX_T_LAYERS 7
 
-#if ENABLE_MULTIVIEW
+#if X265_ENABLE_MULTIVIEW
 #define MAX_VIEWS 2
 #define MULTIVIEW_SCALABILITY_IDX         1
 #else
 #define MAX_VIEWS 1
 #endif
 
-#if ENABLE_ALPHA
+#if X265_ENABLE_ALPHA
 #define MAX_SCALABLE_LAYERS     2
 #else
 #define MAX_SCALABLE_LAYERS     1
 #endif
 
-#if ENABLE_ALPHA || ENABLE_MULTIVIEW
+#if X265_ENABLE_ALPHA || X265_ENABLE_MULTIVIEW
 #define MAX_LAYERS              2
 #define MAX_VPS_NUM_SCALABILITY_TYPES     16
 #define MAX_VPS_LAYER_ID_PLUS1            MAX_LAYERS
@@ -662,7 +662,7 @@ typedef enum
 #define MAX_LAYERS              1
 #endif
 
-#if ENABLE_SCC_EXT
+#if X265_ENABLE_SCC_EXT
 /* SCC Extension Options */
 #define SCC_EXT_IDX               3
 #define NUM_EXTENSION_FLAGS       8
@@ -2397,7 +2397,7 @@ static const char * const x265_profile_names[] = {
 
     "main444-16-intra", "main444-16-stillpicture", /* Not Supported! */
 
-#if ENABLE_SCC_EXT
+#if X265_ENABLE_SCC_EXT
     "main-scc", "main10-scc", "main444-scc", "main444-10-scc", /* Screen content coding */
 #endif
     0
@@ -2615,7 +2615,7 @@ void x265_csvlog_encode(const x265_param*, const x265_stats *, int padx, int pad
 /* In-place downshift from a bit-depth greater than 8 to a bit-depth of 8, using
  * the residual bits to dither each row. */
 void x265_dither_image(x265_picture *, int picWidth, int picHeight, int16_t *errorBuf, int bitDepth);
-#if ENABLE_LIBVMAF
+#if X265_ENABLE_LIBVMAF
 /* x265_calculate_vmafScore:
  *    returns VMAF score for the input video.
  *    This api must be called only after encoding was done. */
@@ -2687,7 +2687,7 @@ typedef struct x265_api
     void          (*csvlog_encode)(const x265_param*, const x265_stats *, int, int, int, char**);
     void          (*dither_image)(x265_picture*, int, int, int16_t*, int);
     int           (*set_analysis_data)(x265_encoder *encoder, x265_analysis_data *analysis_data, int poc, uint32_t cuBytes);
-#if ENABLE_LIBVMAF
+#if X265_ENABLE_LIBVMAF
     double        (*calculate_vmafscore)(x265_param *, x265_vmaf_data *);
     double        (*calculate_vmaf_framelevelscore)(x265_param *, x265_vmaf_framedata *);
     void          (*vmaf_encoder_log)(x265_encoder*, int, char**, x265_param *, x265_vmaf_data *);

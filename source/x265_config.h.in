@@ -31,4 +31,9 @@
  * prevents linking against a different version of the static lib */
 #define X265_BUILD ${X265_BUILD}
 
+#cmakedefine01 X265_ENABLE_MULTIVIEW
+#cmakedefine01 X265_ENABLE_ALPHA
+#cmakedefine01 X265_ENABLE_SCC_EXT
+#cmakedefine01 X265_ENABLE_LIBVMAF
+
 #endif

@@ -32,10 +32,6 @@ option(STATIC_LINK_CRT "Statically link C and C++ runtimes for release builds" O
 mark_as_advanced(FPROFILE_USE FPROFILE_GENERATE NATIVE_BUILD)
 # X265_BUILD must be incremented each time the public API is changed
 set(X265_BUILD 215)
-configure_file("${PROJECT_SOURCE_DIR}/x265.def.in"
-               "${PROJECT_BINARY_DIR}/x265.def")
-configure_file("${PROJECT_SOURCE_DIR}/x265_config.h.in"
-               "${PROJECT_BINARY_DIR}/x265_config.h")
 
 SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake" "${CMAKE_MODULE_PATH}")
 
@@ -707,6 +703,15 @@ option(ENABLE_SCC_EXT "Enable screen content coding extension in HEVC" OFF)
 if(ENABLE_SCC_EXT)
     add_definitions(-DENABLE_SCC_EXT)
 endif()
+
+set(X265_ENABLE_MULTIVIEW ${ENABLE_MULTIVIEW})
+set(X265_ENABLE_ALPHA ${ENABLE_ALPHA})
+set(X265_ENABLE_SCC_EXT ${ENABLE_SCC_EXT})
+set(X265_ENABLE_LIBVMAF ${ENABLE_LIBVMAF})
+configure_file("${PROJECT_SOURCE_DIR}/x265.def.in"
+               "${PROJECT_BINARY_DIR}/x265.def")
+configure_file("${PROJECT_SOURCE_DIR}/x265_config.h.in"
+               "${PROJECT_BINARY_DIR}/x265_config.h")
 
 add_subdirectory(encoder)
 add_subdirectory(common)
