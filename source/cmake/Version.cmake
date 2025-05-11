@@ -126,7 +126,7 @@ elseif(GIT_ARCHETYPE)
                 #for x265 the repository changeset has to be a tag id or commit id after the tag
                 #hence mandating it's presence in version file always for valid tag distances.
                 if(DEFINED git_repositorychangeset)
-                    string(SUBSTRING "${git_repositorychangeset}" 0 9 X265_REVISION_ID)
+                    string(REGEX MATCH "^.{1,9}" X265_REVISION_ID "${git_repositorychangeset}")
                 else()
                     message(WARNING "X265 LATEST COMMIT TIP INFORMATION NOT AVAILABLE")
                 endif()
