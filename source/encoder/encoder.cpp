@@ -6226,12 +6226,7 @@ void Encoder::readUserSeiFile(x265_sei_payload& seiMsg, int curPoc)
         char* decodedString = (char*)malloc(sizeof(char) * base64EncodeLength);
         if (!decodedString) break;
 
-        char *base64Decode = SEI::base64Decode(base64Encode, base64EncodeLength, decodedString);
-        if (!base64Decode)
-        {
-            free(decodedString);
-            break;
-        }
+        decodedString = SEI::base64Decode(base64Encode, base64EncodeLength, decodedString);
 
         // Set up payload.
         seiMsg.payloadSize = (base64EncodeLength * BYTES_PER_GROUP) / BASE64_CHARS_PER_GROUP;
@@ -6239,7 +6234,6 @@ void Encoder::readUserSeiFile(x265_sei_payload& seiMsg, int curPoc)
         if (!seiMsg.payload)
         {
             x265_log(m_param, X265_LOG_ERROR, "Unable to allocate memory for SEI payload\n");
-            if (base64Decode && base64Decode != decodedString) free(base64Decode);
             free(decodedString);
             break;
         }
@@ -6252,7 +6246,6 @@ void Encoder::readUserSeiFile(x265_sei_payload& seiMsg, int curPoc)
         else
         {
             x265_log(m_param, X265_LOG_WARNING, "Unsupported SEI payload Type for frame %d\n", poc);
-            if (base64Decode && base64Decode != decodedString) free(base64Decode);
             free(decodedString);
             x265_free(seiMsg.payload);
             seiMsg.payload = NULL;
@@ -6260,8 +6253,7 @@ void Encoder::readUserSeiFile(x265_sei_payload& seiMsg, int curPoc)
         }
 
         // Copy and clean up.
-        memcpy(seiMsg.payload, base64Decode, seiMsg.payloadSize);
-        if (base64Decode && base64Decode != decodedString) free(base64Decode);
+        memcpy(seiMsg.payload, decodedString, seiMsg.payloadSize);
         free(decodedString);
         break;
     }
