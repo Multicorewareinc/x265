@@ -768,11 +768,8 @@ if(WIN32)
     option(WINXP_SUPPORT "Make binaries compatible with Windows XP and Vista" OFF)
     if(WINXP_SUPPORT)
         # force use of workarounds for CONDITION_VARIABLE and atomic
-        # intrinsics introduced after XP
+        # intrinsics introduced after XP, otherwise using the NUMA APIs
         add_definitions(-D_WIN32_WINNT=_WIN32_WINNT_WINXP)
-    else(WINXP_SUPPORT)
-        # default to targeting Windows 7 for the NUMA APIs
-        add_definitions(-D_WIN32_WINNT=_WIN32_WINNT_WIN7)
     endif(WINXP_SUPPORT)
 endif()
 
