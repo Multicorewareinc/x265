@@ -199,29 +199,29 @@ pipelines:
             - apt-get install -y ffmpeg
             
             # Test 1: Basic 8-bit encoding
-            - echo "Test 1: Basic 8-bit 640x360 encoding..."
+            - 'echo "Test 1: Basic 8-bit 640x360 encoding..."'
             - ffmpeg -f lavfi -i testsrc=duration=3:size=640x360:rate=30 -pix_fmt yuv420p test_640x360.yuv -y
             - ./x265 --input test_640x360.yuv --input-res 640x360 --fps 30 --preset fast --crf 28 --frames 90 -o test1_fast.hevc
             - ls -lh test1_fast.hevc
             
             # Test 2: Different preset
-            - echo "Test 2: Medium preset encoding..."
+            - 'echo "Test 2: Medium preset encoding..."'
             - ./x265 --input test_640x360.yuv --input-res 640x360 --fps 30 --preset medium --crf 23 --frames 90 -o test2_medium.hevc
             - ls -lh test2_medium.hevc
             
             # Test 3: Bitrate mode
-            - echo "Test 3: Bitrate control (CBR)..."
+            - 'echo "Test 3: Bitrate control (CBR)..."'
             - ./x265 --input test_640x360.yuv --input-res 640x360 --fps 30 --preset fast --bitrate 500 --frames 90 -o test3_cbr.hevc
             - ls -lh test3_cbr.hevc
             
             # Test 4: Two-pass encoding
-            - echo "Test 4: Two-pass encoding..."
+            - 'echo "Test 4: Two-pass encoding..."'
             - ./x265 --input test_640x360.yuv --input-res 640x360 --fps 30 --preset fast --bitrate 500 --pass 1 --frames 90 --stats test4.stats -o test4_pass1.hevc
             - ./x265 --input test_640x360.yuv --input-res 640x360 --fps 30 --preset fast --bitrate 500 --pass 2 --frames 90 --stats test4.stats -o test4_pass2.hevc
             - ls -lh test4_pass2.hevc
             
             # Test 5: HD resolution
-            - echo "Test 5: HD 1280x720 encoding..."
+            - 'echo "Test 5: HD 1280x720 encoding..."'
             - ffmpeg -f lavfi -i testsrc=duration=2:size=1280x720:rate=30 -pix_fmt yuv420p test_1280x720.yuv -y
             - ./x265 --input test_1280x720.yuv --input-res 1280x720 --fps 30 --preset ultrafast --crf 28 --frames 60 -o test5_hd.hevc
             - ls -lh test5_hd.hevc
