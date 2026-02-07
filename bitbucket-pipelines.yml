@@ -41,12 +41,31 @@ pipelines:
           
           # Run unit tests
           - echo "=== Running Unit Tests ==="
-          - ./test/TestBench || echo "TestBench returned $?"
+          - echo "Running TestBench with default tests..."
+          - ./test/TestBench --nobench && TEST_PASS=1 || TEST_RESULT=$?
+          - |
+            if [ "${TEST_PASS:-0}" -eq 1 ]; then
+              echo "✓ All TestBench tests PASSED"
+            else
+              echo "✗ TestBench tests FAILED with exit code ${TEST_RESULT}"
+              echo "Build will continue but tests need attention"
+            fi
           
           # Test CLI binary
           - echo "=== Testing CLI Binary ==="
           - ./x265 --version
           - ./x265 --help
+          
+          # Functional encoding test
+          - echo "=== Functional Encoding Test ==="
+          - apt-get install -y ffmpeg
+          - echo "Generating test YUV file..."
+          - ffmpeg -f lavfi -i testsrc=duration=2:size=640x360:rate=30 -pix_fmt yuv420p test_640x360.yuv -y
+          - ls -lh test_640x360.yuv
+          - echo "Encoding with x265..."
+          - ./x265 --input test_640x360.yuv --input-res 640x360 --fps 30 --preset fast --crf 28 --frames 60 -o test_output.hevc
+          - ls -lh test_output.hevc
+          - echo "✓ Encoding test completed successfully"
           
           # Display build artifacts
           - ls -lh x265
@@ -73,8 +92,14 @@ pipelines:
                 - cd build-8bit
                 - cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTS=ON -DENABLE_CLI=ON -DENABLE_SHARED=ON ..
                 - make -j$(nproc)
-                - ./test/TestBench || echo "TestBench completed with code $?"
+                - echo "Running TestBench correctness tests..."
+                - ./test/TestBench --nobench && echo "✓ Tests PASSED" || echo "✗ Tests FAILED with code $?"
                 - ./x265 --version
+                - echo "Quick encoding test..."
+                - apt-get install -y ffmpeg
+                - ffmpeg -f lavfi -i testsrc=duration=1:size=320x240:rate=30 -pix_fmt yuv420p test.yuv -y
+                - ./x265 --input test.yuv --input-res 320x240 --fps 30 --preset ultrafast --crf 28 --frames 30 -o test.hevc
+                - echo "✓ Encoding functional"
               artifacts:
                 - source/build-8bit/x265
                 - source/build-8bit/libx265.so*
@@ -161,18 +186,64 @@ pipelines:
             
             # Run unit tests with detailed output
             - echo "=== Running Unit Tests ==="
-            - ./test/TestBench --version || true
-            - ./test/TestBench || TEST_RESULT=$?
-            - echo "TestBench completed with exit code ${TEST_RESULT:-0}"
+            - echo "Available SIMD architectures:"
+            - ./test/TestBench --cpuid list || true
+            - echo ""
+            - echo "Running correctness tests (no benchmarks)..."
+            - ./test/TestBench --nobench || TEST_RESULT=$?
+            - echo "TestBench correctness tests completed with exit code ${TEST_RESULT:-0}"
+            - echo ""
+            - echo "Running pixel benchmarks..."
+            - ./test/TestBench --testbench pixel || true
+            - echo ""
+            - echo "Running transforms benchmarks..."
+            - ./test/TestBench --testbench transforms || true
             
             # Test CLI with various options
             - echo "=== Testing CLI Binary ==="
             - ./x265 --version
             - ./x265 --help | head -20
             
-            # Basic encoding test (if sample video available)
-            - echo "=== Basic Encoding Test ==="
-            - echo "CLI binary is functional"
+            # Comprehensive encoding tests
+            - echo "=== Comprehensive Encoding Tests ==="
+            - apt-get install -y ffmpeg
+            
+            # Test 1: Basic 8-bit encoding
+            - echo "Test 1: Basic 8-bit 640x360 encoding..."
+            - ffmpeg -f lavfi -i testsrc=duration=3:size=640x360:rate=30 -pix_fmt yuv420p test_640x360.yuv -y
+            - ./x265 --input test_640x360.yuv --input-res 640x360 --fps 30 --preset fast --crf 28 --frames 90 -o test1_fast.hevc
+            - ls -lh test1_fast.hevc
+            
+            # Test 2: Different preset
+            - echo "Test 2: Medium preset encoding..."
+            - ./x265 --input test_640x360.yuv --input-res 640x360 --fps 30 --preset medium --crf 23 --frames 90 -o test2_medium.hevc
+            - ls -lh test2_medium.hevc
+            
+            # Test 3: Bitrate mode
+            - echo "Test 3: Bitrate control (CBR)..."
+            - ./x265 --input test_640x360.yuv --input-res 640x360 --fps 30 --preset fast --bitrate 500 --frames 90 -o test3_cbr.hevc
+            - ls -lh test3_cbr.hevc
+            
+            # Test 4: Two-pass encoding
+            - echo "Test 4: Two-pass encoding..."
+            - ./x265 --input test_640x360.yuv --input-res 640x360 --fps 30 --preset fast --bitrate 500 --pass 1 --frames 90 --stats test4.stats -o test4_pass1.hevc
+            - ./x265 --input test_640x360.yuv --input-res 640x360 --fps 30 --preset fast --bitrate 500 --pass 2 --frames 90 --stats test4.stats -o test4_pass2.hevc
+            - ls -lh test4_pass2.hevc
+            
+            # Test 5: HD resolution
+            - echo "Test 5: HD 1280x720 encoding..."
+            - ffmpeg -f lavfi -i testsrc=duration=2:size=1280x720:rate=30 -pix_fmt yuv420p test_1280x720.yuv -y
+            - ./x265 --input test_1280x720.yuv --input-res 1280x720 --fps 30 --preset ultrafast --crf 28 --frames 60 -o test5_hd.hevc
+            - ls -lh test5_hd.hevc
+            
+            # Verify all outputs
+            - echo "=== Encoding Test Summary ==="
+            - ffmpeg -i test1_fast.hevc -f null - 2>&1 | grep -i "frame="
+            - ffmpeg -i test2_medium.hevc -f null - 2>&1 | grep -i "frame="
+            - ffmpeg -i test3_cbr.hevc -f null - 2>&1 | grep -i "frame="
+            - ffmpeg -i test4_pass2.hevc -f null - 2>&1 | grep -i "frame="
+            - ffmpeg -i test5_hd.hevc -f null - 2>&1 | grep -i "frame="
+            - echo "✓ All encoding tests completed successfully"
             
             # Check assembly optimizations
             - echo "=== Assembly Optimizations ==="
@@ -224,5 +295,25 @@ pipelines:
             - cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTS=ON -DENABLE_CLI=ON -DENABLE_SHARED=ON ..
             - make -j$(nproc)
             - echo "=== Running Tests ==="
-            - ./test/TestBench || echo "Tests completed"
+            - echo "Running TestBench correctness tests..."
+            - ./test/TestBench --nobench && echo "✓ Tests PASSED" || TEST_RESULT=$?
+            - |
+              if [ -n "$TEST_RESULT" ]; then
+                echo "✗ Tests FAILED with exit code $TEST_RESULT"
+                echo "PR needs test fixes before merge"
+                exit 1
+              fi
             - ./x265 --version
+            
+            # Functional encoding test for PRs
+            - echo "=== Functional Encoding Test ==="
+            - apt-get install -y ffmpeg
+            - ffmpeg -f lavfi -i testsrc=duration=1:size=320x240:rate=30 -pix_fmt yuv420p test.yuv -y
+            - ./x265 --input test.yuv --input-res 320x240 --fps 30 --preset ultrafast --crf 28 --frames 30 -o test.hevc || ENCODE_RESULT=$?
+            - |
+              if [ -n "$ENCODE_RESULT" ]; then
+                echo "✗ Encoding FAILED"
+                echo "PR breaks encoding functionality"
+                exit 1
+              fi
+            - echo "✓ Encoding test passed"
