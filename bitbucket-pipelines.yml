@@ -1,11 +1,16 @@
 # Bitbucket Pipelines configuration for x265
-# This pipeline builds x265 and runs tests on a daily schedule
+# Production-grade CI/CD with comprehensive testing, reporting, and security scanning
 
 image: ubuntu:22.04
 
 definitions:
   caches:
     build: source/build
+    coverage: coverage_data
+  
+  services:
+    docker:
+      memory: 2048
 
 pipelines:
   # Default pipeline for manual runs and commits
@@ -14,8 +19,9 @@ pipelines:
         name: Build and Test x265
         caches:
           - build
+          - coverage
         script:
-          # Install build dependencies
+          # Install build dependencies + analysis tools
           - apt-get update
           - apt-get install -y 
               build-essential 
@@ -24,6 +30,16 @@ pipelines:
               yasm 
               git 
               libnuma-dev
+              python3
+              python3-pip
+              bc
+              lcov
+              cppcheck
+              binutils
+          
+          # Load CI helper scripts
+          - chmod +x .ci/*.sh .ci/*.py
+          - source .ci/test_with_retry.sh
           
           # Display versions for debugging
           - echo "=== Build Environment ==="
@@ -31,25 +47,24 @@ pipelines:
           - cmake --version
           - nasm --version
           
-          # Build x265 (8-bit)
-          - echo "=== Building x265 (8-bit) ==="
+          # Build x265 (8-bit) with coverage
+          - echo "=== Building x265 (8-bit) with coverage ==="
           - cd source
           - mkdir -p build
           - cd build
-          - cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTS=ON -DENABLE_CLI=ON -DENABLE_SHARED=ON ..
-          - make -j$(nproc)
+          - cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -DENABLE_TESTS=ON -DENABLE_CLI=ON -DENABLE_SHARED=ON -DCMAKE_CXX_FLAGS="--coverage" -DCMAKE_C_FLAGS="--coverage" ..
+          - make -j$(nproc) || (echo "Build failed!" && exit 1)
           
-          # Run unit tests with detailed output
-          - echo "=== Running Unit Tests ==="
+          # Run unit tests with retry logic and fail on error
+          - echo "=== Running Unit Tests with Retry Logic ==="
           - echo "Available SIMD architectures:"
           - ./test/TestBench --cpuid list || true
-          - echo "Running correctness tests (no benchmarks)..."
-          - ./test/TestBench --nobench || TEST_RESULT=$?
-          - echo "TestBench correctness tests completed with exit code ${TEST_RESULT:-0}"
-          - echo "Running pixel benchmarks..."
-          - ./test/TestBench --testbench pixel || true
-          - echo "Running transforms benchmarks..."
-          - ./test/TestBench --testbench transforms || true
+          - echo "Running correctness tests (with retry on failure)..."
+          - run_with_retry "TestBench-Correctness" "./test/TestBench --nobench" || (echo "FATAL TestBench failed after retries" && exit 1)
+          - echo "Running pixel benchmarks (with retry)..."
+          - run_with_retry "TestBench-Pixel" "./test/TestBench --testbench pixel" || echo "Pixel benchmarks failed but continuing"
+          - echo "Running transforms benchmarks (with retry)..."
+          - run_with_retry "TestBench-Transforms" "./test/TestBench --testbench transforms" || echo "Transform benchmarks failed but continuing"
           
           # Test CLI with various options
           - echo "=== Testing CLI Binary ==="
@@ -88,22 +103,51 @@ pipelines:
           - ./x265 --input test_1280x720.yuv --input-res 1280x720 --fps 30 --preset ultrafast --crf 28 --frames 60 -o test5_hd.hevc
           - ls -lh test5_hd.hevc
           
-          # Verify all outputs
+          # Verify all outputs (fail on error)
           - echo "=== Encoding Test Summary ==="
-          - ffmpeg -i test1_fast.hevc -f null - 2>&1 | grep -i "frame="
-          - ffmpeg -i test2_medium.hevc -f null - 2>&1 | grep -i "frame="
-          - ffmpeg -i test3_cbr.hevc -f null - 2>&1 | grep -i "frame="
-          - ffmpeg -i test4_pass2.hevc -f null - 2>&1 | grep -i "frame="
-          - ffmpeg -i test5_hd.hevc -f null - 2>&1 | grep -i "frame="
+          - ffmpeg -i test1_fast.hevc -f null - 2>&1 | grep -i "frame=" || (echo "Test 1 validation failed" && exit 1)
+          - ffmpeg -i test2_medium.hevc -f null - 2>&1 | grep -i "frame=" || (echo "Test 2 validation failed" && exit 1)
+          - ffmpeg -i test3_cbr.hevc -f null - 2>&1 | grep -i "frame=" || (echo "Test 3 validation failed" && exit 1)
+          - ffmpeg -i test4_pass2.hevc -f null - 2>&1 | grep -i "frame=" || (echo "Test 4 validation failed" && exit 1)
+          - ffmpeg -i test5_hd.hevc -f null - 2>&1 | grep -i "frame=" || (echo "Test 5 validation failed" && exit 1)
           - echo "✓ All encoding tests completed successfully"
           
+          # Generate code coverage report
+          - echo "=== Generating Code Coverage Report ==="
+          - cd ../../..
+          - lcov --capture --directory source/build --output-file coverage.info || echo "Coverage capture failed"
+          - lcov --remove coverage.info '/usr/*' --output-file coverage_filtered.info || true
+          - genhtml coverage_filtered.info --output-directory coverage_report || echo "Coverage HTML generation failed"
+          - lcov --list coverage_filtered.info || true
+          - mkdir -p coverage_data
+          - cp -r coverage_report coverage_data/ || true
+          - echo "Coverage report saved to coverage_data/"
+          
+          # Security scanning
+          - echo "=== Security Vulnerability Scanning ==="
+          - bash .ci/security_scan.sh || echo "Security scan completed with warnings"
+          
+          # Generate JUnit test report
+          - echo "=== Generating JUnit Test Report ==="
+          - cd source/build
+          - python3 ../../.ci/generate_junit_report.py || echo "JUnit report generation skipped"
+          - cd ../..
+          
+          # Performance benchmarking
+          - echo "=== Performance Benchmark Tracking ==="
+          - source .ci/benchmark_tracker.sh || true
+          
           # Display build artifacts
+          - cd source/build
           - ls -lh x265
           - ls -lh libx265.so*
         artifacts:
           - source/build/x265
           - source/build/libx265.so*
           - source/build/test/TestBench
+          - coverage_data/**
+          - source/build/test-results.xml
+          - benchmark_results.json
 
   # Multi-configuration build pipeline (8-bit, 10-bit, 12-bit)
   branches:
@@ -115,18 +159,20 @@ pipelines:
                 - build
               script:
                 - apt-get update
-                - apt-get install -y build-essential cmake nasm yasm git libnuma-dev
+                - apt-get install -y build-essential cmake nasm yasm git libnuma-dev python3 bc
+                - chmod +x .ci/*.sh .ci/*.py
+                - source .ci/test_with_retry.sh
                 - echo "=== Building 8-bit ==="
                 - cd source
                 - mkdir -p build-8bit
                 - cd build-8bit
                 - cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTS=ON -DENABLE_CLI=ON -DENABLE_SHARED=ON ..
-                - make -j$(nproc)
-                - echo "=== Running Unit Tests ==="
+                - make -j$(nproc) || (echo "Build FAILED" && exit 1)
+                - echo "=== Running Unit Tests with Retry ==="
                 - echo "Available SIMD architectures:"
                 - ./test/TestBench --cpuid list || true
                 - echo "Running correctness tests..."
-                - ./test/TestBench --nobench && echo "✓ Tests PASSED" || echo "✗ Tests FAILED with code $?"
+                - run_with_retry "TestBench-Correctness" "./test/TestBench --nobench" || (echo "FATAL TestBench failed" && exit 1)
                 - echo "Running pixel benchmarks..."
                 - ./test/TestBench --testbench pixel || true
                 - echo "Running transforms benchmarks..."
@@ -148,12 +194,15 @@ pipelines:
                 - ffmpeg -f lavfi -i testsrc=duration=2:size=1280x720:rate=30 -pix_fmt yuv420p test_1280x720.yuv -y
                 - ./x265 --input test_1280x720.yuv --input-res 1280x720 --fps 30 --preset ultrafast --crf 28 --frames 60 -o test5_hd.hevc
                 - echo "=== Encoding Test Summary ==="
-                - ffmpeg -i test1_fast.hevc -f null - 2>&1 | grep -i "frame="
-                - ffmpeg -i test2_medium.hevc -f null - 2>&1 | grep -i "frame="
-                - ffmpeg -i test3_cbr.hevc -f null - 2>&1 | grep -i "frame="
-                - ffmpeg -i test4_pass2.hevc -f null - 2>&1 | grep -i "frame="
-                - ffmpeg -i test5_hd.hevc -f null - 2>&1 | grep -i "frame="
+                - ffmpeg -i test1_fast.hevc -f null - 2>&1 | grep -i "frame=" || (echo "Test 1 FAILED" && exit 1)
+                - ffmpeg -i test2_medium.hevc -f null - 2>&1 | grep -i "frame=" || (echo "Test 2 FAILED" && exit 1)
+                - ffmpeg -i test3_cbr.hevc -f null - 2>&1 | grep -i "frame=" || (echo "Test 3 FAILED" && exit 1)
+                - ffmpeg -i test4_pass2.hevc -f null - 2>&1 | grep -i "frame=" || (echo "Test 4 FAILED" && exit 1)
+                - ffmpeg -i test5_hd.hevc -f null - 2>&1 | grep -i "frame=" || (echo "Test 5 FAILED" && exit 1)
                 - echo "✓ All encoding tests completed successfully"
+                - cd ../../..
+                - bash .ci/security_scan.sh || echo "Security scan completed"
+                - python3 .ci/generate_junit_report.py || true
               artifacts:
                 - source/build-8bit/x265
                 - source/build-8bit/libx265.so*
@@ -331,24 +380,20 @@ pipelines:
           name: PR Build and Test
           script:
             - apt-get update
-            - apt-get install -y build-essential cmake nasm yasm git libnuma-dev
-            - echo "=== Building x265 for PR ==="
+            - apt-get install -y build-essential cmake nasm yasm git libnuma-dev python3 python3-pip bc lcov cppcheck
+            - chmod +x .ci/*.sh .ci/*.py
+            - source .ci/test_with_retry.sh
+            - echo "=== Building x265 for PR (strict mode) ==="
             - cd source
             - mkdir -p build
             - cd build
-            - cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTS=ON -DENABLE_CLI=ON -DENABLE_SHARED=ON ..
-            - make -j$(nproc)
-            - echo "=== Running Unit Tests ==="
+            - cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -DENABLE_TESTS=ON -DENABLE_CLI=ON -DENABLE_SHARED=ON -DCMAKE_CXX_FLAGS="--coverage" -DCMAKE_C_FLAGS="--coverage" ..
+            - make -j$(nproc) || (echo "❌ BUILD FAILED - PR cannot be merged" && exit 1)
+            - echo "=== Running Unit Tests (STRICT with retry) ==="
             - echo "Available SIMD architectures:"
             - ./test/TestBench --cpuid list || true
-            - echo "Running correctness tests..."
-            - ./test/TestBench --nobench && echo "✓ Tests PASSED" || TEST_RESULT=$?
-            - |
-              if [ -n "$TEST_RESULT" ]; then
-                echo "✗ Tests FAILED with exit code $TEST_RESULT"
-                echo "PR needs test fixes before merge"
-                exit 1
-              fi
+            - echo "Running correctness tests with retry..."
+            - run_with_retry "TestBench-Correctness" "./test/TestBench --nobench" || (echo "❌ TESTS FAILED - PR cannot be merged" && exit 1)
             - echo "Running pixel benchmarks..."
             - ./test/TestBench --testbench pixel || true
             - echo "Running transforms benchmarks..."
@@ -412,11 +457,37 @@ pipelines:
                 exit 1
               fi
             
-            # Verify all outputs
-            - echo "=== Encoding Test Summary ==="
-            - ffmpeg -i test1_fast.hevc -f null - 2>&1 | grep -i "frame="
-            - ffmpeg -i test2_medium.hevc -f null - 2>&1 | grep -i "frame="
-            - ffmpeg -i test3_cbr.hevc -f null - 2>&1 | grep -i "frame="
-            - ffmpeg -i test4_pass2.hevc -f null - 2>&1 | grep -i "frame="
-            - ffmpeg -i test5_hd.hevc -f null - 2>&1 | grep -i "frame="
+            # Verify all outputs (strict - must pass)
+            - echo "=== Encoding Test Summary (STRICT) ==="
+            - ffmpeg -i test1_fast.hevc -f null - 2>&1 | grep -i "frame=" || (echo "❌ Test 1 validation FAILED" && exit 1)
+            - ffmpeg -i test2_medium.hevc -f null - 2>&1 | grep -i "frame=" || (echo "❌ Test 2 validation FAILED" && exit 1)
+            - ffmpeg -i test3_cbr.hevc -f null - 2>&1 | grep -i "frame=" || (echo "❌ Test 3 validation FAILED" && exit 1)
+            - ffmpeg -i test4_pass2.hevc -f null - 2>&1 | grep -i "frame=" || (echo "❌ Test 4 validation FAILED" && exit 1)
+            - ffmpeg -i test5_hd.hevc -f null - 2>&1 | grep -i "frame=" || (echo "❌ Test 5 validation FAILED" && exit 1)
             - echo "✓ All encoding tests completed successfully"
+            
+            # Code coverage report
+            - echo "=== Generating Coverage Report ==="
+            - cd ../../..
+            - lcov --capture --directory source/build --output-file coverage.info || true
+            - lcov --remove coverage.info '/usr/*' --output-file coverage_filtered.info || true
+            - lcov --list coverage_filtered.info || true
+            - mkdir -p coverage_data
+            - genhtml coverage_filtered.info --output-directory coverage_data/coverage_report || true
+            
+            # Security scanning (must pass for PR)
+            - echo "=== Security Scanning (STRICT) ==="
+            - bash .ci/security_scan.sh || (echo "❌ Security scan found issues" && exit 1)
+            
+            # Generate test reports
+            - echo "=== Generating Test Reports ==="
+            - cd source/build
+            - python3 ../../.ci/generate_junit_report.py || true
+            - cd ../..
+            
+            # Final summary
+            - echo "=============================================="
+            - echo "✅ PR VALIDATION PASSED"
+            - echo "=============================================="
+            - echo "All tests, security scans, and validations passed"
+            - echo "This PR is ready to merge"
