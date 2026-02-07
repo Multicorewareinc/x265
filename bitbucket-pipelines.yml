@@ -3,6 +3,10 @@
 
 image: ubuntu:22.04
 
+options:
+  runner:
+    type: self.hosted
+
 definitions:
   caches:
     build: source/build
