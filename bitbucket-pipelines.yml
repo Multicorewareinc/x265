@@ -174,28 +174,18 @@ pipelines:
             - cd source
             - mkdir -p build
             - cd build
-            - cmake -DCMAKE_BUILD_TYPE=Release 
-                -DENABLE_TESTS=ON 
-                -DENABLE_CLI=ON 
-                -DENABLE_SHARED=ON 
-                -DENABLE_LIBNUMA=ON 
-                -DENABLE_ASSEMBLY=ON 
-                -DENABLE_PIC=ON 
-                ..
+            - cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTS=ON -DENABLE_CLI=ON -DENABLE_SHARED=ON -DENABLE_LIBNUMA=ON -DENABLE_ASSEMBLY=ON -DENABLE_PIC=ON ..
             - time make -j$(nproc)
             
             # Run unit tests with detailed output
             - echo "=== Running Unit Tests ==="
             - echo "Available SIMD architectures:"
             - ./test/TestBench --cpuid list || true
-            - echo ""
             - echo "Running correctness tests (no benchmarks)..."
             - ./test/TestBench --nobench || TEST_RESULT=$?
             - echo "TestBench correctness tests completed with exit code ${TEST_RESULT:-0}"
-            - echo ""
             - echo "Running pixel benchmarks..."
             - ./test/TestBench --testbench pixel || true
-            - echo ""
             - echo "Running transforms benchmarks..."
             - ./test/TestBench --testbench transforms || true
             
