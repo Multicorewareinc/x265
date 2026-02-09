@@ -290,7 +290,6 @@ pipelines:
                 - test -f libx265.a || (echo "❌ libx265.a not found!" && exit 1)
                 - size libx265.a
                 - nm libx265.a | grep -i "x265_api_get" || echo "Checking symbols..."
-                - file libx265.a
                 - echo "✓ 10-bit library built successfully"
               artifacts:
                 - source/build-10bit/libx265.a
@@ -317,7 +316,6 @@ pipelines:
                 - test -f libx265.a || (echo "❌ libx265.a not found!" && exit 1)
                 - size libx265.a
                 - nm libx265.a | grep -i "x265_api_get" || echo "Checking symbols..."
-                - file libx265.a
                 - echo "✓ 12-bit library built successfully"
               artifacts:
                 - source/build-12bit/libx265.a
