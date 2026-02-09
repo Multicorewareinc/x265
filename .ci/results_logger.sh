@@ -3,7 +3,13 @@
 
 set -euo pipefail
 
-RESULTS_DIR="build_results"
+# Use absolute path based on REPO_ROOT if available, otherwise relative
+if [ -n "${REPO_ROOT:-}" ]; then
+    RESULTS_DIR="$REPO_ROOT/build_results"
+else
+    RESULTS_DIR="build_results"
+fi
+
 TIMESTAMP=$(date -u +"%Y-%m-%d_%H-%M-%S")
 BUILD_ID="${BITBUCKET_BUILD_NUMBER:-manual}"
 COMMIT="${BITBUCKET_COMMIT:-$(git rev-parse HEAD 2>/dev/null || echo 'unknown')}"
@@ -254,6 +260,14 @@ create_historical_report() {
         echo -e "${GREEN}✓ Added to build history: $history_file${NC}"
     fi
 }
+
+# Export variables for use in functions
+export RESULTS_DIR
+export RESULTS_FILE
+export BUILD_ID
+export COMMIT
+export BRANCH
+export TIMESTAMP
 
 # Export functions for use in pipeline
 export -f extract_fps
