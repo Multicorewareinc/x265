@@ -1,6 +1,5 @@
 # ═══════════════════════════════════════════════════════════════════════
 #  Bitbucket Pipelines – x265 CI/CD
-#  Shared YAML anchors defined once, reused across all pipeline triggers.
 # ═══════════════════════════════════════════════════════════════════════
 
 image: ubuntu:22.04
@@ -190,20 +189,6 @@ definitions:
         nm libx265.a | grep -i "x265_api_get" || true
         echo "12-bit library built successfully"
 
-    # ── Workspace cleanup (safe for after-script) ──────────────────
-    - &cleanup
-        - set +e
-        - echo "=== Cleaning Up ==="
-        - rm -rf source/build-8bit/CMakeFiles source/build-8bit/*.o source/build-8bit/test/*.o 2>/dev/null || true
-        - rm -rf source/build-10bit/CMakeFiles source/build-10bit/*.o 2>/dev/null || true
-        - rm -rf source/build-12bit/CMakeFiles source/build-12bit/*.o 2>/dev/null || true
-        - find . -maxdepth 3 -name "*.yuv" -type f -delete 2>/dev/null || true
-        - find . -maxdepth 3 -name "*.stats" -type f -delete 2>/dev/null || true
-        - apt-get clean 2>/dev/null || true
-        - rm -rf /var/lib/apt/lists/* 2>/dev/null || true
-        - rm -rf /tmp/* 2>/dev/null || true
-        - timeout 5 df -h . 2>/dev/null || echo "Disk usage check skipped"
-        - echo "Cleanup completed"
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -267,7 +252,6 @@ pipelines:
           - source/build-8bit/test-results.xml
           - benchmark_results.json
           - build_results/**
-        after-script: *cleanup
 
   # ── Master branch – parallel 8 / 10 / 12-bit builds ─────────────
   branches:
@@ -315,7 +299,6 @@ pipelines:
                 - source/build-8bit/libx265.so*
                 - source/build-8bit/test/TestBench
                 - build_results/**
-              after-script: *cleanup
 
           - step:
               name: "Master: 10-bit Library"
@@ -332,7 +315,6 @@ pipelines:
                 - *build-10bit
               artifacts:
                 - source/build-10bit/libx265.a
-              after-script: *cleanup
 
           - step:
               name: "Master: 12-bit Library"
@@ -349,7 +331,6 @@ pipelines:
                 - *build-12bit
               artifacts:
                 - source/build-12bit/libx265.a
-              after-script: *cleanup
 
   # ── Custom: daily comprehensive build ────────────────────────────
   custom:
@@ -420,7 +401,6 @@ pipelines:
             - source/build-10bit/libx265.a
             - source/build-12bit/libx265.a
             - build_results/**
-          after-script: *cleanup
 
   # ── Pull Requests (strict – must pass to merge) ─────────────────
   pull-requests:
@@ -472,4 +452,3 @@ pipelines:
             - source/build-8bit/test-results.xml
             - coverage_data/**
             - build_results/**
-          after-script: *cleanup
