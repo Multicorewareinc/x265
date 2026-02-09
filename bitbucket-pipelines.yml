@@ -29,6 +29,8 @@ pipelines:
   default:
     - step:
         name: Build and Test x265
+        runs-on:
+          - self.hosted
         caches:
           - build
           - coverage
@@ -211,6 +213,8 @@ pipelines:
       - parallel:
           - step:
               name: Build x265 (8-bit)
+              runs-on:
+                - self.hosted
               caches:
                 - build-8bit
               script:
@@ -275,6 +279,8 @@ pipelines:
 
           - step:
               name: Build x265 (10-bit)
+              runs-on:
+                - self.hosted
               caches:
                 - build-10bit
               script:
@@ -301,6 +307,8 @@ pipelines:
 
           - step:
               name: Build x265 (12-bit)
+              runs-on:
+                - self.hosted
               caches:
                 - build-12bit
               script:
@@ -330,6 +338,8 @@ pipelines:
     daily-build:
       - step:
           name: Daily Build and Comprehensive Test
+          runs-on:
+            - self.hosted
           max-time: 60
           caches:
             - build
@@ -469,6 +479,8 @@ pipelines:
     '**':
       - step:
           name: PR Build and Test
+          runs-on:
+            - self.hosted
           caches:
             - build
             - coverage
