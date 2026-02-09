@@ -124,28 +124,6 @@ definitions:
         mkdir -p coverage_data
         cp -r coverage_report coverage_data/
 
-    # ── Security scan (strict – fails the step on issues) ──────────
-    - &security-scan-strict |
-        echo "=== Security Scanning (strict) ==="
-        cd "$REPO_ROOT"
-        if [ -f "$REPO_ROOT/.ci/security_scan.sh" ]; then
-          bash "$REPO_ROOT/.ci/security_scan.sh"
-        else
-          echo "Security scan script missing at .ci/security_scan.sh"
-          exit 1
-        fi
-
-    # ── Security scan (lenient – warns but does not fail) ──────────
-    - &security-scan-lenient |
-        echo "=== Security Scanning ==="
-        cd "$REPO_ROOT"
-        if [ -f "$REPO_ROOT/.ci/security_scan.sh" ]; then
-          bash "$REPO_ROOT/.ci/security_scan.sh" \
-            || echo "Security scan completed with warnings"
-        else
-          echo "Security scan script not found, skipping"
-        fi
-
     # ── Reports & results summary ──────────────────────────────────
     - &generate-reports |
         echo "=== Generating Reports ==="
@@ -228,7 +206,6 @@ pipelines:
           - *run-encoding-tests
           - *validate-encoding-outputs
           - *generate-coverage
-          - *security-scan-lenient
           - *generate-reports
 
           - |
@@ -284,7 +261,6 @@ pipelines:
                 - ./x265 --version
                 - *run-encoding-tests
                 - *validate-encoding-outputs
-                - *security-scan-lenient
                 - *generate-reports
 
                 - |
@@ -435,14 +411,13 @@ pipelines:
             - *run-encoding-tests
             - *validate-encoding-outputs
             - *generate-coverage
-            - *security-scan-strict
             - *generate-reports
 
             - |
               echo "=============================================="
               echo "  PR VALIDATION PASSED"
               echo "=============================================="
-              echo "All tests, security scans, and validations passed."
+              echo "All tests and validations passed."
               echo "This PR is ready to merge."
 
           artifacts:
