@@ -12,10 +12,6 @@ definitions:
     build-12bit: source/build-12bit
     coverage: coverage_data
 
-  services:
-    docker:
-      memory: 2048
-
   # ── Reusable YAML anchors ────────────────────────────────────────
   # Bitbucket ignores unknown keys under 'definitions'; the YAML
   # parser still resolves anchors so they can be referenced anywhere.
@@ -194,20 +190,18 @@ definitions:
         nm libx265.a | grep -i "x265_api_get" || true
         echo "12-bit library built successfully"
 
-    # ── Workspace cleanup (individual commands for after-script) ────
-    # NOTE: Do NOT use a single multi-line '|' block here.
-    # Bitbucket after-script on self-hosted runners can hang waiting
-    # on a multi-line block even after it finishes.  Individual items
-    # let the runner track each command's exit independently.
-    - &cleanup-echo     echo "=== Cleaning Up ==="
-    - &cleanup-8bit     rm -rf source/build-8bit/CMakeFiles source/build-8bit/*.o source/build-8bit/test/*.o 2>/dev/null || true
-    - &cleanup-10bit    rm -rf source/build-10bit/CMakeFiles source/build-10bit/*.o 2>/dev/null || true
-    - &cleanup-12bit    rm -rf source/build-12bit/CMakeFiles source/build-12bit/*.o 2>/dev/null || true
-    - &cleanup-testdata find . \( -name "*.yuv" -o -name "*.stats" \) -delete 2>/dev/null || true
-    - &cleanup-apt      apt-get clean 2>/dev/null || true
-    - &cleanup-tmp      rm -rf /var/lib/apt/lists/* /tmp/* 2>/dev/null || true
-    - &cleanup-df       df -h
-    - &cleanup-done     echo "Cleanup completed"
+    # ── Workspace cleanup (safe for after-script) ──────────────────
+    - &cleanup |
+        set +e
+        echo "=== Cleaning Up ==="
+        rm -rf source/build-8bit/CMakeFiles  source/build-8bit/*.o  source/build-8bit/test/*.o  2>/dev/null
+        rm -rf source/build-10bit/CMakeFiles source/build-10bit/*.o 2>/dev/null
+        rm -rf source/build-12bit/CMakeFiles source/build-12bit/*.o 2>/dev/null
+        find . \( -name "*.yuv" -o -name "*.stats" \) -delete 2>/dev/null
+        apt-get clean 2>/dev/null
+        rm -rf /var/lib/apt/lists/* /tmp/* 2>/dev/null
+        df -h
+        echo "Cleanup completed"
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -272,15 +266,7 @@ pipelines:
           - benchmark_results.json
           - build_results/**
         after-script:
-          - *cleanup-echo
-          - *cleanup-8bit
-          - *cleanup-10bit
-          - *cleanup-12bit
-          - *cleanup-testdata
-          - *cleanup-apt
-          - *cleanup-tmp
-          - *cleanup-df
-          - *cleanup-done
+          - *cleanup
 
   # ── Master branch – parallel 8 / 10 / 12-bit builds ─────────────
   branches:
@@ -329,15 +315,7 @@ pipelines:
                 - source/build-8bit/test/TestBench
                 - build_results/**
               after-script:
-                - *cleanup-echo
-                - *cleanup-8bit
-                - *cleanup-10bit
-                - *cleanup-12bit
-                - *cleanup-testdata
-                - *cleanup-apt
-                - *cleanup-tmp
-                - *cleanup-df
-                - *cleanup-done
+                - *cleanup
 
           - step:
               name: "Master: 10-bit Library"
@@ -355,12 +333,7 @@ pipelines:
               artifacts:
                 - source/build-10bit/libx265.a
               after-script:
-                - *cleanup-echo
-                - *cleanup-10bit
-                - *cleanup-apt
-                - *cleanup-tmp
-                - *cleanup-df
-                - *cleanup-done
+                - *cleanup
 
           - step:
               name: "Master: 12-bit Library"
@@ -378,12 +351,7 @@ pipelines:
               artifacts:
                 - source/build-12bit/libx265.a
               after-script:
-                - *cleanup-echo
-                - *cleanup-12bit
-                - *cleanup-apt
-                - *cleanup-tmp
-                - *cleanup-df
-                - *cleanup-done
+                - *cleanup
 
   # ── Custom: daily comprehensive build ────────────────────────────
   custom:
@@ -434,8 +402,6 @@ pipelines:
               ldd x265 | grep -i numa && echo "NUMA support detected" || echo "No NUMA linkage"
               ./x265 --version 2>&1 | grep -i asm || true
 
-            - *generate-reports
-
             # 10-bit and 12-bit libraries
             - *build-10bit
             - *build-12bit
@@ -457,15 +423,7 @@ pipelines:
             - source/build-12bit/libx265.a
             - build_results/**
           after-script:
-            - *cleanup-echo
-            - *cleanup-8bit
-            - *cleanup-10bit
-            - *cleanup-12bit
-            - *cleanup-testdata
-            - *cleanup-apt
-            - *cleanup-tmp
-            - *cleanup-df
-            - *cleanup-done
+            - *cleanup
 
   # ── Pull Requests (strict – must pass to merge) ─────────────────
   pull-requests:
@@ -518,12 +476,4 @@ pipelines:
             - coverage_data/**
             - build_results/**
           after-script:
-            - *cleanup-echo
-            - *cleanup-8bit
-            - *cleanup-10bit
-            - *cleanup-12bit
-            - *cleanup-testdata
-            - *cleanup-apt
-            - *cleanup-tmp
-            - *cleanup-df
-            - *cleanup-done
+            - *cleanup
