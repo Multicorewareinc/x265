@@ -194,15 +194,15 @@ definitions:
     - &cleanup
         - set +e
         - echo "=== Cleaning Up ==="
-        - rm -rf source/build-8bit/CMakeFiles source/build-8bit/*.o source/build-8bit/test/*.o || true
-        - rm -rf source/build-10bit/CMakeFiles source/build-10bit/*.o || true
-        - rm -rf source/build-12bit/CMakeFiles source/build-12bit/*.o || true
-        - find . -name "*.yuv" -delete || true
-        - find . -name "*.stats" -delete || true
-        - apt-get clean || true
-        - rm -rf /var/lib/apt/lists/* || true
-        - rm -rf /tmp/* || true
-        - df -h || true
+        - rm -rf source/build-8bit/CMakeFiles source/build-8bit/*.o source/build-8bit/test/*.o 2>/dev/null || true
+        - rm -rf source/build-10bit/CMakeFiles source/build-10bit/*.o 2>/dev/null || true
+        - rm -rf source/build-12bit/CMakeFiles source/build-12bit/*.o 2>/dev/null || true
+        - find . -maxdepth 3 -name "*.yuv" -type f -delete 2>/dev/null || true
+        - find . -maxdepth 3 -name "*.stats" -type f -delete 2>/dev/null || true
+        - apt-get clean 2>/dev/null || true
+        - rm -rf /var/lib/apt/lists/* 2>/dev/null || true
+        - rm -rf /tmp/* 2>/dev/null || true
+        - timeout 5 df -h . 2>/dev/null || echo "Disk usage check skipped"
         - echo "Cleanup completed"
 
 
