@@ -3,9 +3,14 @@
 
 image: ubuntu:22.04
 
+# options:
+#   runner:
+#     type: self.hosted
+
 options:
-  runner:
-    type: self.hosted
+  runs-on:
+    - self.hosted
+    - linux
 
 definitions:
   caches:
