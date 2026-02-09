@@ -127,20 +127,16 @@ log_encoding_test() {
 # Function to generate summary report
 generate_summary() {
     echo ""
-    echo "=================================================="
-    echo -e "${GREEN}BUILD RESULTS SUMMARY${NC}"
-    echo "=================================================="
+    echo "╔══════════════════════════════════════════════════════════════════════╗"
+    echo -e "║${GREEN}                     BUILD RESULTS SUMMARY                             ${NC}║"
+    echo "╚══════════════════════════════════════════════════════════════════════╝"
+    echo ""
     
     if command -v jq &> /dev/null; then
         # Calculate average FPS
         local avg_fps=$(jq '[.encoding_results[].fps] | add / length' "$RESULTS_FILE" 2>/dev/null || echo "0")
         local total_time=$(jq '[.encoding_results[].encoding_time] | add' "$RESULTS_FILE" 2>/dev/null || echo "0")
         local test_count=$(jq '[.encoding_results] | length' "$RESULTS_FILE" 2>/dev/null || echo "0")
-        
-        echo "Total Tests: $test_count"
-        echo "Average FPS: $(printf '%.2f' $avg_fps)"
-        echo "Total Encoding Time: $(printf '%.2f' $total_time)s"
-        echo ""
         
         # Update summary in JSON
         local tmp_file=$(mktemp)
@@ -154,16 +150,36 @@ generate_summary() {
            }' "$RESULTS_FILE" > "$tmp_file"
         mv "$tmp_file" "$RESULTS_FILE"
         
-        # Display results table
-        echo "Individual Test Results:"
-        echo "----------------------------------------"
-        jq -r '.encoding_results[] | "\(.test): \(.fps) fps, \(.encoding_time)s, \(.bitrate) kb/s"' "$RESULTS_FILE" 2>/dev/null || echo "No results"
+        # Display beautiful results table
+        echo "┌──────────────────────────┬──────────┬──────────┬──────────────┬────────┐"
+        echo "│ Test                     │ FPS      │ Time     │ Bitrate      │ Status │"
+        echo "├──────────────────────────┼──────────┼──────────┼──────────────┼────────┤"
+        
+        jq -r '.encoding_results[] | 
+            [.test, (.fps|tostring + " fps"), (.encoding_time|tostring + "s"), (.bitrate|tostring + " kb/s"), .status] | 
+            @tsv' "$RESULTS_FILE" 2>/dev/null | while IFS=$'\t' read -r test fps time bitrate status; do
+            # Truncate test name if too long
+            test_short=$(printf "%-24s" "$test" | cut -c1-24)
+            fps_fmt=$(printf "%-8s" "$fps")
+            time_fmt=$(printf "%-8s" "$time")
+            bitrate_fmt=$(printf "%-12s" "$bitrate")
+            status_icon=$([ "$status" = "passed" ] && echo "✅" || echo "❌")
+            printf "│ %-24s │ %-8s │ %-8s │ %-12s │ %-6s │\n" "$test_short" "$fps_fmt" "$time_fmt" "$bitrate_fmt" "$status_icon"
+        done
+        
+        echo "└──────────────────────────┴──────────┴──────────┴──────────────┴────────┘"
+        echo ""
+        echo "Performance Summary:"
+        echo "  • Total Tests:           $test_count"
+        echo "  • Average FPS:           $(printf '%.2f' $avg_fps) fps"
+        echo "  • Total Encoding Time:   $(printf '%.2f' $total_time)s"
     else
         echo "Install 'jq' for detailed JSON analysis"
         echo "Results saved to: $RESULTS_FILE"
     fi
     
-    echo "=================================================="
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 
 # Create human-readable summary
