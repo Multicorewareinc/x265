@@ -211,7 +211,7 @@ pipelines:
                 - apt-get update
                 - apt-get install -y build-essential cmake nasm yasm git libnuma-dev python3 bc jq
                 - export REPO_ROOT="$(pwd)"
-                - echo "Repository root: $REPO_ROOT"
+                - 'echo "Repository root: $REPO_ROOT"'
                 - find "$REPO_ROOT/.ci" -type f \( -name "*.sh" -o -name "*.py" \) -exec chmod +x {} +
                 - . "$REPO_ROOT/.ci/test_with_retry.sh"
                 - echo "=== Building 8-bit ==="
@@ -219,12 +219,12 @@ pipelines:
                 - mkdir -p build-8bit
                 - cd build-8bit
                 - cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTS=ON -DENABLE_CLI=ON -DENABLE_SHARED=ON ..
-                - make -j$(nproc) || (echo "Build FAILED" && exit 1)
+                - make -j$(nproc)
                 - echo "=== Running Unit Tests with Retry ==="
                 - echo "Available SIMD architectures:"
                 - ./test/TestBench --cpuid list || true
                 - echo "Running correctness tests..."
-                - run_with_retry "TestBench-Correctness" "./test/TestBench --nobench" || (echo "FATAL TestBench failed" && exit 1)
+                - run_with_retry "TestBench-Correctness" "./test/TestBench --nobench"
                 - echo "Running pixel benchmarks..."
                 - ./test/TestBench --testbench pixel || true
                 - echo "Running transforms benchmarks..."
