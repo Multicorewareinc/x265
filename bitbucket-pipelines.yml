@@ -47,13 +47,13 @@ definitions:
     - &run-unit-tests |
         echo "=== Unit Tests ==="
         echo "Available SIMD:"
-        ./test/TestBench --cpuid list || true
+        ./test/TestBench --cpuid list
         echo "Correctness tests (with retry)..."
         run_with_retry "TestBench-Correctness" "./test/TestBench --nobench"
         echo "Pixel benchmarks..."
-        ./test/TestBench --testbench pixel || true
+        ./test/TestBench --testbench pixel
         echo "Transform benchmarks..."
-        ./test/TestBench --testbench transforms || true
+        ./test/TestBench --testbench transforms
 
     # ── Encoding tests ─────────────────────────────────────────────
     - &run-encoding-tests |
@@ -115,14 +115,14 @@ definitions:
         echo "=== Code Coverage Report ==="
         cd "$REPO_ROOT"
         lcov --capture --directory source/build-8bit \
-          --output-file coverage.info --quiet || true
+          --output-file coverage.info --quiet
         lcov --remove coverage.info '/usr/*' \
-          --output-file coverage_filtered.info --quiet || true
+          --output-file coverage_filtered.info --quiet
         genhtml coverage_filtered.info \
-          --output-directory coverage_report --quiet || true
-        lcov --list coverage_filtered.info 2>/dev/null || true
+          --output-directory coverage_report --quiet
+        lcov --list coverage_filtered.info
         mkdir -p coverage_data
-        cp -r coverage_report coverage_data/ 2>/dev/null || true
+        cp -r coverage_report coverage_data/
 
     # ── Security scan (strict – fails the step on issues) ──────────
     - &security-scan-strict |
@@ -151,12 +151,11 @@ definitions:
         echo "=== Generating Reports ==="
         cd "$REPO_ROOT"
         if [ -f "$REPO_ROOT/.ci/generate_junit_report.py" ]; then
-          python3 "$REPO_ROOT/.ci/generate_junit_report.py" \
-            || echo "JUnit report generation failed"
+          python3 "$REPO_ROOT/.ci/generate_junit_report.py"
         fi
-        generate_summary || true
-        create_text_summary || true
-        create_historical_report || true
+        generate_summary
+        create_text_summary
+        create_historical_report
 
     # ── 10-bit library build ───────────────────────────────────────
     - &build-10bit |
@@ -170,7 +169,7 @@ definitions:
         make -j$(nproc)
         test -f libx265.a || { echo "libx265.a not found!"; exit 1; }
         ls -lh libx265.a
-        nm libx265.a | grep -i "x265_api_get" || true
+        nm libx265.a | grep -i "x265_api_get"
         echo "10-bit library built successfully"
 
     # ── 12-bit library build ───────────────────────────────────────
@@ -186,7 +185,7 @@ definitions:
         make -j$(nproc)
         test -f libx265.a || { echo "libx265.a not found!"; exit 1; }
         ls -lh libx265.a
-        nm libx265.a | grep -i "x265_api_get" || true
+        nm libx265.a | grep -i "x265_api_get"
         echo "12-bit library built successfully"
 
 
@@ -234,7 +233,7 @@ pipelines:
 
           - |
             cd "$REPO_ROOT"
-            . "$REPO_ROOT/.ci/benchmark_tracker.sh" || true
+            . "$REPO_ROOT/.ci/benchmark_tracker.sh"
 
           - |
             echo ""
@@ -242,7 +241,7 @@ pipelines:
             echo "  BUILD COMPLETE - Results Available"
             echo "=========================================="
             cd "$REPO_ROOT/source/build-8bit"
-            ls -lh x265 libx265.so* 2>/dev/null || true
+            ls -lh x265 libx265.so*
 
         artifacts:
           - source/build-8bit/x265
@@ -355,7 +354,7 @@ pipelines:
             - |
               echo "=== System Information ==="
               uname -a
-              grep "model name" /proc/cpuinfo | head -1 || true
+              grep "model name" /proc/cpuinfo | head -1
               free -h
               df -h
 
@@ -379,7 +378,7 @@ pipelines:
             # Assembly / NUMA check
             - |
               ldd x265 | grep -i numa && echo "NUMA support detected" || echo "No NUMA linkage"
-              ./x265 --version 2>&1 | grep -i asm || true
+              ./x265 --version 2>&1 | grep -i asm
 
             # 10-bit and 12-bit libraries
             - *build-10bit
@@ -389,7 +388,7 @@ pipelines:
             - |
               echo "=== Build Summary ==="
               ls -lh "$REPO_ROOT/source/build-8bit/x265"
-              ls -lh "$REPO_ROOT/source/build-8bit"/libx265.so* 2>/dev/null || true
+              ls -lh "$REPO_ROOT/source/build-8bit"/libx265.so*
               ls -lh "$REPO_ROOT/source/build-10bit/libx265.a"
               ls -lh "$REPO_ROOT/source/build-12bit/libx265.a"
               echo "All daily builds completed successfully"
