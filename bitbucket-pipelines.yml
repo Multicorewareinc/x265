@@ -1,19 +1,14 @@
 image: ubuntu:22.04
 
-options:
-  runner:
-    type: self.hosted
-
 pipelines:
   default:
     - step:
-        name: Self-hosted runner echo test
+        name: Self-hosted echo test
         runs-on:
           - self.hosted
         script:
-          - echo "✅ Pipeline is running on SELF-HOSTED runner"
-          - echo "Hostname: $(hostname)"
-          - echo "User: $(whoami)"
-          - echo "Working dir: $(pwd)"
+          - echo "SELF-HOSTED RUNNER OK"
+          - hostname
+          - whoami
+          - pwd
           - date
-          - sleep 5
