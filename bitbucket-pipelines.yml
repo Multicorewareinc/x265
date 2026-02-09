@@ -10,6 +10,9 @@ options:
 definitions:
   caches:
     build: source/build
+    build-8bit: source/build-8bit
+    build-10bit: source/build-10bit
+    build-12bit: source/build-12bit
     coverage: coverage_data
   
   services:
@@ -25,6 +28,8 @@ pipelines:
           - build
           - coverage
         script:
+          # Fail fast on errors
+          - set -euo pipefail
           # Install build dependencies + analysis tools
           - apt-get update
           - apt-get install -y 
@@ -200,8 +205,9 @@ pipelines:
           - step:
               name: Build x265 (8-bit)
               caches:
-                - build
+                - build-8bit
               script:
+                - set -euo pipefail
                 - apt-get update
                 - apt-get install -y build-essential cmake nasm yasm git libnuma-dev python3 bc jq
                 - export REPO_ROOT="$(pwd)"
@@ -261,7 +267,10 @@ pipelines:
 
           - step:
               name: Build x265 (10-bit)
+              caches:
+                - build-10bit
               script:
+                - set -euo pipefail
                 - apt-get update
                 - apt-get install -y build-essential cmake nasm yasm git libnuma-dev
                 - echo "=== Building 10-bit ==="
@@ -276,7 +285,10 @@ pipelines:
 
           - step:
               name: Build x265 (12-bit)
+              caches:
+                - build-12bit
               script:
+                - set -euo pipefail
                 - apt-get update
                 - apt-get install -y build-essential cmake nasm yasm git libnuma-dev
                 - echo "=== Building 12-bit ==="
@@ -297,7 +309,10 @@ pipelines:
           max-time: 60
           caches:
             - build
+            - build-10bit
+            - build-12bit
           script:
+            - set -euo pipefail
             # Install dependencies
             - apt-get update
             - apt-get install -y 
@@ -430,7 +445,11 @@ pipelines:
     '**':
       - step:
           name: PR Build and Test
+          caches:
+            - build
+            - coverage
           script:
+            - set -euo pipefail
             - apt-get update
             - apt-get install -y build-essential cmake nasm yasm git libnuma-dev python3 python3-pip bc lcov cppcheck jq
             - export REPO_ROOT="$(pwd)"
