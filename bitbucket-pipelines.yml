@@ -3,14 +3,6 @@
 
 image: ubuntu:22.04
 
-# options:
-#   runner:
-#     type: self.hosted
-
-options:
-  runs-on:
-    - self.hosted
-    - linux
 
 definitions:
   caches:
@@ -41,13 +33,7 @@ pipelines:
           - export DEBIAN_FRONTEND=noninteractive
           # Install build dependencies + analysis tools
           - apt-get update
-          - apt-get install -y 
-              build-essential 
-              cmake 
-              nasm 
-              yasm 
-              git 
-              libnuma-dev
+          - apt-get install -y build-essential cmake nasm yasm git libnuma-dev python3 python3-pip bc lcov cppcheck jq ffmpeg debsecan
               python3
               python3-pip
               bc
@@ -206,6 +192,13 @@ pipelines:
           - source/build/test-results.xml
           - benchmark_results.json
           - build_results/**
+        after-script:
+          - echo "=== Cleaning up workspace ==="
+          - rm -rf source/build/CMakeFiles source/build/*.o source/build/test/*.o || true
+          - apt-get clean || true
+          - rm -rf /var/lib/apt/lists/* || true
+          - df -h
+          - echo "✓ Cleanup completed"
 
   # Multi-configuration build pipeline (8-bit, 10-bit, 12-bit)
   branches:
@@ -221,11 +214,12 @@ pipelines:
                 - set -euo pipefail
                 - export DEBIAN_FRONTEND=noninteractive
                 - apt-get update
-                - apt-get install -y build-essential cmake nasm yasm git libnuma-dev python3 bc jq
+                - apt-get install -y build-essential cmake nasm yasm git libnuma-dev python3 python3-pip bc jq ffmpeg
                 - export REPO_ROOT="$(pwd)"
                 - 'echo "Repository root: $REPO_ROOT"'
                 - find "$REPO_ROOT/.ci" -type f \( -name "*.sh" -o -name "*.py" \) -exec chmod +x {} +
                 - . "$REPO_ROOT/.ci/test_with_retry.sh"
+                - . "$REPO_ROOT/.ci/results_logger.sh"
                 - echo "=== Building 8-bit ==="
                 - cd source
                 - mkdir -p build-8bit
@@ -242,21 +236,26 @@ pipelines:
                 - echo "Running transforms benchmarks..."
                 - ./test/TestBench --testbench transforms || true
                 - ./x265 --version
-                - echo "=== Comprehensive Encoding Tests ==="
-                - apt-get install -y ffmpeg
+                - echo "=== Comprehensive Encoding Tests with Performance Tracking ==="
+                - mkdir -p "$REPO_ROOT/build_results"
                 - 'echo "Test 1: Basic 8-bit 640x360 encoding..."'
                 - ffmpeg -f lavfi -i testsrc=duration=3:size=640x360:rate=30 -pix_fmt yuv420p test_640x360.yuv -y
-                - ./x265 --input test_640x360.yuv --input-res 640x360 --fps 30 --preset fast --crf 28 --frames 90 -o test1_fast.hevc
+                - ./x265 --input test_640x360.yuv --input-res 640x360 --fps 30 --preset fast --crf 28 --frames 90 -o test1_fast.hevc 2>&1 | tee test1.log
+                - log_encoding_test "Test 1 (Fast)" test1.log
                 - 'echo "Test 2: Medium preset encoding..."'
-                - ./x265 --input test_640x360.yuv --input-res 640x360 --fps 30 --preset medium --crf 23 --frames 90 -o test2_medium.hevc
+                - ./x265 --input test_640x360.yuv --input-res 640x360 --fps 30 --preset medium --crf 23 --frames 90 -o test2_medium.hevc 2>&1 | tee test2.log
+                - log_encoding_test "Test 2 (Medium)" test2.log
                 - 'echo "Test 3: Bitrate control (CBR)..."'
-                - ./x265 --input test_640x360.yuv --input-res 640x360 --fps 30 --preset fast --bitrate 500 --frames 90 -o test3_cbr.hevc
+                - ./x265 --input test_640x360.yuv --input-res 640x360 --fps 30 --preset fast --bitrate 500 --frames 90 -o test3_cbr.hevc 2>&1 | tee test3.log
+                - log_encoding_test "Test 3 (CBR)" test3.log
                 - 'echo "Test 4: Two-pass encoding..."'
-                - ./x265 --input test_640x360.yuv --input-res 640x360 --fps 30 --preset fast --bitrate 500 --pass 1 --frames 90 --stats test4.stats -o test4_pass1.hevc
-                - ./x265 --input test_640x360.yuv --input-res 640x360 --fps 30 --preset fast --bitrate 500 --pass 2 --frames 90 --stats test4.stats -o test4_pass2.hevc
+                - ./x265 --input test_640x360.yuv --input-res 640x360 --fps 30 --preset fast --bitrate 500 --pass 1 --frames 90 --stats test4.stats -o test4_pass1.hevc 2>&1 | tee test4_pass1.log
+                - ./x265 --input test_640x360.yuv --input-res 640x360 --fps 30 --preset fast --bitrate 500 --pass 2 --frames 90 --stats test4.stats -o test4_pass2.hevc 2>&1 | tee test4_pass2.log
+                - log_encoding_test "Test 4 (2-Pass)" test4_pass2.log
                 - 'echo "Test 5: HD 1280x720 encoding..."'
                 - ffmpeg -f lavfi -i testsrc=duration=2:size=1280x720:rate=30 -pix_fmt yuv420p test_1280x720.yuv -y
-                - ./x265 --input test_1280x720.yuv --input-res 1280x720 --fps 30 --preset ultrafast --crf 28 --frames 60 -o test5_hd.hevc
+                - ./x265 --input test_1280x720.yuv --input-res 1280x720 --fps 30 --preset ultrafast --crf 28 --frames 60 -o test5_hd.hevc 2>&1 | tee test5.log
+                - log_encoding_test "Test 5 (HD)" test5.log
                 - echo "=== Encoding Test Summary ==="
                 - ffmpeg -i test1_fast.hevc -f null - 2>&1 | grep -i "frame=" || (echo "Test 1 FAILED" && exit 1)
                 - ffmpeg -i test2_medium.hevc -f null - 2>&1 | grep -i "frame=" || (echo "Test 2 FAILED" && exit 1)
@@ -273,9 +272,26 @@ pipelines:
                   if [ -f "$REPO_ROOT/.ci/generate_junit_report.py" ]; then
                     python3 "$REPO_ROOT/.ci/generate_junit_report.py" || true
                   fi
+                
+                # Generate final summary
+                - echo "=== Generating Performance Summary ==="
+                - cd "$REPO_ROOT"
+                - generate_summary
+                - echo ""
+                - echo "╔══════════════════════════════════════════════════════════════════════╗"
+                - echo "║           MASTER BRANCH BUILD COMPLETE - 8-bit Results              ║"
+                - echo "╚══════════════════════════════════════════════════════════════════════╝"
+                - cat "$REPO_ROOT/build_results/summary.txt" || echo "Summary generation skipped"
               artifacts:
                 - source/build-8bit/x265
                 - source/build-8bit/libx265.so*
+                - source/build-8bit/test/TestBench
+                - build_results/**
+              after-script:
+                - echo "=== Cleaning up 8-bit build ==="
+                - rm -rf source/build-8bit/CMakeFiles source/build-8bit/*.o || true
+                - apt-get clean || true
+                - df -h
 
           - step:
               name: Build x265 (10-bit)
@@ -304,6 +320,10 @@ pipelines:
                 - echo "✓ 10-bit library built successfully"
               artifacts:
                 - source/build-10bit/libx265.a
+              after-script:
+                - echo "=== Cleaning up 10-bit build ==="
+                - rm -rf source/build-10bit/CMakeFiles source/build-10bit/*.o || true
+                - df -h
 
           - step:
               name: Build x265 (12-bit)
@@ -332,6 +352,10 @@ pipelines:
                 - echo "✓ 12-bit library built successfully"
               artifacts:
                 - source/build-12bit/libx265.a
+              after-script:
+                - echo "=== Cleaning up 12-bit build ==="
+                - rm -rf source/build-12bit/CMakeFiles source/build-12bit/*.o || true
+                - df -h
 
   # Daily scheduled builds with comprehensive testing
   custom:
@@ -349,15 +373,7 @@ pipelines:
             - set -euo pipefail
             # Install dependencies
             - apt-get update
-            - apt-get install -y 
-                build-essential 
-                cmake 
-                nasm 
-                yasm 
-                git 
-                libnuma-dev
-                wget
-                time
+            - apt-get install -y build-essential cmake nasm yasm git libnuma-dev wget time ffmpeg
             
             # System info
             - echo "=== System Information ==="
@@ -473,6 +489,15 @@ pipelines:
             - source/build-10bit/libx265.a
             - source/build-12bit/libx265.a
             - source/build/test/TestBench
+          after-script:
+            - echo "=== Cleaning up daily build workspace ==="
+            - rm -rf source/build/CMakeFiles source/build/*.o source/build/test/*.o || true
+            - rm -rf source/build-10bit/CMakeFiles source/build-10bit/*.o || true
+            - rm -rf source/build-12bit/CMakeFiles source/build-12bit/*.o || true
+            - apt-get clean || true
+            - rm -rf /var/lib/apt/lists/* /tmp/* || true
+            - df -h
+            - echo "✓ Daily build cleanup completed"
 
   # Pull requests pipeline
   pull-requests:
@@ -611,3 +636,15 @@ pipelines:
             - echo "=============================================="
             - echo "All tests, security scans, and validations passed"
             - echo "This PR is ready to merge"
+          artifacts:
+            - source/build/x265
+            - source/build/test/TestBench
+            - source/build/test-results.xml
+            - coverage_data/**
+          after-script:
+            - echo "=== Cleaning up PR build workspace ==="
+            - rm -rf source/build/CMakeFiles source/build/*.o source/build/test/*.o || true
+            - apt-get clean || true
+            - rm -rf /var/lib/apt/lists/* /tmp/* || true
+            - df -h
+            - echo "✓ PR build cleanup completed"
