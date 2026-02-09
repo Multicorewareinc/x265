@@ -41,11 +41,16 @@ pipelines:
               cppcheck
               binutils
           
-          # Load CI helper scripts
-          - chmod +x .ci/*.sh .ci/*.py
+          # Set repository root for reliable path resolution
+          - export REPO_ROOT="$(pwd)"
+          - echo "Repository root: $REPO_ROOT"
+          - ls -la "$REPO_ROOT/.ci" | head -10
+          
+          # Load CI helper scripts (POSIX-safe)
+          - find "$REPO_ROOT/.ci" -type f \( -name "*.sh" -o -name "*.py" \) -exec chmod +x {} +
           - apt-get install -y jq  # For JSON processing
-          - source .ci/test_with_retry.sh
-          - source .ci/results_logger.sh
+          - . "$REPO_ROOT/.ci/test_with_retry.sh"
+          - . "$REPO_ROOT/.ci/results_logger.sh"
           
           # Display versions for debugging
           - echo "=== Build Environment ==="
@@ -125,7 +130,7 @@ pipelines:
           
           # Generate code coverage report
           - echo "=== Generating Code Coverage Report ==="
-          - cd ../../..
+          - cd "$REPO_ROOT"
           - lcov --capture --directory source/build --output-file coverage.info || echo "Coverage capture failed"
           - lcov --remove coverage.info '/usr/*' --output-file coverage_filtered.info || true
           - genhtml coverage_filtered.info --output-directory coverage_report || echo "Coverage HTML generation failed"
@@ -134,23 +139,34 @@ pipelines:
           - cp -r coverage_report coverage_data/ || true
           - echo "Coverage report saved to coverage_data/"
           
-          # Security scanning
+          # Security scanning (with proper error handling)
           - echo "=== Security Vulnerability Scanning ==="
-          - bash .ci/security_scan.sh || echo "Security scan completed with warnings"
+          - cd "$REPO_ROOT"
+          - |
+            if [ -f "$REPO_ROOT/.ci/security_scan.sh" ]; then
+              bash "$REPO_ROOT/.ci/security_scan.sh" || echo "⚠️  Security scan found warnings"
+            else
+              echo "❌ Security scan script missing!"
+            fi
           
           # Generate JUnit test report
           - echo "=== Generating JUnit Test Report ==="
-          - cd source/build
-          - python3 ../../.ci/generate_junit_report.py || echo "JUnit report generation skipped"
-          - cd ../..
+          - cd "$REPO_ROOT"
+          - |
+            if [ -f "$REPO_ROOT/.ci/generate_junit_report.py" ]; then
+              python3 "$REPO_ROOT/.ci/generate_junit_report.py" || echo "JUnit report generation skipped"
+            else
+              echo "⚠️  JUnit report script not found"
+            fi
           
           # Performance benchmarking
           - echo "=== Performance Benchmark Tracking ==="
-          - source .ci/benchmark_tracker.sh || true
+          - cd "$REPO_ROOT"
+          - source "$REPO_ROOT/.ci/benchmark_tracker.sh" || true
           
           # Generate final results summary
           - echo "=== Generating Final Results Summary ==="
-          - cd ../..
+          - cd "$REPO_ROOT"
           - generate_summary
           - create_text_summary
           - create_historical_report
@@ -187,9 +203,11 @@ pipelines:
                 - build
               script:
                 - apt-get update
-                - apt-get install -y build-essential cmake nasm yasm git libnuma-dev python3 bc
-                - chmod +x .ci/*.sh .ci/*.py
-                - source .ci/test_with_retry.sh
+                - apt-get install -y build-essential cmake nasm yasm git libnuma-dev python3 bc jq
+                - export REPO_ROOT="$(pwd)"
+                - echo "Repository root: $REPO_ROOT"
+                - find "$REPO_ROOT/.ci" -type f \( -name "*.sh" -o -name "*.py" \) -exec chmod +x {} +
+                - . "$REPO_ROOT/.ci/test_with_retry.sh"
                 - echo "=== Building 8-bit ==="
                 - cd source
                 - mkdir -p build-8bit
@@ -228,9 +246,15 @@ pipelines:
                 - ffmpeg -i test4_pass2.hevc -f null - 2>&1 | grep -i "frame=" || (echo "Test 4 FAILED" && exit 1)
                 - ffmpeg -i test5_hd.hevc -f null - 2>&1 | grep -i "frame=" || (echo "Test 5 FAILED" && exit 1)
                 - echo "✓ All encoding tests completed successfully"
-                - cd ../../..
-                - bash .ci/security_scan.sh || echo "Security scan completed"
-                - python3 .ci/generate_junit_report.py || true
+                - cd "$REPO_ROOT"
+                - |
+                  if [ -f "$REPO_ROOT/.ci/security_scan.sh" ]; then
+                    bash "$REPO_ROOT/.ci/security_scan.sh" || echo "Security scan completed with warnings"
+                  fi
+                - |
+                  if [ -f "$REPO_ROOT/.ci/generate_junit_report.py" ]; then
+                    python3 "$REPO_ROOT/.ci/generate_junit_report.py" || true
+                  fi
               artifacts:
                 - source/build-8bit/x265
                 - source/build-8bit/libx265.so*
@@ -408,9 +432,12 @@ pipelines:
           name: PR Build and Test
           script:
             - apt-get update
-            - apt-get install -y build-essential cmake nasm yasm git libnuma-dev python3 python3-pip bc lcov cppcheck
-            - chmod +x .ci/*.sh .ci/*.py
-            - source .ci/test_with_retry.sh
+            - apt-get install -y build-essential cmake nasm yasm git libnuma-dev python3 python3-pip bc lcov cppcheck jq
+            - export REPO_ROOT="$(pwd)"
+            - echo "Repository root: $REPO_ROOT"
+            - ls -la "$REPO_ROOT/.ci"
+            - find "$REPO_ROOT/.ci" -type f \( -name "*.sh" -o -name "*.py" \) -exec chmod +x {} +
+            - . "$REPO_ROOT/.ci/test_with_retry.sh"
             - echo "=== Building x265 for PR (strict mode) ==="
             - cd source
             - mkdir -p build
@@ -496,22 +523,31 @@ pipelines:
             
             # Code coverage report
             - echo "=== Generating Coverage Report ==="
-            - cd ../../..
+            - cd "$REPO_ROOT"
             - lcov --capture --directory source/build --output-file coverage.info || true
             - lcov --remove coverage.info '/usr/*' --output-file coverage_filtered.info || true
             - lcov --list coverage_filtered.info || true
             - mkdir -p coverage_data
             - genhtml coverage_filtered.info --output-directory coverage_data/coverage_report || true
             
-            # Security scanning (must pass for PR)
+            # Security scanning (STRICT - must pass for PR)
             - echo "=== Security Scanning (STRICT) ==="
-            - bash .ci/security_scan.sh || (echo "❌ Security scan found issues" && exit 1)
+            - cd "$REPO_ROOT"
+            - |
+              if [ -f "$REPO_ROOT/.ci/security_scan.sh" ]; then
+                bash "$REPO_ROOT/.ci/security_scan.sh" || (echo "❌ Security scan found issues" && exit 1)
+              else
+                echo "❌ Security scan script missing!"
+                exit 1
+              fi
             
             # Generate test reports
             - echo "=== Generating Test Reports ==="
-            - cd source/build
-            - python3 ../../.ci/generate_junit_report.py || true
-            - cd ../..
+            - cd "$REPO_ROOT"
+            - |
+              if [ -f "$REPO_ROOT/.ci/generate_junit_report.py" ]; then
+                python3 "$REPO_ROOT/.ci/generate_junit_report.py" || true
+              fi
             
             # Final summary
             - echo "=============================================="
