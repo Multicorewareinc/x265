@@ -209,6 +209,25 @@ if(POWER)
     endif()
 endif()
 
+if(ENABLE_ASSEMBLY AND LOONGARCH64)
+    if(GCC AND (CMAKE_CXX_FLAGS_RELEASE MATCHES "-O3"))
+        message(STATUS "Detected CXX compiler using -O3 optimization level")
+    endif()
+
+    set(C_SRCS asm-primitives.cpp loopfilter.h)
+    enable_language(ASM)
+
+    # add loongarch assembly/intrinsic files here
+    set(A_SRCS loopfilter.S)
+
+    set(LOONGARCH64_ASMS "${A_SRCS}" CACHE INTERNAL "LOONGARCH64 Assembly Sources")
+    foreach(SRC ${C_SRCS})
+        set(ASM_PRIMITIVES ${ASM_PRIMITIVES} loongarch64/${SRC})
+    endforeach()
+    source_group(Assembly FILES ${ASM_PRIMITIVES})
+
+endif(ENABLE_ASSEMBLY AND LOONGARCH64)
+
 
 # set_target_properties can't do list expansion
 string(REPLACE ";" " " VERSION_FLAGS "${VFLAGS}")
