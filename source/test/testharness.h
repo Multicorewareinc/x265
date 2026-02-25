@@ -92,6 +92,9 @@ static inline uint32_t __rdtsc(void)
     asm volatile("mrs %x0, cntvct_el0" : "=r"(a));
 #elif  X265_ARCH_RISCV64
     asm volatile("rdtime %0" : "=r"(a));
+#elif  X265_ARCH_LOONGARCH64
+    uint32_t id = 0;
+    asm volatile("rdtime.d  %0,  %1": "=r"(a), "=r"(id));
 #endif
     return a;
 }
@@ -141,6 +144,8 @@ int PFX(stack_pagealign)(int (*func)(), int align);
  * needs an explicit asm check because it only sometimes crashes in normal use. */
 intptr_t PFX(checkasm_call)(intptr_t (*func)(), int *ok, ...);
 float PFX(checkasm_call_float)(float (*func)(), int *ok, ...);
+#elif (X265_ARCH_LOONGARCH64)
+int PFX(stack_pagealign)(int (*func)(), int align);
 #elif (X265_ARCH_ARM == 0 && X265_ARCH_ARM64 == 0 && X265_ARCH_RISCV64 == 0)
 #define PFX(stack_pagealign)(func, align) func()
 #endif
