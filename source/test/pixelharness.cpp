@@ -2335,9 +2335,10 @@ bool PixelHarness::check_ssimDist(ssimDistortion_t ref, ssimDistortion_t opt)
     for (int i = 0; i < ITERS; i++)
     {
         int index = i % TEST_CASES;
+        int index2 = (i + 10) % TEST_CASES;
         int k1 = rand() % 5, k2 = rand() % 5;
-        ref(pixel_test_buff[index] + j, srcStride[k1], pixel_test_buff[index + 10] + j, dstStride[k2], &ref_dest1, shift, &ref_dest2);
-        opt(pixel_test_buff[index] + j, srcStride[k1], pixel_test_buff[index + 10] + j, dstStride[k2], &opt_dest1, shift, &opt_dest2);
+        ref(pixel_test_buff[index] + j, srcStride[k1], pixel_test_buff[index2] + j, dstStride[k2], &ref_dest1, shift, &ref_dest2);
+        opt(pixel_test_buff[index] + j, srcStride[k1], pixel_test_buff[index2] + j, dstStride[k2], &opt_dest1, shift, &opt_dest2);
 
         if (opt_dest1 != ref_dest1 && opt_dest2 != ref_dest2)
         {
