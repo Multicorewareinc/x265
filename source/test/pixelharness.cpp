@@ -3537,7 +3537,7 @@ void PixelHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimi
             uint64_t dst1 = 0, dst2 = 0;
             int shift = X265_DEPTH - 8;
             printf("ssimDist[%dx%d]", 4 << i, 4 << i);
-            REPORT_SPEEDUP(opt.cu[i].ssimDist, ref.cu[i].ssimDist, pixel_test_buff[0], 32, pixel_test_buff[5], 64, &dst1, shift, &dst2);
+            REPORT_SPEEDUP(opt.cu[i].ssimDist, ref.cu[i].ssimDist, pixel_test_buff[0], 32, pixel_test_buff[2], 64, &dst1, shift, &dst2);
         }
     }
 
