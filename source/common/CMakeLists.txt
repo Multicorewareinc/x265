@@ -209,6 +209,25 @@ if(POWER)
     endif()
 endif()
 
+if(ENABLE_ASSEMBLY AND LOONGARCH64)
+    if(GCC AND (CMAKE_CXX_FLAGS_RELEASE MATCHES "-O3"))
+        message(STATUS "Detected CXX compiler using -O3 optimization level")
+    endif()
+
+    set(C_SRCS asm-primitives.cpp loopfilter.h ipfilter8.h dct.h pixel.h intrapred.h blockcopy8.h)
+    enable_language(ASM)
+
+    # add loongarch assembly/intrinsic files here
+    set(A_SRCS loopfilter.S ipfilter8.S dct.S mc-a.S intrapred8.S pixel.S ssd.S sad.S mc-a2.S blockcopy8.S)
+
+    set(LOONGARCH64_ASMS "${A_SRCS}" CACHE INTERNAL "LOONGARCH64 Assembly Sources")
+    foreach(SRC ${C_SRCS})
+        set(ASM_PRIMITIVES ${ASM_PRIMITIVES} loongarch64/${SRC})
+    endforeach()
+    source_group(Assembly FILES ${ASM_PRIMITIVES})
+
+endif(ENABLE_ASSEMBLY AND LOONGARCH64)
+
 
 # set_target_properties can't do list expansion
 string(REPLACE ";" " " VERSION_FLAGS "${VFLAGS}")
@@ -220,7 +239,11 @@ if(HAVE_STRTOK_R)
 endif()
 
 if(GCC AND CC_HAS_NO_NARROWING)
-    set_source_files_properties(cpu.cpp PROPERTIES COMPILE_FLAGS -Wno-narrowing)
+    if(ENABLE_ASSEMBLY)
+        set_source_files_properties(cpu.cpp PROPERTIES COMPILE_FLAGS "-DENABLE_ASSEMBLY=1 -Wno-narrowing")
+    else()
+        set_source_files_properties(cpu.cpp PROPERTIES COMPILE_FLAGS -Wno-narrowing)
+    endif()
 endif()
 if(WIN32)
     set(WINXP winxp.h winxp.cpp)
