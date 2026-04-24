@@ -1170,6 +1170,12 @@ void Encoder::copyUserSEIMessages(Frame *frame, const x265_picture* pic_in)
                 input = seiMsg;
             else
                 input = pic_in->userSEI.payloads[i];
+            
+            if (frame->m_userSEI.payloads[i].payload && (frame->m_userSEI.payloads[i].payloadSize < input.payloadSize))
+            {
+                delete[] frame->m_userSEI.payloads[i].payload;
+                frame->m_userSEI.payloads[i].payload = NULL;
+            }
 
             // TODO: condition may improve, because buffer size may change from big to small, but never back to original allocate size
             if (frame->m_userSEI.payloads[i].payload && frame->m_userSEI.payloads[i].payloadSize < input.payloadSize)
