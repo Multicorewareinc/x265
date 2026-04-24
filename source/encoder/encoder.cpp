@@ -3481,10 +3481,18 @@ void Encoder::getStreamHeaders(NALList& list, Entropy& sbacCoder, Bitstream& bs)
         if (opts)
         {
             char *buffer = X265_MALLOC(char, strlen(opts) + strlen(PFX(version_str)) +
-                strlen(PFX(build_info_str)) + 200);
+                strlen(PFX(build_info_str)) + 200 + 16);
             if (buffer)
             {
-                snprintf(buffer, strlen(opts) + strlen(PFX(version_str)) + strlen(PFX(build_info_str)) + 200,
+                /* x265's identifying GUID */
+                const uint8_t uuid_iso_iec_11578[16] = {
+                    0x2C, 0xA2, 0xDE, 0x09, 0xB5, 0x17, 0x47, 0xDB,
+                    0xBB, 0x55, 0xA4, 0xFE, 0x7F, 0xC2, 0xFC, 0x4E
+                };
+                for (int i = 0; i < 16; i++) {
+                    buffer[i] = uuid_iso_iec_11578[i];
+                }
+                snprintf(&buffer[16], strlen(opts) + strlen(PFX(version_str)) + strlen(PFX(build_info_str)) + 200,
                     "x265 (build %d) - %s:%s - H.265/HEVC codec - "
                     "Copyright 2013-2018 (c) Multicoreware, Inc - "
                     "http://x265.org - options: %s",
