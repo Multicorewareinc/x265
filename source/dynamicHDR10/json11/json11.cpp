@@ -25,6 +25,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <limits>
+#include <cstdint>
 
 #if _MSC_VER
 #pragma warning(disable: 4510) //const member cannot be default initialized
