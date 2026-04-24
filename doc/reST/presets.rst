@@ -110,7 +110,7 @@ after the preset.
 .. Note::
 
 	The *psnr* and *ssim* tune options disable all optimizations that
-	sacrafice metric scores for perceived visual quality (also known as
+	sacrifice metric scores for perceived visual quality (also known as
 	psycho-visual optimizations). By default x265 always tunes for
 	highest perceived visual quality but if one intends to measure an
 	encode using PSNR or SSIM for the purpose of benchmarking, we highly
