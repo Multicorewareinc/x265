@@ -44,6 +44,15 @@ static const sleepbitmap_t ALL_POOL_THREADS = (sleepbitmap_t)-1;
 enum { MAX_POOL_THREADS = sizeof(sleepbitmap_t) * 8 };
 enum { INVALID_SLICE_PRIORITY = 10 }; // a value larger than any X265_TYPE_* macro
 
+#if defined(_WIN32_WINNT) && _WIN32_WINNT >= _WIN32_WINNT_WIN7
+#include <winapifamily.h>
+# if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+// GetNumaNodeProcessorMaskEx is not available in UWP apps
+#  define USE_WIN32_AFFINITY 1
+# endif
+#endif
+
+
 // Frame level job providers. FrameEncoder and Lookahead derive from
 // this class and implement findJob()
 class JobProvider
@@ -84,7 +93,7 @@ public:
     int           m_numProviders;
     int           m_numWorkers;
     void*         m_numaMask; // node mask in linux, cpu mask in windows
-#if defined(_WIN32_WINNT) && _WIN32_WINNT >= _WIN32_WINNT_WIN7 
+#ifdef USE_WIN32_AFFINITY
     GROUP_AFFINITY m_groupAffinity;
 #endif
     bool          m_isActive;
