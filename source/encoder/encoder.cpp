@@ -6267,51 +6267,91 @@ void Encoder::printReconfigureParams()
 
 void Encoder::readUserSeiFile(x265_sei_payload& seiMsg, int curPoc)
 {
-    char line[1024];
+    // SEI File Format:
+    // <poc><space><prefix><space><nal_unit_type>/<sei_type><space><sei_payload>
+
+    const int BASE64_CHARS_PER_GROUP = 4;
+    const int BYTES_PER_GROUP = 3;
+
+    const int MAX_LINE_LENGTH = 1024;
+    char line[MAX_LINE_LENGTH];
+
+    if (seiMsg.payload) {
+        x265_free(seiMsg.payload);
+        seiMsg.payload = NULL;
+    }
+
     while (fgets(line, sizeof(line), m_naluFile))
     {
-        int poc = atoi(strtok(line, " "));
-        char *prefix = strtok(NULL, " ");
-        int nalType = atoi(strtok(NULL, "/"));
-        int payloadType = atoi(strtok(NULL, " "));
-        char *base64Encode = strtok(NULL, "\n");
-        int base64EncodeLength = (int)strlen(base64Encode);
-        char* decodedString;
-        decodedString = (char*)malloc(sizeof(char) * (base64EncodeLength));
-        char *base64Decode = SEI::base64Decode(base64Encode, base64EncodeLength, decodedString);
-        if (nalType == NAL_UNIT_PREFIX_SEI && (!strcmp(prefix, "PREFIX")))
-        {
-            int currentPOC = curPoc;
-            if (currentPOC == poc)
-            {
-                seiMsg.payloadSize = (base64EncodeLength / 4) * 3;
-                seiMsg.payload = (uint8_t*)x265_malloc(sizeof(uint8_t) * seiMsg.payloadSize);
-                if (!seiMsg.payload)
-                {
-                    x265_log(m_param, X265_LOG_ERROR, "Unable to allocate memory for SEI payload\n");
-                    break;
-                }
-                if (payloadType == 4)
-                    seiMsg.payloadType = USER_DATA_REGISTERED_ITU_T_T35;
-                else if (payloadType == 5)
-                    seiMsg.payloadType = USER_DATA_UNREGISTERED;
-                else
-                {
-                    x265_log(m_param, X265_LOG_WARNING, "Unsupported SEI payload Type for frame %d\n", poc);
-                    break;
-                }
-                memcpy(seiMsg.payload, base64Decode, seiMsg.payloadSize);
-                free(decodedString);
-                break;
-            }
+        if (strlen(line) >= MAX_LINE_LENGTH - 1) {
+            x265_log(m_param, X265_LOG_WARNING, "SEI file contains a line longer than maximum allowed length\n");
+            continue;
         }
-        else
+
+        // Parse the line.
+        char* token = strtok(line, " ");
+        if (!token) continue;
+        int poc = atoi(token);
+
+        if (curPoc != poc) continue;
+
+        char *prefix = strtok(NULL, " ");
+        if (!prefix) continue;
+
+        token = strtok(NULL, "/");
+        if (!token) continue;
+        int nalType = atoi(token);
+
+        token = strtok(NULL, " ");
+        if (!token) continue;
+        int payloadType = atoi(token);
+
+        // Check NAL type.
+        if (nalType != NAL_UNIT_PREFIX_SEI || strcmp(prefix, "PREFIX") != 0)
         {
             x265_log(m_param, X265_LOG_WARNING, "SEI message for frame %d is not inserted. Will support only PREFIX SEI messages.\n", poc);
             break;
         }
-        if (base64Decode)
-            free(base64Decode);
+
+        char *base64Encode = strtok(NULL, "\n");
+        if (!base64Encode || *base64Encode == '\0') continue;
+
+        int base64EncodeLength = (int)strlen(base64Encode);
+
+        // Allocate and decode.
+        char* decodedString = (char*)malloc(sizeof(char) * base64EncodeLength);
+        if (!decodedString) break;
+
+        decodedString = SEI::base64Decode(base64Encode, base64EncodeLength, decodedString);
+
+        // Set up payload.
+        seiMsg.payloadSize = (base64EncodeLength * BYTES_PER_GROUP) / BASE64_CHARS_PER_GROUP;
+        seiMsg.payload = (uint8_t*)x265_malloc(sizeof(uint8_t) * seiMsg.payloadSize);
+        if (!seiMsg.payload)
+        {
+            x265_log(m_param, X265_LOG_ERROR, "Unable to allocate memory for SEI payload\n");
+            free(decodedString);
+            break;
+        }
+
+        // Set payload type.
+        if (payloadType == USER_DATA_REGISTERED_ITU_T_T35)  // 4
+            seiMsg.payloadType = USER_DATA_REGISTERED_ITU_T_T35;
+        else if (payloadType == USER_DATA_UNREGISTERED)  // 5
+            seiMsg.payloadType = USER_DATA_UNREGISTERED;
+        else
+        {
+            x265_log(m_param, X265_LOG_WARNING, "Unsupported SEI payload Type for frame %d\n", poc);
+            free(decodedString);
+            x265_free(seiMsg.payload);
+            seiMsg.payload = NULL;
+            break;
+        }
+
+        // Copy and clean up.
+        memcpy(seiMsg.payload, decodedString, seiMsg.payloadSize);
+        free(decodedString);
+        break;
     }
 }
 
