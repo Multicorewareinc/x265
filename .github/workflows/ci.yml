@@ -63,16 +63,15 @@ jobs:
           mkdir -p build/8bit && cd build/8bit
           cmake ../../source \
             -DCMAKE_BUILD_TYPE=Release \
-            -DENABLE_SHARED=ON \
+            -DENABLE_SHARED=OFF \
             -DENABLE_CLI=ON \
             -DENABLE_ASSEMBLY=ON \
             -DENABLE_TESTS=ON \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           make -j$(nproc)
-          test -f x265       && echo "CLI binary OK"
-          test -f libx265.so && echo "Shared library OK"
-          test -f libx265.a  && echo "Static library OK"
+          test -f x265      && echo "CLI binary OK"
+          test -f libx265.a && echo "Static library OK"
           ./x265 --version
           echo "--- Unit tests ---"
           ./test/TestBench
@@ -88,9 +87,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lib-8bit
-          path: |
-            build/8bit/libx265.so*
-            build/8bit/libx265.a
+          path: build/8bit/libx265.a
           retention-days: 7
 
   build-10bit:
