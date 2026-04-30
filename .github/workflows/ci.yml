@@ -3,6 +3,8 @@ name: CI
 on:
   push:
   pull_request:
+  schedule:
+    - cron: '30 22 * * *'  # Daily at 4:00 AM IST (UTC+5:30)
 
 # Cancel in-progress runs for the same ref when a new commit is pushed
 concurrency:
