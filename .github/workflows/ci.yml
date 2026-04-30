@@ -20,11 +20,15 @@ defaults:
   run:
     shell: bash
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Shared helper written inline in every test job's "Write step summary" step.
+# Parses /tmp/summary.log (format: "  Label | encoded N frames in Xs (F fps), B kb/s, Avg QP:Q")
+# and produces a Markdown table appended to GITHUB_STEP_SUMMARY.
+# ─────────────────────────────────────────────────────────────────────────────
+
 jobs:
   # ───────────────────────────────────────────────────────────────────────────
   # Phase 1 – Builds (parallel)
-  # Each job compiles once, runs unit tests, then uploads the CLI binary.
-  # Test jobs in Phase 2 download those binaries instead of rebuilding.
   # ───────────────────────────────────────────────────────────────────────────
 
   build-8bit:
@@ -192,9 +196,6 @@ jobs:
           path: build/12bit/x265
           retention-days: 7
 
-  # Multilib requires the 3 builds above only for sequencing (it rebuilds the
-  # sub-libs with different cmake flags: ENABLE_CLI=OFF, EXPORT_C_API=OFF).
-  # It runs concurrently with test jobs to avoid blocking the critical path.
   build-multilib:
     name: "Build Multi-lib (8+10+12 bit)"
     runs-on: ubuntu-22.04
@@ -285,8 +286,9 @@ jobs:
           retention-days: 7
 
   # ───────────────────────────────────────────────────────────────────────────
-  # Phase 2 – Tests (parallel)
-  # Each job downloads only the binary it needs — no source rebuild.
+  # Phase 2 – Tests (parallel; each depends only on the binary it needs)
+  # Each job writes a per-job Markdown table to GITHUB_STEP_SUMMARY so
+  # results are visible immediately on the individual job page.
   # ───────────────────────────────────────────────────────────────────────────
 
   test-cli-presets:
@@ -354,6 +356,31 @@ jobs:
           mkdir -p summaries && cp /tmp/summary.log summaries/cli-presets.log 2>/dev/null || true
           test $FAIL -eq 0
 
+      - name: Write step summary
+        if: always()
+        run: |
+          {
+            echo "## CLI Presets & Tune Modes"
+            echo ""
+            echo "| Test | Frames | FPS | Bitrate (kb/s) | Avg QP |"
+            echo "|------|-------:|----:|---------------:|-------:|"
+            if [ -f /tmp/summary.log ] && grep -qv '^[[:space:]]*$' /tmp/summary.log 2>/dev/null; then
+              while IFS= read -r line; do
+                [ -z "${line//[[:space:]]/}" ] && continue
+                label=$(echo "$line" | sed 's/^ *//' | cut -d'|' -f1 | sed 's/ *$//')
+                rest=$(echo "$line" | cut -d'|' -f2-)
+                frames=$(echo "$rest" | grep -oP 'encoded \K\d+' || true)
+                fps=$(echo "$rest" | grep -oP '\(\K[\d.]+(?= fps\))' || true)
+                bitrate=$(echo "$rest" | grep -oP '[\d.]+(?= kb/s)' || true)
+                qp=$(echo "$rest" | grep -oP 'Avg QP:\K[\d.]+' || true)
+                echo "| \`${label:-?}\` | ${frames:--} | ${fps:--} | ${bitrate:--} | ${qp:--} |"
+              done < /tmp/summary.log
+            else
+              echo "| _no data_ | | | | |"
+            fi
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload summaries
         if: always()
         uses: actions/upload-artifact@v4
@@ -419,6 +446,31 @@ jobs:
           echo "=== Rate Control Results FAIL=$FAIL ==="
           mkdir -p summaries && cp /tmp/summary.log summaries/rate-control.log 2>/dev/null || true
           test $FAIL -eq 0
+
+      - name: Write step summary
+        if: always()
+        run: |
+          {
+            echo "## Rate Control Modes"
+            echo ""
+            echo "| Test | Frames | FPS | Bitrate (kb/s) | Avg QP |"
+            echo "|------|-------:|----:|---------------:|-------:|"
+            if [ -f /tmp/summary.log ] && grep -qv '^[[:space:]]*$' /tmp/summary.log 2>/dev/null; then
+              while IFS= read -r line; do
+                [ -z "${line//[[:space:]]/}" ] && continue
+                label=$(echo "$line" | sed 's/^ *//' | cut -d'|' -f1 | sed 's/ *$//')
+                rest=$(echo "$line" | cut -d'|' -f2-)
+                frames=$(echo "$rest" | grep -oP 'encoded \K\d+' || true)
+                fps=$(echo "$rest" | grep -oP '\(\K[\d.]+(?= fps\))' || true)
+                bitrate=$(echo "$rest" | grep -oP '[\d.]+(?= kb/s)' || true)
+                qp=$(echo "$rest" | grep -oP 'Avg QP:\K[\d.]+' || true)
+                echo "| \`${label:-?}\` | ${frames:--} | ${fps:--} | ${bitrate:--} | ${qp:--} |"
+              done < /tmp/summary.log
+            else
+              echo "| _no data_ | | | | |"
+            fi
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload summaries
         if: always()
@@ -521,6 +573,31 @@ jobs:
           mkdir -p summaries && cp /tmp/summary.log summaries/encoding-features.log 2>/dev/null || true
           test $FAIL -eq 0
 
+      - name: Write step summary
+        if: always()
+        run: |
+          {
+            echo "## Encoding Features"
+            echo ""
+            echo "| Test | Frames | FPS | Bitrate (kb/s) | Avg QP |"
+            echo "|------|-------:|----:|---------------:|-------:|"
+            if [ -f /tmp/summary.log ] && grep -qv '^[[:space:]]*$' /tmp/summary.log 2>/dev/null; then
+              while IFS= read -r line; do
+                [ -z "${line//[[:space:]]/}" ] && continue
+                label=$(echo "$line" | sed 's/^ *//' | cut -d'|' -f1 | sed 's/ *$//')
+                rest=$(echo "$line" | cut -d'|' -f2-)
+                frames=$(echo "$rest" | grep -oP 'encoded \K\d+' || true)
+                fps=$(echo "$rest" | grep -oP '\(\K[\d.]+(?= fps\))' || true)
+                bitrate=$(echo "$rest" | grep -oP '[\d.]+(?= kb/s)' || true)
+                qp=$(echo "$rest" | grep -oP 'Avg QP:\K[\d.]+' || true)
+                echo "| \`${label:-?}\` | ${frames:--} | ${fps:--} | ${bitrate:--} | ${qp:--} |"
+              done < /tmp/summary.log
+            else
+              echo "| _no data_ | | | | |"
+            fi
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload summaries
         if: always()
         uses: actions/upload-artifact@v4
@@ -581,6 +658,31 @@ jobs:
           echo "=== Analysis/Segment Results FAIL=$FAIL ==="
           mkdir -p summaries && cp /tmp/summary.log summaries/analysis-save-load.log 2>/dev/null || true
           test $FAIL -eq 0
+
+      - name: Write step summary
+        if: always()
+        run: |
+          {
+            echo "## Analysis Save/Load & Segment Encoding"
+            echo ""
+            echo "| Test | Frames | FPS | Bitrate (kb/s) | Avg QP |"
+            echo "|------|-------:|----:|---------------:|-------:|"
+            if [ -f /tmp/summary.log ] && grep -qv '^[[:space:]]*$' /tmp/summary.log 2>/dev/null; then
+              while IFS= read -r line; do
+                [ -z "${line//[[:space:]]/}" ] && continue
+                label=$(echo "$line" | sed 's/^ *//' | cut -d'|' -f1 | sed 's/ *$//')
+                rest=$(echo "$line" | cut -d'|' -f2-)
+                frames=$(echo "$rest" | grep -oP 'encoded \K\d+' || true)
+                fps=$(echo "$rest" | grep -oP '\(\K[\d.]+(?= fps\))' || true)
+                bitrate=$(echo "$rest" | grep -oP '[\d.]+(?= kb/s)' || true)
+                qp=$(echo "$rest" | grep -oP 'Avg QP:\K[\d.]+' || true)
+                echo "| \`${label:-?}\` | ${frames:--} | ${fps:--} | ${bitrate:--} | ${qp:--} |"
+              done < /tmp/summary.log
+            else
+              echo "| _no data_ | | | | |"
+            fi
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload summaries
         if: always()
@@ -660,6 +762,31 @@ jobs:
           mkdir -p summaries && cp /tmp/summary.log summaries/bitstream-validation.log 2>/dev/null || true
           test $FAIL -eq 0
 
+      - name: Write step summary
+        if: always()
+        run: |
+          {
+            echo "## Bitstream Validation"
+            echo ""
+            echo "| Test | Frames | FPS | Bitrate (kb/s) | Avg QP |"
+            echo "|------|-------:|----:|---------------:|-------:|"
+            if [ -f /tmp/summary.log ] && grep -qv '^[[:space:]]*$' /tmp/summary.log 2>/dev/null; then
+              while IFS= read -r line; do
+                [ -z "${line//[[:space:]]/}" ] && continue
+                label=$(echo "$line" | sed 's/^ *//' | cut -d'|' -f1 | sed 's/ *$//')
+                rest=$(echo "$line" | cut -d'|' -f2-)
+                frames=$(echo "$rest" | grep -oP 'encoded \K\d+' || true)
+                fps=$(echo "$rest" | grep -oP '\(\K[\d.]+(?= fps\))' || true)
+                bitrate=$(echo "$rest" | grep -oP '[\d.]+(?= kb/s)' || true)
+                qp=$(echo "$rest" | grep -oP 'Avg QP:\K[\d.]+' || true)
+                echo "| \`${label:-?}\` | ${frames:--} | ${fps:--} | ${bitrate:--} | ${qp:--} |"
+              done < /tmp/summary.log
+            else
+              echo "| _no data_ | | | | |"
+            fi
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload summaries
         if: always()
         uses: actions/upload-artifact@v4
@@ -724,6 +851,31 @@ jobs:
           echo "=== Threading Results FAIL=$FAIL ==="
           mkdir -p summaries && cp /tmp/summary.log summaries/threading.log 2>/dev/null || true
           test $FAIL -eq 0
+
+      - name: Write step summary
+        if: always()
+        run: |
+          {
+            echo "## Threading & Parallelism"
+            echo ""
+            echo "| Test | Frames | FPS | Bitrate (kb/s) | Avg QP |"
+            echo "|------|-------:|----:|---------------:|-------:|"
+            if [ -f /tmp/summary.log ] && grep -qv '^[[:space:]]*$' /tmp/summary.log 2>/dev/null; then
+              while IFS= read -r line; do
+                [ -z "${line//[[:space:]]/}" ] && continue
+                label=$(echo "$line" | sed 's/^ *//' | cut -d'|' -f1 | sed 's/ *$//')
+                rest=$(echo "$line" | cut -d'|' -f2-)
+                frames=$(echo "$rest" | grep -oP 'encoded \K\d+' || true)
+                fps=$(echo "$rest" | grep -oP '\(\K[\d.]+(?= fps\))' || true)
+                bitrate=$(echo "$rest" | grep -oP '[\d.]+(?= kb/s)' || true)
+                qp=$(echo "$rest" | grep -oP 'Avg QP:\K[\d.]+' || true)
+                echo "| \`${label:-?}\` | ${frames:--} | ${fps:--} | ${bitrate:--} | ${qp:--} |"
+              done < /tmp/summary.log
+            else
+              echo "| _no data_ | | | | |"
+            fi
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload summaries
         if: always()
@@ -791,6 +943,31 @@ jobs:
           mkdir -p summaries && cp /tmp/summary.log summaries/quality-metrics.log 2>/dev/null || true
           test $FAIL -eq 0
 
+      - name: Write step summary
+        if: always()
+        run: |
+          {
+            echo "## Quality Metrics (SSIM / PSNR)"
+            echo ""
+            echo "| Test | Frames | FPS | Bitrate (kb/s) | Avg QP |"
+            echo "|------|-------:|----:|---------------:|-------:|"
+            if [ -f /tmp/summary.log ] && grep -qv '^[[:space:]]*$' /tmp/summary.log 2>/dev/null; then
+              while IFS= read -r line; do
+                [ -z "${line//[[:space:]]/}" ] && continue
+                label=$(echo "$line" | sed 's/^ *//' | cut -d'|' -f1 | sed 's/ *$//')
+                rest=$(echo "$line" | cut -d'|' -f2-)
+                frames=$(echo "$rest" | grep -oP 'encoded \K\d+' || true)
+                fps=$(echo "$rest" | grep -oP '\(\K[\d.]+(?= fps\))' || true)
+                bitrate=$(echo "$rest" | grep -oP '[\d.]+(?= kb/s)' || true)
+                qp=$(echo "$rest" | grep -oP 'Avg QP:\K[\d.]+' || true)
+                echo "| \`${label:-?}\` | ${frames:--} | ${fps:--} | ${bitrate:--} | ${qp:--} |"
+              done < /tmp/summary.log
+            else
+              echo "| _no data_ | | | | |"
+            fi
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload summaries
         if: always()
         uses: actions/upload-artifact@v4
@@ -821,7 +998,6 @@ jobs:
       - name: Install runtime dependencies
         run: sudo apt-get update -qq && sudo apt-get install -y -qq libnuma1 ffmpeg wget
 
-      # Cache the xiph.org test videos to avoid flaky network downloads
       - name: Cache xiph.org test videos
         id: cache-videos
         uses: actions/cache@v4
@@ -877,6 +1053,31 @@ jobs:
           echo "=== Real-World Video Results FAIL=$FAIL ==="
           mkdir -p summaries && cp /tmp/summary.log summaries/realworld-video.log 2>/dev/null || true
           test $FAIL -eq 0
+
+      - name: Write step summary
+        if: always()
+        run: |
+          {
+            echo "## Real-World Video (Y4M)"
+            echo ""
+            echo "| Test | Frames | FPS | Bitrate (kb/s) | Avg QP |"
+            echo "|------|-------:|----:|---------------:|-------:|"
+            if [ -f /tmp/summary.log ] && grep -qv '^[[:space:]]*$' /tmp/summary.log 2>/dev/null; then
+              while IFS= read -r line; do
+                [ -z "${line//[[:space:]]/}" ] && continue
+                label=$(echo "$line" | sed 's/^ *//' | cut -d'|' -f1 | sed 's/ *$//')
+                rest=$(echo "$line" | cut -d'|' -f2-)
+                frames=$(echo "$rest" | grep -oP 'encoded \K\d+' || true)
+                fps=$(echo "$rest" | grep -oP '\(\K[\d.]+(?= fps\))' || true)
+                bitrate=$(echo "$rest" | grep -oP '[\d.]+(?= kb/s)' || true)
+                qp=$(echo "$rest" | grep -oP 'Avg QP:\K[\d.]+' || true)
+                echo "| \`${label:-?}\` | ${frames:--} | ${fps:--} | ${bitrate:--} | ${qp:--} |"
+              done < /tmp/summary.log
+            else
+              echo "| _no data_ | | | | |"
+            fi
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload HEVC artifacts
         if: always()
@@ -966,6 +1167,32 @@ jobs:
           mkdir -p summaries && cp /tmp/summary.log summaries/10bit-12bit-encoding.log 2>/dev/null || true
           test $FAIL -eq 0
 
+      - name: Write step summary
+        if: always()
+        run: |
+          {
+            echo "## 10-bit & 12-bit Encoding"
+            echo ""
+            echo "| Test | Depth | Frames | FPS | Bitrate (kb/s) | Avg QP |"
+            echo "|------|:-----:|-------:|----:|---------------:|-------:|"
+            if [ -f /tmp/summary.log ] && grep -qv '^[[:space:]]*$' /tmp/summary.log 2>/dev/null; then
+              while IFS= read -r line; do
+                [ -z "${line//[[:space:]]/}" ] && continue
+                label=$(echo "$line" | sed 's/^ *//' | cut -d'|' -f1 | sed 's/ *$//')
+                rest=$(echo "$line" | cut -d'|' -f2-)
+                frames=$(echo "$rest" | grep -oP 'encoded \K\d+' || true)
+                fps=$(echo "$rest" | grep -oP '\(\K[\d.]+(?= fps\))' || true)
+                bitrate=$(echo "$rest" | grep -oP '[\d.]+(?= kb/s)' || true)
+                qp=$(echo "$rest" | grep -oP 'Avg QP:\K[\d.]+' || true)
+                depth=$(echo "$label" | grep -oP '^\d+' || echo '-')
+                echo "| \`${label:-?}\` | ${depth} | ${frames:--} | ${fps:--} | ${bitrate:--} | ${qp:--} |"
+              done < /tmp/summary.log
+            else
+              echo "| _no data_ | | | | | |"
+            fi
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload summaries
         if: always()
         uses: actions/upload-artifact@v4
@@ -1014,14 +1241,14 @@ jobs:
             return $rc
           }
           echo "" > /tmp/summary.log
-          run_x265 "MCSTF slower"        $X265 --preset slower    --crf 24 --mcstf --bframes 5 --frame-threads 1 --no-cutree --input-res 832x480 --fps 30 --frames 60 -o /tmp/out.hevc testdata/test_420_832x480.yuv || FAIL=$((FAIL+1))
-          run_x265 "MCSTF medium"        $X265 --preset medium    --crf 26 --mcstf --bframes 5 --frame-threads 1 --tskip-fast --constrained-intra --input-res 832x480 --fps 30 --frames 60 -o /tmp/out.hevc testdata/test_420_832x480.yuv || FAIL=$((FAIL+1))
-          run_x265 "MCSTF slow"          $X265 --preset slow      --crf 24 --mcstf --bframes 5 --input-res 832x480 --fps 30 --frames 60 -o /tmp/out.hevc testdata/test_420_832x480.yuv || FAIL=$((FAIL+1))
-          run_x265 "SBRC slow"           $X265 --preset slow      --crf 26 --sbrc --no-open-gop --keyint 60 --min-keyint 60 --vbv-bufsize 6000 --vbv-maxrate 5000 --temporal-layers 4 --b-adapt 0 --no-cutree --input-res 1920x1080 --fps 25 --frames 50 -o /tmp/out.hevc testdata/test_420_1080p.yuv || FAIL=$((FAIL+1))
-          run_x265 "SBRC superfast"      $X265 --preset superfast --crf 22 --sbrc --no-open-gop --vbv-maxrate 9000 --vbv-bufsize 7500 --keyint 100 --min-keyint 100 --input-res 1920x1080 --fps 25 --frames 50 -o /tmp/out.hevc testdata/test_420_1080p.yuv || FAIL=$((FAIL+1))
-          run_x265 "Interlace TFF"       $X265 --preset faster    --interlace tff --crf 28 --input-res 832x480 --fps 30 --frames 60 -o /tmp/out.hevc testdata/test_420_832x480.yuv || FAIL=$((FAIL+1))
-          run_x265 "Interlace BFF"       $X265 --preset fast      --interlace bff --crf 28 --input-res 832x480 --fps 30 --frames 60 -o /tmp/out.hevc testdata/test_420_832x480.yuv || FAIL=$((FAIL+1))
-          run_x265 "Interlace BFF+weightb" $X265 --preset fast    --interlace bff --weightb --crf 28 --input-res 832x480 --fps 30 --frames 60 -o /tmp/out.hevc testdata/test_420_832x480.yuv || FAIL=$((FAIL+1))
+          run_x265 "MCSTF slower"          $X265 --preset slower    --crf 24 --mcstf --bframes 5 --frame-threads 1 --no-cutree --input-res 832x480 --fps 30 --frames 60 -o /tmp/out.hevc testdata/test_420_832x480.yuv || FAIL=$((FAIL+1))
+          run_x265 "MCSTF medium"          $X265 --preset medium    --crf 26 --mcstf --bframes 5 --frame-threads 1 --tskip-fast --constrained-intra --input-res 832x480 --fps 30 --frames 60 -o /tmp/out.hevc testdata/test_420_832x480.yuv || FAIL=$((FAIL+1))
+          run_x265 "MCSTF slow"            $X265 --preset slow      --crf 24 --mcstf --bframes 5 --input-res 832x480 --fps 30 --frames 60 -o /tmp/out.hevc testdata/test_420_832x480.yuv || FAIL=$((FAIL+1))
+          run_x265 "SBRC slow"             $X265 --preset slow      --crf 26 --sbrc --no-open-gop --keyint 60 --min-keyint 60 --vbv-bufsize 6000 --vbv-maxrate 5000 --temporal-layers 4 --b-adapt 0 --no-cutree --input-res 1920x1080 --fps 25 --frames 50 -o /tmp/out.hevc testdata/test_420_1080p.yuv || FAIL=$((FAIL+1))
+          run_x265 "SBRC superfast"        $X265 --preset superfast --crf 22 --sbrc --no-open-gop --vbv-maxrate 9000 --vbv-bufsize 7500 --keyint 100 --min-keyint 100 --input-res 1920x1080 --fps 25 --frames 50 -o /tmp/out.hevc testdata/test_420_1080p.yuv || FAIL=$((FAIL+1))
+          run_x265 "Interlace TFF"         $X265 --preset faster    --interlace tff --crf 28 --input-res 832x480 --fps 30 --frames 60 -o /tmp/out.hevc testdata/test_420_832x480.yuv || FAIL=$((FAIL+1))
+          run_x265 "Interlace BFF"         $X265 --preset fast      --interlace bff --crf 28 --input-res 832x480 --fps 30 --frames 60 -o /tmp/out.hevc testdata/test_420_832x480.yuv || FAIL=$((FAIL+1))
+          run_x265 "Interlace BFF+weightb" $X265 --preset fast      --interlace bff --weightb --crf 28 --input-res 832x480 --fps 30 --frames 60 -o /tmp/out.hevc testdata/test_420_832x480.yuv || FAIL=$((FAIL+1))
           rm -f /tmp/out.hevc
           echo ""
           echo "==================== ENCODING SUMMARY ===================="
@@ -1030,6 +1257,31 @@ jobs:
           echo "=== MCSTF/SBRC/Interlace Results FAIL=$FAIL ==="
           mkdir -p summaries && cp /tmp/summary.log summaries/mcstf-sbrc-interlace.log 2>/dev/null || true
           test $FAIL -eq 0
+
+      - name: Write step summary
+        if: always()
+        run: |
+          {
+            echo "## MCSTF, SBRC & Interlace"
+            echo ""
+            echo "| Test | Frames | FPS | Bitrate (kb/s) | Avg QP |"
+            echo "|------|-------:|----:|---------------:|-------:|"
+            if [ -f /tmp/summary.log ] && grep -qv '^[[:space:]]*$' /tmp/summary.log 2>/dev/null; then
+              while IFS= read -r line; do
+                [ -z "${line//[[:space:]]/}" ] && continue
+                label=$(echo "$line" | sed 's/^ *//' | cut -d'|' -f1 | sed 's/ *$//')
+                rest=$(echo "$line" | cut -d'|' -f2-)
+                frames=$(echo "$rest" | grep -oP 'encoded \K\d+' || true)
+                fps=$(echo "$rest" | grep -oP '\(\K[\d.]+(?= fps\))' || true)
+                bitrate=$(echo "$rest" | grep -oP '[\d.]+(?= kb/s)' || true)
+                qp=$(echo "$rest" | grep -oP 'Avg QP:\K[\d.]+' || true)
+                echo "| \`${label:-?}\` | ${frames:--} | ${fps:--} | ${bitrate:--} | ${qp:--} |"
+              done < /tmp/summary.log
+            else
+              echo "| _no data_ | | | | |"
+            fi
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload summaries
         if: always()
@@ -1041,8 +1293,9 @@ jobs:
 
   # ───────────────────────────────────────────────────────────────────────────
   # Phase 3 – Summary report
-  # Runs after all tests AND multilib build; collects every test's summary log.
-  # Uses if: always() so it runs even when some tests fail.
+  # Writes a comprehensive Markdown performance report to GITHUB_STEP_SUMMARY
+  # so it appears on the Actions run overview page with full metrics tables,
+  # aggregate statistics, and fastest/slowest encode rankings.
   # ───────────────────────────────────────────────────────────────────────────
 
   summary-report:
@@ -1075,46 +1328,124 @@ jobs:
 
       - name: Generate report
         run: |
-          echo ""
-          echo "================================================================"
-          echo "       x265 CI — COMBINED ENCODING SUMMARY REPORT"
-          echo "================================================================"
-          total_encodes=0
-          for f in summaries/*.log; do
-            [ -f "$f" ] || continue
-            step_name=$(basename "$f" .log)
-            count=$(grep -c "encoded" "$f" 2>/dev/null || echo 0)
-            total_encodes=$((total_encodes + count))
-            echo ""
-            echo "----------------------------------------------------------------"
-            printf " [%s] (%d encodes)\n" "$step_name" "$count"
-            echo "----------------------------------------------------------------"
-            echo "  TEST                                          | FRAMES  FPS       BITRATE     QP"
-            echo "  ----------------------------------------------|--------------------------------------"
+          # Helper: write to both stdout and GITHUB_STEP_SUMMARY
+          w() { echo "$@" | tee -a "$GITHUB_STEP_SUMMARY"; }
+
+          parse_log() {
+            local f="$1"
             while IFS= read -r line; do
-              [ -n "$line" ] && echo "$line"
+              [ -z "${line//[[:space:]]/}" ] && continue
+              local label rest frames fps bitrate qp
+              label=$(echo "$line" | sed 's/^ *//' | cut -d'|' -f1 | sed 's/ *$//')
+              rest=$(echo "$line" | cut -d'|' -f2-)
+              frames=$(echo "$rest" | grep -oP 'encoded \K\d+' || true)
+              fps=$(echo "$rest" | grep -oP '\(\K[\d.]+(?= fps\))' || true)
+              bitrate=$(echo "$rest" | grep -oP '[\d.]+(?= kb/s)' || true)
+              qp=$(echo "$rest" | grep -oP 'Avg QP:\K[\d.]+' || true)
+              echo "| \`${label:-?}\` | ${frames:--} | ${fps:--} | ${bitrate:--} | ${qp:--} |"
             done < "$f"
-          done
-          echo ""
-          echo "================================================================"
-          total_fps=0
+          }
+
+          # ── Aggregate pass: collect totals, best/worst FPS, highest bitrate ──
+          total_encodes=0
+          total_fps_sum=0
           fps_count=0
+          best_fps=0; best_fps_label=""
+          worst_fps=999999; worst_fps_label=""
+          highest_bitrate=0; highest_br_label=""
+
           for f in summaries/*.log; do
             [ -f "$f" ] || continue
             while IFS= read -r line; do
-              fps=$(echo "$line" | grep -oP '\([\d.]+\s+fps\)' | grep -oP '[\d.]+' | head -1)
+              [ -z "${line//[[:space:]]/}" ] && continue
+              label=$(echo "$line" | sed 's/^ *//' | cut -d'|' -f1 | sed 's/ *$//')
+              rest=$(echo "$line" | cut -d'|' -f2-)
+              fps=$(echo "$rest" | grep -oP '\(\K[\d.]+(?= fps\))' || true)
+              bitrate=$(echo "$rest" | grep -oP '[\d.]+(?= kb/s)' || true)
               if [ -n "$fps" ]; then
                 total_encodes=$((total_encodes + 1))
-                total_fps=$(echo "$total_fps + $fps" | bc 2>/dev/null || echo "$total_fps")
+                total_fps_sum=$(echo "$total_fps_sum + $fps" | bc 2>/dev/null || echo "$total_fps_sum")
                 fps_count=$((fps_count + 1))
+                if [ "$(echo "$fps > $best_fps" | bc 2>/dev/null)" = "1" ]; then
+                  best_fps=$fps; best_fps_label=$label
+                fi
+                if [ "$(echo "$fps < $worst_fps" | bc 2>/dev/null)" = "1" ]; then
+                  worst_fps=$fps; worst_fps_label=$label
+                fi
+              fi
+              if [ -n "$bitrate" ]; then
+                if [ "$(echo "$bitrate > $highest_bitrate" | bc 2>/dev/null)" = "1" ]; then
+                  highest_bitrate=$bitrate; highest_br_label=$label
+                fi
               fi
             done < "$f"
           done
-          if [ "$fps_count" -gt 0 ]; then
-            avg_fps=$(echo "scale=2; $total_fps / $fps_count" | bc 2>/dev/null || echo "N/A")
-            echo " TOTALS : $total_encodes encodes across $(ls summaries/*.log 2>/dev/null | wc -l) test suites"
-            echo " AVG FPS: $avg_fps"
-          else
-            echo " No encoding summaries found."
+
+          avg_fps="N/A"
+          [ "$fps_count" -gt 0 ] && avg_fps=$(echo "scale=2; $total_fps_sum / $fps_count" | bc 2>/dev/null || echo "N/A")
+          suite_count=$(ls summaries/*.log 2>/dev/null | wc -l)
+
+          # ── Header ──
+          w "# x265 CI — Encoding Performance Report"
+          w ""
+          w "> Commit \`${{ github.sha }}\` · Branch \`${{ github.ref_name }}\`"
+          w ""
+
+          # ── Aggregate statistics table ──
+          w "## Aggregate Statistics"
+          w ""
+          w "| Metric | Value |"
+          w "|--------|-------|"
+          w "| Test suites | $suite_count |"
+          w "| Total encodes | $total_encodes |"
+          w "| Average FPS | $avg_fps |"
+          if [ -n "$best_fps_label" ]; then
+            w "| Fastest encode | \`$best_fps_label\` — **${best_fps} fps** |"
           fi
+          if [ "$fps_count" -gt 0 ] && [ -n "$worst_fps_label" ] && [ "$worst_fps" != "999999" ]; then
+            w "| Slowest encode | \`$worst_fps_label\` — **${worst_fps} fps** |"
+          fi
+          if [ -n "$highest_br_label" ]; then
+            w "| Highest bitrate | \`$highest_br_label\` — **${highest_bitrate} kb/s** |"
+          fi
+          w ""
+
+          # ── Per-suite tables ──
+          w "---"
+          w ""
+
+          declare -A SUITE_TITLES
+          SUITE_TITLES["cli-presets"]="CLI Presets & Tune Modes"
+          SUITE_TITLES["rate-control"]="Rate Control Modes"
+          SUITE_TITLES["encoding-features"]="Encoding Features"
+          SUITE_TITLES["analysis-save-load"]="Analysis Save/Load & Segment Encoding"
+          SUITE_TITLES["bitstream-validation"]="Bitstream Validation"
+          SUITE_TITLES["threading"]="Threading & Parallelism"
+          SUITE_TITLES["quality-metrics"]="Quality Metrics (SSIM/PSNR)"
+          SUITE_TITLES["realworld-video"]="Real-World Video (Y4M)"
+          SUITE_TITLES["10bit-12bit-encoding"]="10-bit & 12-bit Encoding"
+          SUITE_TITLES["mcstf-sbrc-interlace"]="MCSTF, SBRC & Interlace"
+
+          # Fixed display order
+          for suite in cli-presets rate-control encoding-features analysis-save-load \
+                       bitstream-validation threading quality-metrics realworld-video \
+                       10bit-12bit-encoding mcstf-sbrc-interlace; do
+            f="summaries/${suite}.log"
+            [ -f "$f" ] || continue
+            title="${SUITE_TITLES[$suite]:-$suite}"
+            count=$(grep -c '[^[:space:]]' "$f" 2>/dev/null || echo 0)
+            w "### $title ($count encodes)"
+            w ""
+            w "| Test | Frames | FPS | Bitrate (kb/s) | Avg QP |"
+            w "|------|-------:|----:|---------------:|-------:|"
+            parse_log "$f" | tee -a "$GITHUB_STEP_SUMMARY"
+            w ""
+          done
+
+          # ── Console-only plain-text summary ──
+          echo ""
+          echo "================================================================"
+          echo "  TOTALS : $total_encodes encodes | AVG FPS: $avg_fps"
+          echo "  FASTEST: $best_fps_label @ ${best_fps} fps"
+          echo "  SLOWEST: $worst_fps_label @ ${worst_fps} fps"
           echo "================================================================"
