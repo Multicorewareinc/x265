@@ -37,6 +37,7 @@
 #include <semaphore.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 #endif
 
 #if MACOS
