@@ -2198,8 +2198,8 @@ typedef struct x265_param
 
     /*
     * Signals picture structure SEI timing message for every frame
-    * picture structure 7 is signalled for frame doubling
-    * picture structure 8 is signalled for frame tripling
+    * picture structure 7 is signalled for frame doubling (PIC_STRUCT_DOUBLING)
+    * picture structure 8 is signalled for frame tripling (PIC_STRUCT_TRIPLING)
     * */
     int       bEnableFrameDuplication;
 
