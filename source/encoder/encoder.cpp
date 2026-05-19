@@ -50,6 +50,7 @@
 
 namespace X265_NS {
 const char g_sliceTypeToChar[] = {'B', 'P', 'I'};
+const uint8_t g_deltaToDivisor[PIC_STRUCT_COUNT] = {1, 1, 1, 2, 2, 3, 3, 2, 3, 1, 1, 1, 1};
 
 /* Dolby Vision profile specific settings */
 typedef struct
@@ -1567,13 +1568,13 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                 {
                     if (m_dupBuffer[0]->bDup)
                     {
-                        m_dupBuffer[0]->dupPic->picStruct = tripling;
+                        m_dupBuffer[0]->dupPic->picStruct = PIC_STRUCT_TRIPLING;
                         m_dupBuffer[0]->bDup = false;
                         read++;
                     }
                     else
                     {
-                        m_dupBuffer[0]->dupPic->picStruct = doubling;
+                        m_dupBuffer[0]->dupPic->picStruct = PIC_STRUCT_DOUBLING;
                         m_dupBuffer[0]->bDup = true;
                         m_dupBuffer[1]->bOccupied = false;
                         read++;
@@ -1759,7 +1760,11 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
 
             inFrame[layer]->m_forceqp = inputPic[0]->forceqp;
             inFrame[layer]->m_param = (m_reconfigure || m_reconfigureRc || m_param->bConfigRCFrame) ? m_latestParam : m_param;
-            inFrame[layer]->m_picStruct = inputPic[0]->picStruct;
+            inFrame[layer]->m_picStruct = inputPic[0]->picStruct < PIC_STRUCT_COUNT ? inputPic[0]->picStruct : 0;
+
+            //Determine duration for slicetype and ratecontrol
+            inFrame[layer]->m_duration = g_deltaToDivisor[inFrame[layer]->m_picStruct];
+            inFrame[layer]->m_displayDurSecs = inFrame[layer]->m_duration * (m_sps.vuiParameters.timingInfo.numUnitsInTick / m_sps.vuiParameters.timingInfo.timeScale);
 
             /*Copy reconfigured RC parameters to frame*/
             if (m_param->rc.rateControlMode == X265_RC_ABR)
@@ -1894,9 +1899,9 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
             m_param->bUseRcStats = 0;
         }
 
-        if (m_param->bEnableFrameDuplication && ((read < written) || (m_dupBuffer[0]->dupPic->picStruct == tripling && (read <= written))))
+        if (m_param->bEnableFrameDuplication && ((read < written) || (m_dupBuffer[0]->dupPic->picStruct == PIC_STRUCT_TRIPLING && (read <= written))))
         {
-            if (m_dupBuffer[0]->dupPic->picStruct == tripling)
+            if (m_dupBuffer[0]->dupPic->picStruct == PIC_STRUCT_TRIPLING)
                 m_dupBuffer[0]->bOccupied = m_dupBuffer[1]->bOccupied = false;
             else
             {
@@ -1971,7 +1976,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
 
             //TODO: Add subsampling here if required
             inFrame[0]->m_mcstffencPic->copyFromFrame(inFrame[0]->m_fencPic);
-            m_lookahead->m_origPicBuf->addPicture(inFrame[0]);;
+            m_lookahead->m_origPicBuf->addPicture(inFrame[0]);
         }
 
         m_lookahead->addPicture(*inFrame[0], sliceType);

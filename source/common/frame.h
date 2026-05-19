@@ -182,6 +182,14 @@ public:
     /* target QP for this picture.*/
     int                    m_targetQp;
 
+    /*HRD delays for this frame*/
+    int64_t                m_duration;           // In VUI timebase
+    float                  m_displayDurSecs;     // display time of picture in seconds
+    int64_t                m_plannedCpbDuration; // lifetime in the CPB
+    int64_t                m_cpbDelay;           // In VUI timebase
+    int64_t                m_dpbOutputDelay;     // In VUI timebase
+
+
     Frame();
 
     bool create(x265_param *param, float* quantOffsets);
