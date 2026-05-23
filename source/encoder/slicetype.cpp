@@ -2724,12 +2724,16 @@ void Lookahead::slicetypeDecide()
         }
 
         // Compute HRD CpbDpb delays
-        for (int i = 0; i <= bframes; ++i)
         {
-            /* to keep cpb and dpb operations in sync, use the display duration of the current picture to specify the pic
-            lifetime in the cpb. Given that pulldown sequences are alternating between single-doubling or doubling-tripling,
-            the cpb lifetime "error" is limited to 1 time clock and does not accumulate on long re-ordered sequences */
-            calculateDurations(list[codedFrameOrderedIndex[i]], list[i]->m_duration);
+            Frame *prevFrame = NULL;
+            for (int i = 0; i <= bframes; ++i)
+            {
+                /* to keep cpb and dpb operations in sync, use the display duration of the current picture to specify the pic
+                lifetime in the cpb. Given that pulldown sequences are alternating between single-doubling or doubling-tripling,
+                the cpb lifetime "error" is limited to 1 time clock and does not accumulate on long re-ordered sequences */
+                calculateDurations(list[codedFrameOrderedIndex[i]], prevFrame, list[i]->m_duration);
+                prevFrame = list[codedFrameOrderedIndex[i]];
+            }
         }
 
         bool isKeyFrameAnalyse = (m_param->rc.cuTree || (m_param->rc.vbvBufferSize && m_param->lookaheadDepth));
@@ -2767,7 +2771,7 @@ void Lookahead::slicetypeDecide()
     }
 }
 
-void Lookahead::calculateDurations(Frame *frame, int64_t concurrentDisplayDuration)
+void Lookahead::calculateDurations(Frame *frame, Frame *prevFrame, int64_t concurrentDisplayDuration)
 {
     frame->m_cpbDelay = m_cpbDelay;
     frame->m_dpbOutputDelay = frame->m_displayPicCount - m_codedPicCount;
@@ -2775,12 +2779,19 @@ void Lookahead::calculateDurations(Frame *frame, int64_t concurrentDisplayDurati
     frame->m_codedPicCount = m_codedPicCount;
 
     /* largest re-ordering at highest temporal layer */
-    frame->m_dpbOutputDelay += 1 + m_sps->numReorderPics[X265_MAX(0, (m_param->bEnableTemporalSubLayers - 1))];
+    frame->m_dpbOutputDelay += ((m_param->bframes > 0) ? 1 : 0) + m_sps->numReorderPics[X265_MAX(0, (m_param->bEnableTemporalSubLayers - 1))];
 
     if (frame->m_dpbOutputDelay < 0)
     {
         frame->m_cpbDelay += frame->m_dpbOutputDelay;
         frame->m_dpbOutputDelay = 0;
+
+        // fix collisions with long sequences of doubling or tripling and reordering of bref
+        if (prevFrame && (prevFrame->m_cpbDelay == frame->m_cpbDelay))
+        {
+            prevFrame->m_cpbDelay -= 1;
+            prevFrame->m_dpbOutputDelay += 1;
+        }
     }
 
     /* HRD counters are reset after a Buffering Period SEI (attached with the keyframe) */
@@ -2789,7 +2800,7 @@ void Lookahead::calculateDurations(Frame *frame, int64_t concurrentDisplayDurati
         m_cpbDelay = 0;
     }
 
-    m_cpbDelay += concurrentDisplayDuration;
+    m_cpbDelay += frame->m_plannedCpbDuration;
     m_codedPicCount += frame->m_duration;
 }
 

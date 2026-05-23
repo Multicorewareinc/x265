@@ -1763,11 +1763,9 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
             inFrame[layer]->m_forceqp = inputPic[0]->forceqp;
             inFrame[layer]->m_param = (m_reconfigure || m_reconfigureRc || m_param->bConfigRCFrame) ? m_latestParam : m_param;
 
-            /*  todo: pic struct defined per frame should have priority over param one. */
+            inFrame[layer]->m_picStruct = inputPic[0]->picStruct;
             if (inFrame[layer]->m_param->pictureStructure > -1)
                 inFrame[layer]->m_picStruct = inFrame[layer]->m_param->pictureStructure;
-            else
-                inFrame[layer]->m_picStruct = inputPic[0]->picStruct;
             inFrame[layer]->m_picStruct = inFrame[layer]->m_picStruct < PIC_STRUCT_COUNT ? inFrame[layer]->m_picStruct : 0;
 
             /* Set up frame timing info for slicetype and ratecontrol and the frame timebase (could change across cvs) */
@@ -4544,12 +4542,12 @@ void Encoder::configure(x265_param *p)
         // PF, TB and BT each have DeltaToDivisor = 1 and convey convey a full frame (or a field pair)
         if (p->pictureStructure > PIC_STRUCT_PROGRESSIVE_FRAME && p->pictureStructure != PIC_STRUCT_TOP_BOTTOM && p->pictureStructure != PIC_STRUCT_BOTTOM_TOP)
         {
-            x265_log(p, X265_LOG_WARNING, "Picture structure is not compatible with temporal sub layers. Not using the user-provided pic-struct.\n"); 
+            x265_log(p, X265_LOG_WARNING, "Picture structure is not compatible with temporal sub layers. Not using the user-provided pic-struct.\n");
             p->pictureStructure = -1;
         }
         if (p->bEnableFrameDuplication)
         {
-            x265_log(p, X265_LOG_WARNING, "Frame-duplication is not compatible with temporal sub layers. Disabling Frame Duplication.\n"); 
+            x265_log(p, X265_LOG_WARNING, "Frame-duplication is not compatible with temporal sub layers. Disabling Frame Duplication.\n");
             p->bEnableFrameDuplication = 0;
             p->dupThreshold = 0; // prevent it from being enabled below
         }
