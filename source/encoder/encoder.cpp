@@ -179,6 +179,8 @@ Encoder::Encoder()
     m_startPoint = 0;
     m_saveCTUSize = 0;
     m_zoneIndex = 0;
+
+    m_dispPicCount = 0;
 }
 
 inline char *strcatFilename(const char *input, const char *suffix)
@@ -374,7 +376,7 @@ void Encoder::create()
     }
     else
         lookAheadThreadPool = m_threadPool ? &m_threadPool[m_numTmePools] : NULL;
-    m_lookahead = new Lookahead(m_param, lookAheadThreadPool);
+    m_lookahead = new Lookahead(m_param, lookAheadThreadPool, &m_sps);
     m_lookahead->m_numPools = lookaheadPools;
     if (lookaheadPools)
     {
@@ -1760,11 +1762,24 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
 
             inFrame[layer]->m_forceqp = inputPic[0]->forceqp;
             inFrame[layer]->m_param = (m_reconfigure || m_reconfigureRc || m_param->bConfigRCFrame) ? m_latestParam : m_param;
-            inFrame[layer]->m_picStruct = inputPic[0]->picStruct < PIC_STRUCT_COUNT ? inputPic[0]->picStruct : 0;
 
-            //Determine duration for slicetype and ratecontrol
+            /*  todo: pic struct defined per frame should have priority over param one. */
+            if (inFrame[layer]->m_param->pictureStructure > -1)
+                inFrame[layer]->m_picStruct = inFrame[layer]->m_param->pictureStructure;
+            else
+                inFrame[layer]->m_picStruct = inputPic[0]->picStruct;
+            inFrame[layer]->m_picStruct = inFrame[layer]->m_picStruct < PIC_STRUCT_COUNT ? inFrame[layer]->m_picStruct : 0;
+
+            /* Set up frame timing info for slicetype and ratecontrol and the frame timebase (could change across cvs) */
             inFrame[layer]->m_duration = g_deltaToDivisor[inFrame[layer]->m_picStruct];
-            inFrame[layer]->m_displayDurSecs = inFrame[layer]->m_duration * (m_sps.vuiParameters.timingInfo.numUnitsInTick / m_sps.vuiParameters.timingInfo.timeScale);
+            inFrame[layer]->m_displayPicCount = m_dispPicCount;
+            if (inFrame[layer]->m_param->bEmitVUITimingInfo)
+                inFrame[layer]->m_timebase = (m_sps.vuiParameters.timingInfo.numUnitsInTick / m_sps.vuiParameters.timingInfo.timeScale);
+            else
+                inFrame[layer]->m_timebase = (inFrame[layer]->m_param->fpsDenom / inFrame[layer]->m_param->fpsNum);
+
+            /* update presentation counts (decoder ticks count) */
+            m_dispPicCount += inFrame[layer]->m_duration;
 
             /*Copy reconfigured RC parameters to frame*/
             if (m_param->rc.rateControlMode == X265_RC_ABR)
@@ -4520,6 +4535,31 @@ void Encoder::configure(x265_param *p)
     {
         p->dynamicRd = 0;
         x265_log(p, X265_LOG_WARNING, "Dynamic-rd disabled, requires RD <= 4, VBV and aq-mode enabled\n");
+    }
+
+    // Cannot use temporal layers with a picture structure whose DeltaToDivisor is not 1: we would have to drop access units in higher layers
+    // and enforce that structures in higher layers do not hide a frame in the lower layers: it's easier to just forbid it.
+    if (p->bEnableTemporalSubLayers)
+    {
+        // PF, TB and BT each have DeltaToDivisor = 1 and convey convey a full frame (or a field pair)
+        if (p->pictureStructure > PIC_STRUCT_PROGRESSIVE_FRAME && p->pictureStructure != PIC_STRUCT_TOP_BOTTOM && p->pictureStructure != PIC_STRUCT_BOTTOM_TOP)
+        {
+            x265_log(p, X265_LOG_WARNING, "Picture structure is not compatible with temporal sub layers. Not using the user-provided pic-struct.\n"); 
+            p->pictureStructure = -1;
+        }
+        if (p->bEnableFrameDuplication)
+        {
+            x265_log(p, X265_LOG_WARNING, "Frame-duplication is not compatible with temporal sub layers. Disabling Frame Duplication.\n"); 
+            p->bEnableFrameDuplication = 0;
+            p->dupThreshold = 0; // prevent it from being enabled below
+        }
+    }
+
+    // reject any configuration that leads to orphaned fields (1, 2, 5, 6, 9, 10, 11, 12)
+    if (p->pictureStructure >= PIC_STRUCT_COUNT || ((1 << p->pictureStructure) & 0b1111001100110))
+    {
+        x265_log(p, X265_LOG_WARNING, "Invalid or illegal picture structure, not using the user-provided value.\n");
+        p->pictureStructure = -1;
     }
 
     if (!p->bEnableFrameDuplication && p->dupThreshold && p->dupThreshold != 70)

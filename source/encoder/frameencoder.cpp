@@ -837,8 +837,8 @@ void FrameEncoder::compressFrame(int layer)
             // access unit associated with the picture timing SEI message has to
             // wait after removal of the access unit with the most recent
             // buffering period SEI message
-            sei->m_auCpbRemovalDelay = X265_MIN(X265_MAX(1, m_rce.encodeOrder - prevBPSEI), (1 << hrd->cpbRemovalDelayLength));
-            sei->m_picDpbOutputDelay = slice->m_sps->numReorderPics[m_frame[layer]->m_tempLayer] + poc - m_rce.encodeOrder;
+            sei->m_auCpbRemovalDelay = X265_MIN(X265_MAX(1, m_frame[layer]->m_cpbDelay), (1 << hrd->cpbRemovalDelayLength));//X265_MIN(X265_MAX(1, m_rce.encodeOrder - prevBPSEI), (1 << hrd->cpbRemovalDelayLength));
+            sei->m_picDpbOutputDelay = m_frame[layer]->m_dpbOutputDelay;//slice->m_sps->numReorderPics[m_frame[layer]->m_tempLayer] + poc - m_rce.encodeOrder;
         }
 
         sei->writeSEImessages(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer);

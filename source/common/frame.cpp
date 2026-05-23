@@ -88,7 +88,10 @@ Frame::Frame()
 
     // HRD management
     m_duration = 0;
-    m_displayDurSecs = 0.0;
+    m_timebase = 0.0;
+    m_cpbDelay = 0;
+    m_dpbOutputDelay = 0;
+    m_plannedCpbDuration = 0;
 }
 
 bool Frame::create(x265_param *param, float* quantOffsets)
