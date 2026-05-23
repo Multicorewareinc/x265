@@ -218,7 +218,6 @@ public:
     int                m_numLumaWPBiFrames;  // number of B frames with weighted luma reference
     int                m_numChromaWPBiFrames; // number of B frames with weighted chroma reference
     int                m_conformanceMode;
-    int                m_lastBPSEI;
     uint32_t           m_numDelayedPic;
 
     ThreadPool*        m_threadPool;

@@ -761,7 +761,6 @@ void FrameEncoder::compressFrame(int layer)
     }
 
     m_rce.encodeOrder = m_frame[layer]->m_encodeOrder;
-    int prevBPSEI = m_rce.encodeOrder ? m_top->m_lastBPSEI : 0;
 
     if (m_frame[layer]->m_lowres.bKeyframe)
     {
@@ -778,8 +777,6 @@ void FrameEncoder::compressFrame(int layer)
             // hrdFullness() calculates the initial CPB removal delay and offset
             m_top->m_rateControl->hrdFullness(bpSei);
             bpSei->writeSEImessages(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer);
-
-            m_top->m_lastBPSEI = m_rce.encodeOrder;
         }
 
         if (m_frame[layer]->m_lowres.sliceType == X265_TYPE_IDR && m_param->bEmitIDRRecoverySEI)
@@ -833,12 +830,11 @@ void FrameEncoder::compressFrame(int layer)
 
         if (vui->hrdParametersPresentFlag)
         {
-            // The m_aucpbremoval delay specifies how many clock ticks the
-            // access unit associated with the picture timing SEI message has to
-            // wait after removal of the access unit with the most recent
-            // buffering period SEI message
-            sei->m_auCpbRemovalDelay = X265_MIN(X265_MAX(1, m_frame[layer]->m_cpbDelay), (1 << hrd->cpbRemovalDelayLength));//X265_MIN(X265_MAX(1, m_rce.encodeOrder - prevBPSEI), (1 << hrd->cpbRemovalDelayLength));
-            sei->m_picDpbOutputDelay = m_frame[layer]->m_dpbOutputDelay;//slice->m_sps->numReorderPics[m_frame[layer]->m_tempLayer] + poc - m_rce.encodeOrder;
+            // The m_aucpbremoval delay specifies how many clock ticks the access unit
+            // with the picture timing SEI message has to wait after removal of the
+            // access unit with the most recent buffering period SEI message
+            sei->m_auCpbRemovalDelay = X265_MIN(X265_MAX(1, m_frame[layer]->m_cpbDelay), (1 << hrd->cpbRemovalDelayLength));
+            sei->m_picDpbOutputDelay = m_frame[layer]->m_dpbOutputDelay;
         }
 
         sei->writeSEImessages(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer);
