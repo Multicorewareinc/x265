@@ -161,6 +161,7 @@ public:
     Event         m_outputSignal;
     LookaheadTLD* m_tld;
     x265_param*   m_param;
+    SPS*          m_sps;             // needed for pic timing used in ratecontrol
     Lowres*       m_lastNonB;
     int*          m_scratch;         // temp buffer for cutree propagate
     pixel*        m_noiseBlurBuf;    // persistent blur buffer for estimateNoise() fallback path
@@ -211,7 +212,7 @@ public:
     OrigPicBuffer*          m_origPicBuf;
     MotionEstimatorTLD*     m_metld;
 
-    Lookahead(x265_param *param, ThreadPool *pool);
+    Lookahead(x265_param *param, ThreadPool *pool, SPS* sps);
 #if DETAILED_CU_STATS
     int64_t       m_slicetypeDecideElapsedTime;
     int64_t       m_preLookaheadElapsedTime;
@@ -223,6 +224,9 @@ public:
     uint64_t      m_countTemporalFilter;
     void          getWorkerStats(int64_t& framecostBatchElapsedTime, int64_t& coopSliceElapsedTime, int64_t& mcstfBatchElapsedTime);
 #endif
+
+    int64_t         m_cpbDelay;             /* current cpb delay in clock ticks */
+    uint64_t        m_codedPicCount;        /* coded picture count in clock ticks */
 
     bool    create();
     void    destroy();
@@ -258,7 +262,7 @@ protected:
     void    slicetypePath(Lowres **frames, int length, char(*best_paths)[X265_LOOKAHEAD_MAX + 1]);
     int64_t slicetypePathCost(Lowres **frames, char *path, int64_t threshold);
     int64_t vbvFrameCost(Lowres **frames, int p0, int p1, int b);
-    void    calculateDurations(Frame *frame, Frame *prevFrame, int64_t *cpbDelay, int64_t *dispCount);
+    void    calculateDurations(Frame *frame, int64_t concurrentDisplayDuration);
     void    vbvLookahead(Lowres **frames, int numFrames, int keyframes);
     void    aqMotion(Lowres **frames, bool bintra);
     void    calcMotionAdaptiveQuantFrame(Lowres **frames, int p0, int p1, int b);

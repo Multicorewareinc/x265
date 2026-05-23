@@ -210,6 +210,7 @@ public:
     int                m_numPools;
     int                m_numTmePools;
     int                m_curEncoder;
+    uint64_t           m_dispPicCount; /* displayed picture count (implied by explicit or implicit picture structure) */
 
     // weighted prediction
     int                m_numLumaWPFrames;    // number of P frames with weighted luma reference
