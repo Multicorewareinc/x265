@@ -4542,7 +4542,7 @@ void Encoder::configure(x265_param *p)
         // PF, TB and BT each have DeltaToDivisor = 1 and convey convey a full frame (or a field pair)
         if (p->pictureStructure > PIC_STRUCT_PROGRESSIVE_FRAME && p->pictureStructure != PIC_STRUCT_TOP_BOTTOM && p->pictureStructure != PIC_STRUCT_BOTTOM_TOP)
         {
-            x265_log(p, X265_LOG_WARNING, "Picture structure is not compatible with temporal sub layers. Not using the user-provided pic-struct.\n");
+            x265_log(p, X265_LOG_WARNING, "Specified picture structure is not compatible with temporal sub layers. Not using the user-provided pic-struct.\n");
             p->pictureStructure = -1;
         }
         if (p->bEnableFrameDuplication)
