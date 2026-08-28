@@ -8,10 +8,6 @@
 # when the library is built; the resulting archives are then merged into the
 # 8-bit API library by a POST_BUILD step (see CMakeLists.txt).
 
-if(NOT ENABLE_MULTILIB)
-    return()
-endif()
-
 set(_multilib_root "${CMAKE_CURRENT_BINARY_DIR}/multilib")
 set(_multilib_source "${CMAKE_CURRENT_SOURCE_DIR}")
 
@@ -21,11 +17,17 @@ set(_multilib_common_args
     "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}"
     "-DENABLE_SHARED=OFF"
     "-DENABLE_CLI=OFF"
-    "-DENABLE_LIBNUMA=OFF"
     "-DENABLE_PIC=ON"
     "-DEXPORT_C_API=OFF"
-    "-DCMAKE_DISABLE_FIND_PACKAGE_VLD=ON"
 )
+if(WIN32)
+    # VLD is a Windows-only optional dependency
+    list(APPEND _multilib_common_args "-DCMAKE_DISABLE_FIND_PACKAGE_VLD=ON")
+endif()
+if(UNIX)
+    # libnuma is only probed on Linux
+    list(APPEND _multilib_common_args "-DENABLE_LIBNUMA=OFF")
+endif()
 if(DEFINED CMAKE_GENERATOR_PLATFORM)
     list(APPEND _multilib_common_args "-DCMAKE_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}")
 endif()
@@ -86,12 +88,22 @@ endif()
 # Define the bit-depth sub-builds as regular targets that declare their
 # produced archive as an output, so that the build system knows how to build
 # the archives the main library links against; the main library targets depend
-# on them (see CMakeLists.txt)
+# on them (see CMakeLists.txt).
+#
+# CMAKE_ARCHIVE_OUTPUT_DIRECTORY is forced for every configuration so that the
+# produced archive always lands in the sub-build directory, independent of the
+# generator (multi-config generators such as Visual Studio would otherwise
+# place it in a per-configuration subdirectory).
 function(x265_define_multilib_variant name dir archive)
     add_custom_command(
         OUTPUT "${archive}"
         COMMAND "${CMAKE_COMMAND}" -S "${_multilib_source}" -B "${dir}"
                 ${_multilib_common_args} ${ARGN}
+                "-DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=${dir}"
+                "-DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG=${dir}"
+                "-DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE=${dir}"
+                "-DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_MINSIZEREL=${dir}"
+                "-DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELWITHDEBINFO=${dir}"
         COMMAND "${CMAKE_COMMAND}" --build "${dir}" --config "$<CONFIG>"
         COMMENT "Building the ${name} x265 sub-library"
         VERBATIM)
