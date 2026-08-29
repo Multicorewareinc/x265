@@ -752,14 +752,6 @@ if(EXTRA_LIB)
 endif(EXTRA_LIB)
 mark_as_advanced(EXTRA_LIB EXTRA_LINK_FLAGS)
 
-# Build a single library containing the 8-bit, 10-bit and 12-bit encoders,
-# switching bit depths at runtime (see build/linux/multilib.sh)
-option(ENABLE_MULTILIB "Build a single library containing all supported bit depths" OFF)
-set(MULTILIB_ARCHIVER "" CACHE STRING "Archiver used to merge the multilib static libraries")
-if(ENABLE_MULTILIB)
-    include(cmake/multilib.cmake)
-endif()
-
 if(X64 OR ARM64 OR PPC64 OR RISCV64 OR LOONGARCH64)
     # NOTE: We only officially support high-bit-depth compiles of x265
     # on 64bit architectures. Main10 plus large resolution plus slow
@@ -937,6 +929,17 @@ else()
 endif()
 configure_file("${PROJECT_SOURCE_DIR}/x265_config.h.in"
                "${PROJECT_BINARY_DIR}/x265_config.h")
+
+# Build a single library containing the 8-bit, 10-bit and 12-bit encoders,
+# switching bit depths at runtime (see build/linux/multilib.sh). Toolchain
+# settings that CMake cannot infer (e.g. a packaging toolchain's target
+# triplet) can be passed through MULTILIB_CMAKE_ARGS.
+option(ENABLE_MULTILIB "Build a single library containing all supported bit depths" OFF)
+set(MULTILIB_CMAKE_ARGS "" CACHE STRING "Extra CMake arguments for the multilib sub-builds")
+set(MULTILIB_ARCHIVER "" CACHE STRING "Archiver used to merge the multilib static libraries")
+if(ENABLE_MULTILIB)
+    include(cmake/multilib.cmake)
+endif()
 
 add_subdirectory(encoder)
 add_subdirectory(common)
