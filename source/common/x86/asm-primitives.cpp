@@ -1651,6 +1651,8 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask) // Main10
         p.cu[BLOCK_32x32].intra_pred[DC_IDX] = PFX(intra_pred_dc32_avx2);
 
         p.pu[LUMA_48x64].satd = PFX(pixel_satd_48x64_avx2);
+        p.pu[LUMA_8x8].sad = PFX(pixel_sad_8x8_avx2);
+        p.pu[LUMA_8x8].sad_x4 = PFX(pixel_sad_x4_8x8_avx2);
 
         p.pu[LUMA_64x16].satd = PFX(pixel_satd_64x16_avx2);
         p.pu[LUMA_64x32].satd = PFX(pixel_satd_64x32_avx2);
@@ -2359,6 +2361,7 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask) // Main10
     }
     if (cpuMask & X265_CPU_AVX512)
     {
+        p.pu[LUMA_8x8].sad_x4 = PFX(pixel_sad_x4_8x8_avx512);
         p.cu[BLOCK_16x16].var = PFX(pixel_var_16x16_avx512);
         p.cu[BLOCK_32x32].calcresidual[NONALIGNED] = PFX(getResidual32_avx512);
         p.cu[BLOCK_32x32].calcresidual[ALIGNED] = PFX(getResidual_aligned32_avx512);
