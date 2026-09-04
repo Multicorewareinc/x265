@@ -106,7 +106,6 @@ void FrameEncoder::destroy()
     if (m_param->bEmitHRDSEI || !!m_param->interlaceMode)
     {
         delete m_rce.picTimingSEI;
-        delete m_rce.hrdTiming;
     }
 }
 
@@ -129,7 +128,7 @@ bool FrameEncoder::init(Encoder *top, int numRows, int numCols)
     m_vbvResetTriggerRow = X265_MALLOC(int, m_param->maxSlices);
     ok &= !!m_sliceBaseRow;
     m_sliceGroupSize = (uint16_t)(m_numRows + m_param->maxSlices - 1) / m_param->maxSlices;
-    uint32_t sliceGroupSizeAccu = (m_numRows << 8) / m_param->maxSlices;    
+    uint32_t sliceGroupSizeAccu = (m_numRows << 8) / m_param->maxSlices;
     uint32_t rowSum = sliceGroupSizeAccu;
     uint32_t sidx = 0;
     for (uint32_t i = 0; i < m_numRows; i++)
@@ -183,9 +182,7 @@ bool FrameEncoder::init(Encoder *top, int numRows, int numCols)
     if (m_param->bEmitHRDSEI || !!m_param->interlaceMode)
     {
         m_rce.picTimingSEI = new SEIPictureTiming;
-        m_rce.hrdTiming = new HRDTiming;
-
-        ok &= m_rce.picTimingSEI && m_rce.hrdTiming;
+        ok &= !!m_rce.picTimingSEI;
     }
 
     if (m_param->noiseReductionIntra || m_param->noiseReductionInter)
@@ -543,7 +540,7 @@ void FrameEncoder::compressFrame(int layer)
 #endif
         if (strlen(m_param->analysisLoad))
         {
-            for (int list = 0; list < slice->isInterB() + 1; list++) 
+            for (int list = 0; list < slice->isInterB() + 1; list++)
             {
                 for (int plane = 0; plane < (m_param->internalCsp != X265_CSP_I400 ? 3 : 1); plane++)
                 {
@@ -727,9 +724,9 @@ void FrameEncoder::compressFrame(int layer)
     WaveFront::setLayerId(layer);
     /* reset entropy coders and compute slice id */
     m_entropyCoder.load(m_initSliceContext);
-    for (uint32_t sliceId = 0; sliceId < m_param->maxSlices; sliceId++)   
+    for (uint32_t sliceId = 0; sliceId < m_param->maxSlices; sliceId++)
         for (uint32_t row = m_sliceBaseRow[sliceId]; row < m_sliceBaseRow[sliceId + 1]; row++)
-            m_rows[row].init(m_initSliceContext, sliceId);   
+            m_rows[row].init(m_initSliceContext, sliceId);
 
     // reset slice counter for rate control update
     m_sliceCnt = 0;
@@ -802,14 +799,14 @@ void FrameEncoder::compressFrame(int layer)
             if (m_param->interlaceMode > 0)
             {
                 if( m_param->interlaceMode == 2 )
-                {   
+                {
                     // m_picStruct should be set to 3 or 4 when field feature is enabled
                     if (m_param->bField)
                         // 3: Top field, bottom field, in that order; 4: Bottom field, top field, in that order
                         sei->m_picStruct = (slice->m_fieldNum == 1) ? 4 : 3;
                     else
                         sei->m_picStruct = (poc & 1) ? 1 /* top */ : 2 /* bottom */;
-                }     
+                }
                 else if (m_param->interlaceMode == 1)
                 {
                     if (m_param->bField)
@@ -830,9 +827,9 @@ void FrameEncoder::compressFrame(int layer)
 
         if (vui->hrdParametersPresentFlag)
         {
-            // The m_aucpbremoval delay specifies how many clock ticks the access unit
-            // with the picture timing SEI message has to wait after removal of the
-            // access unit with the most recent buffering period SEI message
+            /* The m_aucpbremoval delay specifies how many clock ticks the access unit
+             * with the picture timing SEI message has to wait after removal of the
+             * access unit with the most recent buffering period SEI message */
             sei->m_auCpbRemovalDelay = X265_MIN(X265_MAX(1, m_frame[layer]->m_cpbDelay), (1 << hrd->cpbRemovalDelayLength));
             sei->m_picDpbOutputDelay = m_frame[layer]->m_dpbOutputDelay;
         }
@@ -919,7 +916,7 @@ void FrameEncoder::compressFrame(int layer)
 
     for (uint32_t sliceId = 0; sliceId < m_param->maxSlices; sliceId++)
         m_rows[m_sliceBaseRow[sliceId]].active = true;
-    
+
     if (m_param->bEnableWavefront)
     {
         int i = 0;
@@ -977,7 +974,7 @@ void FrameEncoder::compressFrame(int layer)
                             m_mref[l][ref].applyWeight(rowIdx, m_numRows, sliceEndRow, sliceId);
                     }
                 }
-                
+
                 enableRowEncoder(m_row_to_idx[row]); /* clear external dependency for this row */
 
                 if (m_top->m_threadedME && !slice->isIntra())
@@ -1065,7 +1062,7 @@ void FrameEncoder::compressFrame(int layer)
         PicYuv *reconPic = m_frame[layer]->m_reconPic[0];
         uint32_t height = reconPic->m_picHeight;
         initDecodedPictureHashSEI(0, 0, height, layer);
-    } 
+    }
 
     if (m_param->bDynamicRefine && m_top->m_startPoint <= m_frame[layer]->m_encodeOrder) //Avoid collecting data that will not be used by future frames.
         collectDynDataFrame(layer);
@@ -2040,7 +2037,7 @@ void FrameEncoder::processRowEncoder(int intRow, ThreadLocalData& tld, int layer
             {
                 uint32_t startAddr = m_sliceBaseRow[sliceId] * numCols;
                 uint32_t finishAddr = startAddr + rowCount * numCols;
-                
+
                 for (uint32_t cuAddr = startAddr; cuAddr < finishAddr; cuAddr++)
                     m_rowSliceTotalBits[sliceId] += curEncData.m_cuStat[cuAddr].totalBits;
             }

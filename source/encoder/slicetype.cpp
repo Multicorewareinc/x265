@@ -2631,7 +2631,6 @@ void Lookahead::slicetypeDecide()
     }
     else
     {
-
         if (bframes)
             list[bframes - 1]->m_lowres.bLastMiniGopBFrame = true;
         list[bframes]->m_lowres.leadingBframes = bframes;
@@ -2812,6 +2811,8 @@ void Lookahead::calculateDurations(Frame *frame, Frame *prevFrame)
         }
     }
 
+    frame->m_lowres.cpbDurationSecs = frame->m_plannedCpbDuration * frame->m_timebase;
+
     /* Buffering Period SEI (attached with the keyframe) */
     if (!m_param->bIntraRefresh && frame->m_lowres.bKeyframe)
     {
@@ -2841,6 +2842,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
             int p0 = IS_X265_TYPE_I(frames[curNonB]->sliceType) ? curNonB : prevNonB;
             frames[nextNonB]->plannedSatd[idx] = vbvFrameCost(frames, p0, curNonB, curNonB);
             frames[nextNonB]->plannedType[idx] = frames[curNonB]->sliceType;
+            frames[nextNonB]->plannedCpbDuration[idx] = frames[curNonB]->cpbDurationSecs;
 
             /* Save the nextNonB Cost in each B frame of the current miniGop */
             if (curNonB > miniGopEnd)
@@ -2848,7 +2850,8 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
                 for (int j = nextB; j < miniGopEnd; j++)
                 {
                     frames[j]->plannedSatd[frames[j]->indB] = frames[nextNonB]->plannedSatd[idx];
-                    frames[j]->plannedType[frames[j]->indB++] = frames[nextNonB]->plannedType[idx];
+                    frames[j]->plannedType[frames[j]->indB] = frames[nextNonB]->plannedType[idx];
+                    frames[j]->plannedCpbDuration[frames[j]->indB++] = frames[nextNonB]->plannedCpbDuration[idx];
                 }
             }
             idx++;
@@ -2878,6 +2881,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
                 satdCost = vbvFrameCost(frames, prevNonB, curNonB, i);
             frames[nextNonB]->plannedSatd[idx] = satdCost;
             frames[nextNonB]->plannedType[idx] = type;
+            frames[nextNonB]->plannedCpbDuration[idx] = frames[i]->cpbDurationSecs;
             /* Save the nextB Cost in each B frame of the current miniGop */
 
             for (int j = nextB; j < miniGopEnd; j++)
@@ -2887,7 +2891,8 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
                 if (j >= i && j !=nextBRef)
                     continue;
                 frames[j]->plannedSatd[frames[j]->indB] = satdCost;
-                frames[j]->plannedType[frames[j]->indB++] = type;
+                frames[j]->plannedType[frames[j]->indB] = type;
+                frames[j]->plannedCpbDuration[frames[j]->indB++] = frames[j]->cpbDurationSecs;
             }
         }
         prevNonB = curNonB;
@@ -3741,9 +3746,9 @@ void Lookahead::cuTree(Lowres **frames, int numframes, bool bIntra)
     int bframes = 0;
 
     x265_emms();
-    double totalDuration = 0.0;
+    double totalDuration = 0.;
     for (int j = 0; j <= numframes; j++)
-        totalDuration += (double)m_param->fpsDenom / m_param->fpsNum;
+        totalDuration += frames[j]->dispDurationSecs;
 
     double averageDuration = totalDuration / (numframes + 1);
 
