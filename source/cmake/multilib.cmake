@@ -112,11 +112,18 @@ x265_define_multilib_variant(x265-multilib-10bit "${_multilib_root}/10bit"
     "${_multilib_root}/10bit/${_multilib_archive_name}" "-DHIGH_BIT_DEPTH=ON")
 x265_define_multilib_variant(x265-multilib-12bit "${_multilib_root}/12bit"
     "${_multilib_root}/12bit/${_multilib_archive_name}" "-DHIGH_BIT_DEPTH=ON" "-DMAIN12=ON")
+# Build the bit-depth sub-libraries sequentially (like build/linux/multilib.sh)
+# so that a parallel parent build does not run two nested builds at once
+add_dependencies(x265-multilib-12bit x265-multilib-10bit)
 
 # Link the 10/12-bit archives into this build; the LINKED_* options enable the
 # bit-depth dispatch in the exported C API (see encoder/api.cpp)
-set(EXTRA_LIB
-    "${_multilib_root}/10bit/${_multilib_archive_name};${_multilib_root}/12bit/${_multilib_archive_name}"
-    CACHE STRING "Extra libraries to link against" FORCE)
-set(LINKED_10BIT ON CACHE BOOL "10bit libx265 is being linked with this library" FORCE)
-set(LINKED_12BIT ON CACHE BOOL "12bit libx265 is being linked with this library" FORCE)
+if(EXTRA_LIB)
+    message(WARNING "ENABLE_MULTILIB is enabled but EXTRA_LIB is already set; the multilib archives will not be linked automatically")
+else()
+    set(EXTRA_LIB
+        "${_multilib_root}/10bit/${_multilib_archive_name};${_multilib_root}/12bit/${_multilib_archive_name}"
+        CACHE STRING "Extra libraries to link against" FORCE)
+    set(LINKED_10BIT ON CACHE BOOL "10bit libx265 is being linked with this library" FORCE)
+    set(LINKED_12BIT ON CACHE BOOL "12bit libx265 is being linked with this library" FORCE)
+endif()
