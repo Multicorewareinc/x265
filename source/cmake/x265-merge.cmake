@@ -91,9 +91,19 @@ else()
     foreach(_input IN LISTS _inputs)
         list(APPEND _command "${_work}/${_input}")
     endforeach()
-    execute_process(COMMAND ${_command} WORKING_DIRECTORY "${_work}" RESULT_VARIABLE _result)
+    execute_process(COMMAND ${_command} WORKING_DIRECTORY "${_work}"
+                    OUTPUT_VARIABLE _out ERROR_VARIABLE _err RESULT_VARIABLE _result)
     if(NOT _result EQUAL 0)
-        message(FATAL_ERROR "Failed to merge static archives with libtool: ${_result}")
+        message(FATAL_ERROR "Failed to merge static archives with libtool: ${_result}\n${_out}${_err}")
+    endif()
+    # libtool warns about the identically-named object members that the three
+    # bit-depth builds produce; harmless, filter them from the output
+    if(_err)
+        string(REGEX REPLACE "[^\n]*member name[^\n]*\n?" "" _err "${_err}")
+        string(STRIP "${_err}" _err)
+        if(NOT _err STREQUAL "")
+            message(STATUS "${_err}")
+        endif()
     endif()
 endif()
 
