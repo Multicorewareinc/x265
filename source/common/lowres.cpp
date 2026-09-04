@@ -351,6 +351,7 @@ void Lowres::init(PicYuv* origPic, int poc, bool bEnableTemporalFilter)
     filterThisGOP = false;
     noiseScore = -1;
     frameNum = poc;
+    cpbDurationSecs = 0.;
     leadingBframes = 0;
     indB = 0;
     memset(costEst, -1, sizeof(costEst));
@@ -386,7 +387,7 @@ void Lowres::init(PicYuv* origPic, int poc, bool bEnableTemporalFilter)
     extendPicBorder(lowresPlane[1], lumaStride, width, lines, origPic->m_lumaMarginX, origPic->m_lumaMarginY);
     extendPicBorder(lowresPlane[2], lumaStride, width, lines, origPic->m_lumaMarginX, origPic->m_lumaMarginY);
     extendPicBorder(lowresPlane[3], lumaStride, width, lines, origPic->m_lumaMarginX, origPic->m_lumaMarginY);
-    
+
     if (origPic->m_param->bEnableHME || origPic->m_param->bEnableTemporalFilter)
     {
         if (bEnableTemporalFilter)

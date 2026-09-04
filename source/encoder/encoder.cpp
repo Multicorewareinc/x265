@@ -430,7 +430,7 @@ void Encoder::create()
     initVPS(&m_vps);
     initSPS(&m_sps);
     initPPS(&m_pps);
-   
+
     if (m_param->rc.vbvBufferSize)
     {
         m_offsetEmergency = (uint16_t(*)[MAX_NUM_TR_CATEGORIES][MAX_NUM_TR_COEFFS])X265_MALLOC(uint16_t, MAX_NUM_TR_CATEGORIES * MAX_NUM_TR_COEFFS * (QP_MAX_MAX - QP_MAX_SPEC));
@@ -1759,7 +1759,6 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                     }
                 }
             }
-
             inFrame[layer]->m_forceqp = inputPic[0]->forceqp;
             inFrame[layer]->m_param = (m_reconfigure || m_reconfigureRc || m_param->bConfigRCFrame) ? m_latestParam : m_param;
 
@@ -1769,12 +1768,14 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
             inFrame[layer]->m_picStruct = inFrame[layer]->m_picStruct < PIC_STRUCT_COUNT ? inFrame[layer]->m_picStruct : 0;
 
             /* Set up frame timing info for slicetype and ratecontrol and the frame timebase (could change across cvs) */
-            inFrame[layer]->m_duration = g_deltaToDivisor[inFrame[layer]->m_picStruct];
-            inFrame[layer]->m_displayPicCount = m_dispPicCount;
             if (inFrame[layer]->m_param->bEmitVUITimingInfo)
                 inFrame[layer]->m_timebase = (m_sps.vuiParameters.timingInfo.numUnitsInTick / m_sps.vuiParameters.timingInfo.timeScale);
             else
                 inFrame[layer]->m_timebase = (inFrame[layer]->m_param->fpsDenom / inFrame[layer]->m_param->fpsNum);
+
+            inFrame[layer]->m_duration = g_deltaToDivisor[inFrame[layer]->m_picStruct];
+            inFrame[layer]->m_displayPicCount = m_dispPicCount;
+            inFrame[layer]->m_lowres.dispDurationSecs = inFrame[layer]->m_duration * inFrame[layer]->m_timebase;
 
             /* update presentation counts (decoder ticks count) */
             m_dispPicCount += inFrame[layer]->m_duration;
