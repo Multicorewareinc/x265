@@ -1777,7 +1777,8 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
             inFrame[layer]->m_displayPicCount = m_dispPicCount;
             inFrame[layer]->m_lowres.dispDurationSecs = inFrame[layer]->m_duration * inFrame[layer]->m_timebase;
 
-            /* start off by assuming the cpb duration is equal to the display duration */
+            /* start off by assuming the cpb duration is equal to the display duration
+             * this is a fair assumption, except for highly VFR streams */
             inFrame[layer]->m_lowres.cpbDurationSecs = inFrame[layer]->m_duration * inFrame[layer]->m_timebase;
 
             /* update presentation counts (decoder ticks count) */

@@ -3856,7 +3856,7 @@ void Lookahead::estimateCUPropagate(Lowres **frames, double averageDuration, int
     uint16_t *propagateCost = frames[b]->propagateCost;
 
     x265_emms();
-    double fpsFactor = CLIP_DURATION((double)m_param->fpsDenom / m_param->fpsNum) / CLIP_DURATION(averageDuration);
+    double fpsFactor = CLIP_DURATION(frames[b]->dispDurationSecs) / CLIP_DURATION(averageDuration);
 
     /* For non-referred frames the source costs are always zero, so just memset one row and re-use it. */
     if (!referenced)
@@ -3953,7 +3953,7 @@ void Lookahead::estimateCUPropagate(Lowres **frames, double averageDuration, int
 
 void Lookahead::computeCUTreeQpOffset(Lowres *frame, double averageDuration, int ref0Distance)
 {
-    int fpsFactor = (int)(CLIP_DURATION(averageDuration) / CLIP_DURATION((double)m_param->fpsDenom / m_param->fpsNum) * 256);
+    int fpsFactor = (int)(CLIP_DURATION(averageDuration) / CLIP_DURATION(frame->dispDurationSecs) * 256);
     uint32_t loopIncr = (m_param->rc.qgSize == 8) ? 8 : 16;
 
     double weightdelta = 0.0;
