@@ -1769,13 +1769,16 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
 
             /* Set up frame timing info for slicetype and ratecontrol and the frame timebase (could change across cvs) */
             if (inFrame[layer]->m_param->bEmitVUITimingInfo)
-                inFrame[layer]->m_timebase = (m_sps.vuiParameters.timingInfo.numUnitsInTick / m_sps.vuiParameters.timingInfo.timeScale);
+                inFrame[layer]->m_timebase = ((double)m_sps.vuiParameters.timingInfo.numUnitsInTick / (double)m_sps.vuiParameters.timingInfo.timeScale);
             else
-                inFrame[layer]->m_timebase = (inFrame[layer]->m_param->fpsDenom / inFrame[layer]->m_param->fpsNum);
+                inFrame[layer]->m_timebase = ((double)inFrame[layer]->m_param->fpsDenom / (double)inFrame[layer]->m_param->fpsNum);
 
             inFrame[layer]->m_duration = g_deltaToDivisor[inFrame[layer]->m_picStruct];
             inFrame[layer]->m_displayPicCount = m_dispPicCount;
             inFrame[layer]->m_lowres.dispDurationSecs = inFrame[layer]->m_duration * inFrame[layer]->m_timebase;
+
+            /* start off by assuming the cpb duration is equal to the display duration */
+            inFrame[layer]->m_lowres.cpbDurationSecs = inFrame[layer]->m_duration * inFrame[layer]->m_timebase;
 
             /* update presentation counts (decoder ticks count) */
             m_dispPicCount += inFrame[layer]->m_duration;

@@ -700,7 +700,7 @@ bool RateControl::init(const SPS& sps)
                     if (!m_param->bMultiPassOptRPS)
                     {
                         int scenecut = 0;
-                        e += sscanf(p, " in:%*d out:%*d type:%c q:%lf q-aq:%lf q-noVbv:%lf q-Rceq:%lf tex:%d mv:%d misc:%d icu:%lf pcu:%lf scu:%lf sc:%d cpbd:%u, dspd:%u",
+                        e += sscanf(p, " in:%*d out:%*d type:%c q:%lf q-aq:%lf q-noVbv:%lf q-Rceq:%lf tex:%d mv:%d misc:%d icu:%lf pcu:%lf scu:%lf sc:%d cpbd:%u dspd:%u",
                             &picType, &qpRc, &qpAq, &qNoVbv, &qRceq, &rce->coeffBits,
                             &rce->mvBits, &rce->miscBits, &rce->iCuCount, &rce->pCuCount,
                             &rce->skipCuCount, &scenecut, &rce->cpbDuration, &rce->frameDuration);
@@ -712,7 +712,7 @@ bool RateControl::init(const SPS& sps)
                         char bUsed[40];
                         memset(deltaPOC, 0, sizeof(deltaPOC));
                         memset(bUsed, 0, sizeof(bUsed));
-                        e += sscanf(p, " in:%*d out:%*d type:%c q:%lf q-aq:%lf q-noVbv:%lf q-Rceq:%lf tex:%d mv:%d misc:%d icu:%lf pcu:%lf scu:%lf nump:%d numnegp:%d numposp:%d deltapoc:%127s bused:%39s cpbd:%u, dspd:%u",
+                        e += sscanf(p, " in:%*d out:%*d type:%c q:%lf q-aq:%lf q-noVbv:%lf q-Rceq:%lf tex:%d mv:%d misc:%d icu:%lf pcu:%lf scu:%lf nump:%d numnegp:%d numposp:%d deltapoc:%127s bused:%39s cpbd:%u dspd:%u",
                             &picType, &qpRc, &qpAq, &qNoVbv, &qRceq, &rce->coeffBits,
                             &rce->mvBits, &rce->miscBits, &rce->iCuCount, &rce->pCuCount,
                             &rce->skipCuCount, &rce->rpsData.numberOfPictures, &rce->rpsData.numberOfNegativePictures, &rce->rpsData.numberOfPositivePictures, deltaPOC, bUsed, &rce->cpbDuration, &rce->frameDuration);
@@ -1341,7 +1341,7 @@ void RateControl::initFramePredictors()
     }
     m_pred[0].coeff = m_pred[3].coeff = 0.75;
     m_pred[0].coeffMin = m_pred[3].coeffMin = 0.75 / 4;
-    if (m_isGrainEnabled) // when tuned for grain 
+    if (m_isGrainEnabled) // when tuned for grain
     {
         m_pred[1].coeffMin = 0.75 / 4;
         m_pred[1].coeff = 0.75;
@@ -1568,7 +1568,7 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
                 default:
                     break;
                 }
-
+                curFrame->m_lowres.plannedCpbDuration[j] = m_rce2Pass[index].cpbDuration * m_timebase;
                 curFrame->m_lowres.plannedSatd[j] = m_rce2Pass[index].currentSatd;
                 totalDuration += m_rce2Pass[index].frameDuration * m_timebase;
                 index++;

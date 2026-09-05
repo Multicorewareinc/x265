@@ -1471,14 +1471,14 @@ void Lookahead::getEstimatedPictureCost(Frame *curFrame)
             frames[b] = &curFrame->m_lowres;
             frames[p1] = &slice->m_refFrameList[1][0]->m_lowres;
         }
-        else 
+        else
         {
             p0 = b = 0;
             p1 = b + l1poc - poc;
             frames[p0] = frames[b] = &curFrame->m_lowres;
             frames[p1] = &slice->m_refFrameList[1][0]->m_lowres;
         }
-        
+
         break;
 
     default:
@@ -2803,15 +2803,14 @@ void Lookahead::calculateDurations(Frame *frame, Frame *prevFrame)
         frame->m_dpbOutputDelay = 0;
 
         /* Bref and next B-frame cpbRemovalDelay can be equal on long sequence of doubling or tripling.
-        larger m_dpbOutputDelay margin would fix this, but it creates buffering delay and breaks UHD BD compliance */
+         * larger m_dpbOutputDelay margin would fix this, but it creates buffering delay and breaks UHD BD compliance
+         * to avoid two access units with the same cpb removal time, shift prior frame back by a tick. */
         if (prevFrame && (prevFrame->m_cpbDelay == frame->m_cpbDelay))
         {
             prevFrame->m_cpbDelay -= 1;
             prevFrame->m_dpbOutputDelay += 1;
         }
     }
-
-    frame->m_lowres.cpbDurationSecs = frame->m_plannedCpbDuration * frame->m_timebase;
 
     /* Buffering Period SEI (attached with the keyframe) */
     if (!m_param->bIntraRefresh && frame->m_lowres.bKeyframe)
@@ -2882,6 +2881,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
             frames[nextNonB]->plannedSatd[idx] = satdCost;
             frames[nextNonB]->plannedType[idx] = type;
             frames[nextNonB]->plannedCpbDuration[idx] = frames[i]->cpbDurationSecs;
+
             /* Save the nextB Cost in each B frame of the current miniGop */
 
             for (int j = nextB; j < miniGopEnd; j++)
@@ -2892,7 +2892,8 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
                     continue;
                 frames[j]->plannedSatd[frames[j]->indB] = satdCost;
                 frames[j]->plannedType[frames[j]->indB] = type;
-                frames[j]->plannedCpbDuration[frames[j]->indB++] = frames[j]->cpbDurationSecs;
+                frames[j]->plannedCpbDuration[frames[j]->indB++] = frames[nextB]->cpbDurationSecs;
+
             }
         }
         prevNonB = curNonB;
