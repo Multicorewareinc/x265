@@ -1748,7 +1748,7 @@ void FrameEncoder::processRowEncoder(int intRow, ThreadLocalData& tld, int layer
             {
                 // Delay one row to avoid intra prediction conflict
                 if (m_pool && !bFirstRowInSlice)
-                {                    
+                {
                     int allowCol = col;
 
                     // avoid race condition on last column
@@ -1830,9 +1830,9 @@ void FrameEncoder::processRowEncoder(int intRow, ThreadLocalData& tld, int layer
         x265_emms();
 
         if (!layer && bIsVbv)
-        {   
+        {
             // Update encoded bits, satdCost, baseQP for each CU if tune grain is disabled
-            FrameData::RCStatCU& cuStat = curEncData.m_cuStat[cuAddr];    
+            FrameData::RCStatCU& cuStat = curEncData.m_cuStat[cuAddr];
             if ((m_param->bEnableWavefront && ((cuAddr == m_sliceBaseRow[sliceId] * numCols) || !m_param->rc.bEnableConstVbv)) || !m_param->bEnableWavefront)
             {
                 curEncData.m_rowStat[row].rowSatd.fetchAdd(cuStat.vbvCost);
@@ -1841,7 +1841,7 @@ void FrameEncoder::processRowEncoder(int intRow, ThreadLocalData& tld, int layer
                 curEncData.m_rowStat[row].sumQpRc += cuStat.baseQp;
                 curEncData.m_rowStat[row].numEncodedCUs = cuAddr;
             }
-            
+
             // If current block is at row end checkpoint, call vbv ratecontrol.
             if (!m_param->bEnableWavefront && col == numCols - 1)
             {
@@ -2019,7 +2019,7 @@ void FrameEncoder::processRowEncoder(int intRow, ThreadLocalData& tld, int layer
         uint32_t maxRows = m_sliceBaseRow[sliceId + 1] - m_sliceBaseRow[sliceId];
 
         if (!m_rce.encodeOrder)
-            rowCount = maxRows - 1; 
+            rowCount = maxRows - 1;
         else if ((uint32_t)m_rce.encodeOrder <= 2 * (m_param->fpsNum / m_param->fpsDenom))
             rowCount = X265_MIN((maxRows + 1) / 2, maxRows - 1);
         else
