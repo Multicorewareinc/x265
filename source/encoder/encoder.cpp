@@ -4558,11 +4558,14 @@ void Encoder::configure(x265_param *p)
         }
     }
 
-    // reject any configuration that leads to orphaned fields (1, 2, 5, 6, 9, 10, 11, 12)
-    if (p->pictureStructure >= PIC_STRUCT_COUNT || ((1 << p->pictureStructure) & 0b1111001100110))
+    if (p->pictureStructure >= 0)
     {
-        x265_log(p, X265_LOG_WARNING, "Invalid or illegal picture structure, not using the user-provided value.\n");
-        p->pictureStructure = -1;
+        // reject any configuration that leads to orphaned fields (1, 2, 5, 6, 9, 10, 11, 12)
+        if (p->pictureStructure >= PIC_STRUCT_COUNT || ((1 << p->pictureStructure) & 0b1111001100110))
+        {
+            x265_log(p, X265_LOG_WARNING, "Invalid or illegal picture structure, not using the user-provided value.\n");
+            p->pictureStructure = -1;
+        }
     }
 
     if (!p->bEnableFrameDuplication && p->dupThreshold && p->dupThreshold != 70)
