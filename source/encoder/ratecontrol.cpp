@@ -3320,7 +3320,7 @@ int RateControl::writeRateControlFrameStats(Frame* curFrame, RateControlEntry* r
     if (!curEncData.m_param->bMultiPassOptRPS)
     {
         if (fprintf(m_statFileOut,
-            "in:%d out:%d type:%c q:%.2f q-aq:%.2f q-noVbv:%.2f q-Rceq:%.2f tex:%d mv:%d misc:%d icu:%.2f pcu:%.2f scu:%.2f sc:%d cpbd:%u, dspd:%u ;\n",
+            "in:%d out:%d type:%c q:%.2f q-aq:%.2f q-noVbv:%.2f q-Rceq:%.2f tex:%d mv:%d misc:%d icu:%.2f pcu:%.2f scu:%.2f sc:%d cpbd:%u dspd:%u ;\n",
             rce->poc, rce->encodeOrder,
             cType, curEncData.m_avgQpRc, curEncData.m_avgQpAq,
             rce->qpNoVbv, rce->qRceq,
@@ -3351,7 +3351,7 @@ int RateControl::writeRateControlFrameStats(Frame* curFrame, RateControlEntry* r
         }
 
         if (fprintf(m_statFileOut,
-            "in:%d out:%d type:%c q:%.2f q-aq:%.2f q-noVbv:%.2f q-Rceq:%.2f tex:%d mv:%d misc:%d icu:%.2f pcu:%.2f scu:%.2f nump:%d numnegp:%d numposp:%d %s %s cpbd:%u, dspd:%u ;\n",
+            "in:%d out:%d type:%c q:%.2f q-aq:%.2f q-noVbv:%.2f q-Rceq:%.2f tex:%d mv:%d misc:%d icu:%.2f pcu:%.2f scu:%.2f nump:%d numnegp:%d numposp:%d %s %s cpbd:%u dspd:%u ;\n",
             rce->poc, rce->encodeOrder,
             cType, curEncData.m_avgQpRc, curEncData.m_avgQpAq,
             rce->qpNoVbv, rce->qRceq,
