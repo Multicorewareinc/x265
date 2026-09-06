@@ -6428,6 +6428,80 @@ cglobal idct4, 3, 4, 6
     movhps          [r1 + r3], xm1
     RET
 
+%if ARCH_X86_64
+%macro PSY_RDO_QUANT_ALL_AVX2 3
+%if WIN64
+    mov             r5,         r5m
+%endif
+    ; Split the scale into a signed 32-bit low part and its high correction.
+    mov             r6,         [r5]
+    movsxd          r5,         r6d
+    sub             r6,         r5
+    sar             r6,         32
+    movd            xm6,        r5d
+    movd            xm7,        r6d
+    vpbroadcastd    m6,         xm6
+    vpbroadcastd    m7,         xm7
+    mov             r6d,        %1
+    pxor            m4,         m4
+    pxor            m8,         m8
+.loop:
+    pmovsxwq        m0,         [r0]
+    pmovsxwq        m1,         [r1]
+    psubq           m1,         m0
+    pmuldq          m2,         m0, m0
+    psllq           m2,         %2
+
+    ; Multiply four signed prediction coefficients by the full 64-bit scale.
+    pmuldq          m3,         m1, m6
+    pmuldq          m5,         m1, m7
+    psllq           m5,         32
+    paddq           m3,         m5
+%if %3 > 0
+    pcmpgtq         m5,         m8, m3
+    psrlq           m3,         %3
+    psllq           m5,         64 - %3
+    por             m3,         m5
+%endif
+    psubq           m2,         m3
+    paddq           m4,         m2
+    movu            [r2],       m2
+    add             r0,         8
+    add             r1,         8
+    add             r2,         32
+    dec             r6d
+    jnz             .loop
+
+    vextracti128    xm2,        m4, 1
+    paddq           xm4,        xm2
+    punpckhqdq      xm2,        xm4, xm4
+    paddq           xm4,        xm2
+    movq            xm0,        [r3]
+    movq            xm1,        [r4]
+    paddq           xm0,        xm4
+    paddq           xm1,        xm4
+    movq            [r3],       xm0
+    movq            [r4],       xm1
+    RET
+%endmacro
+
+INIT_YMM avx2
+cglobal psyRdoQuantAll4, 6, 7, 9
+    PSY_RDO_QUANT_ALL_AVX2 4, RDO_SCALE_4, RDO_MAX_4
+
+INIT_YMM avx2
+cglobal psyRdoQuantAll8, 6, 7, 9
+    PSY_RDO_QUANT_ALL_AVX2 16, RDO_SCALE_8, RDO_MAX_8
+
+INIT_YMM avx2
+cglobal psyRdoQuantAll16, 6, 7, 9
+    PSY_RDO_QUANT_ALL_AVX2 64, RDO_SCALE_16, RDO_MAX_16
+
+INIT_YMM avx2
+cglobal psyRdoQuantAll32, 6, 7, 9
+    PSY_RDO_QUANT_ALL_AVX2 256, RDO_SCALE_32, RDO_MAX_32
+%endif
+
 %macro NONPSY_RDO_QUANT_ALL 2
     mov             r4d,        %1
     vpxor           m3,         m3

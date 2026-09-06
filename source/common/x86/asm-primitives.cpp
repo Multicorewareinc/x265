@@ -1477,6 +1477,12 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask) // Main10
     }
     if (cpuMask & X265_CPU_AVX2)
     {
+#if X86_64
+        p.cu[BLOCK_4x4].psyRdoQuantAll = PFX(psyRdoQuantAll4_avx2);
+        p.cu[BLOCK_8x8].psyRdoQuantAll = PFX(psyRdoQuantAll8_avx2);
+        p.cu[BLOCK_16x16].psyRdoQuantAll = PFX(psyRdoQuantAll16_avx2);
+        p.cu[BLOCK_32x32].psyRdoQuantAll = PFX(psyRdoQuantAll32_avx2);
+#endif
 #if X265_DEPTH == 12
         ASSIGN_SA8D(avx2);
 #endif
@@ -3717,6 +3723,12 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask) // Main
 #if X86_64
     if (cpuMask & X265_CPU_AVX2)
     {
+#if X86_64
+        p.cu[BLOCK_4x4].psyRdoQuantAll = PFX(psyRdoQuantAll4_avx2);
+        p.cu[BLOCK_8x8].psyRdoQuantAll = PFX(psyRdoQuantAll8_avx2);
+        p.cu[BLOCK_16x16].psyRdoQuantAll = PFX(psyRdoQuantAll16_avx2);
+        p.cu[BLOCK_32x32].psyRdoQuantAll = PFX(psyRdoQuantAll32_avx2);
+#endif
         p.cu[BLOCK_16x16].sse_ss = (pixel_sse_ss_t)PFX(pixel_ssd_ss_16x16_avx2);
         p.cu[BLOCK_32x32].sse_ss = (pixel_sse_ss_t)PFX(pixel_ssd_ss_32x32_avx2);
         p.cu[BLOCK_64x64].sse_ss = (pixel_sse_ss_t)PFX(pixel_ssd_ss_64x64_avx2);

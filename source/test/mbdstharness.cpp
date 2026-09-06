@@ -410,13 +410,15 @@ bool MBDstHarness::check_psyRdoQuantAll_primitive(psyRdoQuantAll_t ref, psyRdoQu
     ALIGN_VAR_64(int64_t, refDest[MAX_TU_SIZE]);
     ALIGN_VAR_64(int64_t, optDest[MAX_TU_SIZE]);
 
+    const int64_t scales[] = { 0, INT32_MAX, 1LL << 31, (1LL << 32) + 1, (1LL << 36) - 1 };
+    const int numScales = sizeof(scales) / sizeof(scales[0]);
     for (int i = 0, j = 0; i < ITERS; i++, j += INCR)
     {
         int64_t totalRdCostRef = rand();
         int64_t totalUncodedCostRef = rand();
         int64_t totalRdCostOpt = totalRdCostRef;
         int64_t totalUncodedCostOpt = totalUncodedCostRef;
-        int64_t psyScale = rand();
+        int64_t psyScale = i % 2 ? scales[(i / 2) % numScales] : rand();
         int index = rand() % TEST_CASES;
 
         memset(refDest, 0, sizeof(refDest));
