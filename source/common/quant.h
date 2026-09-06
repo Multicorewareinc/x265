@@ -88,20 +88,22 @@ protected:
     int                m_rdoqLevel;
     int32_t            m_psyRdoqScale;  // dynamic range [0,50] * 256 = 14-bits
     int16_t*           m_resiDctCoeff;
-    int16_t*           m_fencDctCoeff;
     int16_t*           m_fencShortBuf;
+
+    enum { SOURCE_DCT_COEFFS = 16 + 64 + 256 + 1024 };
 
     struct SourceDctCache
     {
         /* Slice objects can be recycled, so the picture order count is part of the key. */
         const Slice *slice;
-        uint32_t log2Size;
         int poc;
         uint32_t cuAddr;
         uint32_t absPartIdx;
+        int16_t* coeff;
+        int16_t* pixels;
 
-        SourceDctCache() : slice(NULL), log2Size(0), poc(0), cuAddr(0), absPartIdx(0) {}
-    } m_sourceDctCache;
+        SourceDctCache() : slice(NULL), poc(0), cuAddr(0), absPartIdx(0), coeff(NULL), pixels(NULL) {}
+    } m_sourceDctCache[NUM_TR_SIZE];
 
     enum { IEP_RATE = 32768 }; /* FIX15 cost of an equal probable bit */
 

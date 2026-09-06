@@ -177,7 +177,6 @@ Quant::rdoQuant_t Quant::rdoQuant_func[NUM_CU_DEPTH] = {&Quant::rdoQuant<2>, &Qu
 Quant::Quant()
 {
     m_resiDctCoeff = NULL;
-    m_fencDctCoeff = NULL;
     m_fencShortBuf = NULL;
     m_frameNr      = NULL;
     m_nr           = NULL;
@@ -189,11 +188,24 @@ bool Quant::init(double psyScale, const ScalingList& scalingList, Entropy& entro
     m_psyRdoqScale = (int32_t)(psyScale * 256.0);
     X265_CHECK((psyScale * 256.0) < (double)MAX_INT, "psyScale value too large\n");
     m_scalingList  = &scalingList;
-    m_resiDctCoeff = X265_MALLOC(int16_t, MAX_TR_SIZE * MAX_TR_SIZE * 2);
-    m_fencDctCoeff = m_resiDctCoeff + (MAX_TR_SIZE * MAX_TR_SIZE);
-    m_fencShortBuf = X265_MALLOC(int16_t, MAX_TR_SIZE * MAX_TR_SIZE);
+    m_resiDctCoeff = X265_MALLOC(int16_t, MAX_TR_SIZE * MAX_TR_SIZE + SOURCE_DCT_COEFFS);
+    m_fencShortBuf = X265_MALLOC(int16_t, SOURCE_DCT_COEFFS);
 
-    return m_resiDctCoeff && m_fencShortBuf;
+    if (!m_resiDctCoeff || !m_fencShortBuf)
+        return false;
+
+    /* Store larger transforms first to keep every cache buffer aligned. */
+    int16_t* coeff = m_resiDctCoeff + MAX_TR_SIZE * MAX_TR_SIZE;
+    int16_t* pixels = m_fencShortBuf;
+    for (int sizeIdx = NUM_TR_SIZE - 1; sizeIdx >= 0; sizeIdx--)
+    {
+        const int numCoeff = 1 << (2 * (sizeIdx + 2));
+        m_sourceDctCache[sizeIdx].coeff = coeff;
+        m_sourceDctCache[sizeIdx].pixels = pixels;
+        coeff += numCoeff;
+        pixels += numCoeff;
+    }
+    return true;
 }
 
 bool Quant::allocNoiseReduction(const x265_param& param)
@@ -613,26 +625,27 @@ uint32_t Quant::rdoQuant(const CUData &cu, int16_t *dstCoeff, TextType ttype, ui
     if (!numSig)
         return 0;
     const uint32_t trSize = 1 << log2TrSize;
+    SourceDctCache& sourceCache = m_sourceDctCache[log2TrSize - 2];
+    int16_t* const sourceDct = sourceCache.coeff;
+    int16_t* const sourcePixels = sourceCache.pixels;
     if (usePsy)
     {
         /* Prediction candidates share the source transform for the same image block. */
         const uint32_t sourcePartIdx = cu.m_absIdxInCTU + absPartIdx;
-        if (m_sourceDctCache.slice != cu.m_slice || m_sourceDctCache.poc != cu.m_slice->m_poc ||
-            m_sourceDctCache.log2Size != log2TrSize || m_sourceDctCache.cuAddr != cu.m_cuAddr ||
-            m_sourceDctCache.absPartIdx != sourcePartIdx)
+        if (sourceCache.slice != cu.m_slice || sourceCache.poc != cu.m_slice->m_poc ||
+            sourceCache.cuAddr != cu.m_cuAddr || sourceCache.absPartIdx != sourcePartIdx)
         {
-            primitives.cu[log2TrSize - 2].copy_ps(m_fencShortBuf, trSize, fenc, fencStride);
-            primitives.cu[log2TrSize - 2].dct(m_fencShortBuf, m_fencDctCoeff, trSize);
-            m_sourceDctCache.slice = cu.m_slice;
-            m_sourceDctCache.poc = cu.m_slice->m_poc;
-            m_sourceDctCache.log2Size = log2TrSize;
-            m_sourceDctCache.cuAddr = cu.m_cuAddr;
-            m_sourceDctCache.absPartIdx = sourcePartIdx;
+            primitives.cu[log2TrSize - 2].copy_ps(sourcePixels, trSize, fenc, fencStride);
+            primitives.cu[log2TrSize - 2].dct(sourcePixels, sourceDct, trSize);
+            sourceCache.slice = cu.m_slice;
+            sourceCache.poc = cu.m_slice->m_poc;
+            sourceCache.cuAddr = cu.m_cuAddr;
+            sourceCache.absPartIdx = sourcePartIdx;
         }
 #if CHECKED_BUILD || _DEBUG
         for (uint32_t y = 0; y < trSize; y++)
             for (uint32_t x = 0; x < trSize; x++)
-                X265_CHECK(fenc[y * fencStride + x] == m_fencShortBuf[y * trSize + x], "source DCT cache mismatch\n");
+                X265_CHECK(fenc[y * fencStride + x] == sourcePixels[y * trSize + x], "source DCT cache mismatch\n");
 #endif
     }
 
@@ -708,10 +721,10 @@ uint32_t Quant::rdoQuant(const CUData &cu, int16_t *dstCoeff, TextType ttype, ui
      * coefficient loop replace uncoded costs with coded costs as needed. */
     if (usePsyMask)
     {
-        primitives.cu[log2TrSize - 2].psyRdoQuantAll(m_resiDctCoeff, m_fencDctCoeff, costUncoded, &totalUncodedCost, &totalRdCost, &psyScale);
+        primitives.cu[log2TrSize - 2].psyRdoQuantAll(m_resiDctCoeff, sourceDct, costUncoded, &totalUncodedCost, &totalRdCost, &psyScale);
 
         /* DC distortion does not include the psy-RDOQ reconstruction bias. */
-        int64_t dcPsyCost = PSYVALUE(m_fencDctCoeff[0] - m_resiDctCoeff[0]);
+        int64_t dcPsyCost = PSYVALUE(sourceDct[0] - m_resiDctCoeff[0]);
         costUncoded[0] += dcPsyCost;
         totalUncodedCost += dcPsyCost;
         totalRdCost += dcPsyCost;
@@ -761,7 +774,7 @@ uint32_t Quant::rdoQuant(const CUData &cu, int16_t *dstCoeff, TextType ttype, ui
             uint32_t blkPos      = scan[scanPos];
             uint32_t maxAbsLevel = dstCoeff[blkPos];                  /* abs(quantized coeff) */
             int signCoef         = m_resiDctCoeff[blkPos];            /* pre-quantization DCT coeff */
-            int predictedCoef    = m_fencDctCoeff[blkPos] - signCoef; /* predicted DCT = source DCT - residual DCT*/
+            int predictedCoef    = sourceDct[blkPos] - signCoef; /* predicted DCT = source DCT - residual DCT*/
             int64_t uncodedCost = costUncoded[blkPos];
 
             // coefficient level estimation
