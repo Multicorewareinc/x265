@@ -46,11 +46,6 @@ struct coeffGroupRDStats
     int64_t sigCost0;          /* cost of signaling sig coeff bit of coeff 0 */
 };
 
-inline int fastMin(int x, int y)
-{
-    return y + ((x - y) & ((x - y) >> (sizeof(int) * CHAR_BIT - 1))); // min(x, y)
-}
-
 inline int getICRate(uint32_t absLevel, int32_t diffLevel, const int* greaterOneBits, const int* levelAbsBits, const uint32_t absGoRice, const uint32_t maxVlc, const uint32_t c1c2Rate)
 {
     X265_CHECK(absGoRice <= 4, "absGoRice check failure\n");
@@ -86,12 +81,12 @@ inline int getICRate(uint32_t absLevel, int32_t diffLevel, const int* greaterOne
             rate += egs << 15;
 
             // NOTE: in here, expGolomb=true means (symbol >= maxVlc + 1)
-            X265_CHECK(fastMin(symbol, (maxVlc + 1)) == (int)maxVlc + 1, "min check failure\n");
+            X265_CHECK(X265_MIN(symbol, (maxVlc + 1)) == (int)maxVlc + 1, "min check failure\n");
             symbol = maxVlc + 1;
         }
 
         uint32_t prefLen = (symbol >> absGoRice) + 1;
-        uint32_t numBins = fastMin(prefLen + absGoRice, 8 /* g_goRicePrefixLen[absGoRice] + absGoRice */);
+        uint32_t numBins = X265_MIN(prefLen + absGoRice, 8 /* g_goRicePrefixLen[absGoRice] + absGoRice */);
 
         rate += numBins << 15;
         rate += c1c2Rate;
@@ -127,7 +122,7 @@ inline int getICRateLessVlc(uint32_t absLevel, int32_t diffLevel, const uint32_t
 
     uint32_t symbol = diffLevel;
     uint32_t prefLen = (symbol >> absGoRice) + 1;
-    uint32_t numBins = fastMin(prefLen + absGoRice, 8 /* g_goRicePrefixLen[absGoRice] + absGoRice */);
+    uint32_t numBins = X265_MIN(prefLen + absGoRice, 8 /* g_goRicePrefixLen[absGoRice] + absGoRice */);
 
     rate = numBins << 15;
 
@@ -673,7 +668,6 @@ uint32_t Quant::rdoQuant(const CUData& cu, int16_t* dstCoeff, TextType ttype, ui
     const ScanType scanType = codeParams.scanType;
     const uint32_t firstSignificanceMapContext = codeParams.firstSignificanceMapContext;
     const uint32_t log2TrSizeCG = log2TrSize - 2;
-    const uint32_t cgNum = 1 << (log2TrSizeCG * 2);
     const uint32_t cgStride = (trSize >> MLS_CG_LOG2_SIZE);
 
     uint8_t coeffNum[MLS_GRP_NUM];      // value range[0, 16]
@@ -695,13 +689,6 @@ uint32_t Quant::rdoQuant(const CUData& cu, int16_t* dstCoeff, TextType ttype, ui
 
     uint32_t scanPos = 0;
     uint32_t c1 = 1;
-
-    // process trail all zero Coeff Group
-
-    /* coefficients after lastNZ have no distortion signal cost */
-    const int zeroCG = cgNum - 1 - cgLastScanPos;
-    memset(&costCoeff[(cgLastScanPos + 1) << MLS_CG_SIZE], 0, zeroCG * MLS_CG_BLK_SIZE * sizeof(int64_t));
-    memset(&costSig[(cgLastScanPos + 1) << MLS_CG_SIZE], 0, zeroCG * MLS_CG_BLK_SIZE * sizeof(int64_t));
 
     /* Initialize the uncoded distortion for every coefficient. This lets the
      * coefficient loop replace uncoded costs with coded costs as needed. */
@@ -753,7 +740,8 @@ uint32_t Quant::rdoQuant(const CUData& cu, int16_t* dstCoeff, TextType ttype, ui
         uint32_t c1Idx       = 0;
         uint32_t c2Idx       = 0;
         /* iterate over coefficients in each group in reverse scan order */
-        for (int scanPosinCG = cgSize - 1; scanPosinCG >= 0; scanPosinCG--)
+        const int lastScanPosinCG = X265_MIN(lastScanPos - (cgScanPos << MLS_CG_SIZE), (int)cgSize - 1);
+        for (int scanPosinCG = lastScanPosinCG; scanPosinCG >= 0; scanPosinCG--)
         {
             scanPos              = (cgScanPos << MLS_CG_SIZE) + scanPosinCG;
             uint32_t blkPos      = scan[scanPos];
@@ -761,15 +749,6 @@ uint32_t Quant::rdoQuant(const CUData& cu, int16_t* dstCoeff, TextType ttype, ui
             int signCoef         = m_resiDctCoeff[blkPos];            /* pre-quantization DCT coeff */
             int predictedCoef    = m_fencDctCoeff[blkPos] - signCoef; /* predicted DCT = source DCT - residual DCT*/
             int64_t uncodedCost = costUncoded[blkPos];
-
-            if (scanPos > (uint32_t)lastScanPos)
-            {
-                /* coefficients after lastNZ have no distortion signal cost */
-                costCoeff[scanPos] = 0;
-                costSig[scanPos] = 0;
-
-                continue;
-            }
 
             // coefficient level estimation
             const int* greaterOneBits = estBitsSbac.greaterOneBits[4 * ctxSet + c1];
@@ -1074,11 +1053,10 @@ uint32_t Quant::rdoQuant(const CUData& cu, int16_t* dstCoeff, TextType ttype, ui
             continue;
         }
 
-        for (int scanPosinCG = cgSize - 1; scanPosinCG >= 0; scanPosinCG--)
+        const int lastScanPosinCG = X265_MIN(lastScanPos - (cgScanPos << MLS_CG_SIZE), (int)cgSize - 1);
+        for (int scanPosinCG = lastScanPosinCG; scanPosinCG >= 0; scanPosinCG--)
         {
             scanPos = cgScanPos * cgSize + scanPosinCG;
-            if ((int)scanPos > lastScanPos)
-                continue;
 
             /* if the coefficient was coded, measure the RD cost of it as the last non-zero and then
              * continue as if it were uncoded. If the coefficient was already uncoded, remove the
@@ -1137,8 +1115,8 @@ uint32_t Quant::rdoQuant(const CUData& cu, int16_t* dstCoeff, TextType ttype, ui
 
     // Average 49.62 pixels
     /* clean uncoded coefficients */
-    X265_CHECK((uint32_t)(fastMin(lastScanPos, bestLastIdx) | (SCAN_SET_SIZE - 1)) < trSize * trSize, "array beyond bound\n");
-    for (int pos = bestLastIdx; pos <= (fastMin(lastScanPos, bestLastIdx) | (SCAN_SET_SIZE - 1)); pos++)
+    X265_CHECK((uint32_t)(X265_MIN(lastScanPos, bestLastIdx) | (SCAN_SET_SIZE - 1)) < trSize * trSize, "array beyond bound\n");
+    for (int pos = bestLastIdx; pos <= (X265_MIN(lastScanPos, bestLastIdx) | (SCAN_SET_SIZE - 1)); pos++)
     {
         dstCoeff[scan[pos]] = 0;
     }
