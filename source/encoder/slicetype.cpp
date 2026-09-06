@@ -2794,22 +2794,27 @@ void Lookahead::calculateDurations(Frame *frame, Frame *prevFrame)
     frame->m_plannedCpbDuration = frame->m_duration;
     frame->m_codedPicCount = m_codedPicCount;
 
+    int dpbDelay = (int64_t)frame->m_displayPicCount - (int64_t)m_codedPicCount;
     /* largest re-ordering at highest temporal layer */
-    frame->m_dpbOutputDelay += ((m_param->bframes > 0) ? 1 : 0) + m_sps->numReorderPics[X265_MAX(0, (m_param->bEnableTemporalSubLayers - 1))];
+    dpbDelay += ((m_param->bframes > 0) ? 1 : 0) + m_sps->numReorderPics[X265_MAX(0, (m_param->bEnableTemporalSubLayers - 1))];
 
-    if (frame->m_dpbOutputDelay < 0)
+    if (dpbDelay < 0)
     {
-        frame->m_cpbDelay += frame->m_dpbOutputDelay;
+        frame->m_cpbDelay += dpbDelay;
         frame->m_dpbOutputDelay = 0;
 
         /* Bref and next B-frame cpbRemovalDelay can be equal on long sequence of doubling or tripling.
-         * larger m_dpbOutputDelay margin would fix this, but it creates buffering delay and breaks UHD BD compliance
-         * to avoid two access units with the same cpb removal time, shift prior frame back by a tick. */
+         * larger m_dpbOutputDelay offset could solve this, but numReorder+1 is the max allowed on UHD BD.
+         * To avoid two access units with the same cpb removal time, shift prior frame back by a tick. */
         if (prevFrame && (prevFrame->m_cpbDelay == frame->m_cpbDelay))
         {
             prevFrame->m_cpbDelay -= 1;
             prevFrame->m_dpbOutputDelay += 1;
         }
+    }
+    else
+    {
+        frame->m_dpbOutputDelay = (unsigned int)dpbDelay;
     }
 
     /* Buffering Period SEI (attached with the keyframe) */
