@@ -426,16 +426,6 @@ uint32_t Quant::transformNxN(const CUData& cu, const pixel* fenc, uint32_t fencS
         else
             primitives.cu[sizeIdx].dct(residual, m_resiDctCoeff, resiStride);
 
-        /* NOTE: if RDOQ is disabled globally, psy-rdoq is also disabled, so
-         * there is no risk of performing this DCT unnecessarily */
-        if (usePsy)
-        {
-            int trSize = 1 << log2TrSize;
-            /* perform DCT on source pixels for psy-rdoq */
-            primitives.cu[sizeIdx].copy_ps(m_fencShortBuf, trSize, fenc, fencStride);
-            primitives.cu[sizeIdx].dct(m_fencShortBuf, m_fencDctCoeff, trSize);
-        }
-
         if (m_nr && m_nr->offset)
         {
             /* denoise is not applied to intra residual, so DST can be ignored */
@@ -447,7 +437,7 @@ uint32_t Quant::transformNxN(const CUData& cu, const pixel* fenc, uint32_t fencS
     }
 
     if (m_rdoqLevel)
-        return (this->*rdoQuant_func[log2TrSize - 2])(cu, coeff, ttype, absPartIdx, usePsy);
+        return (this->*rdoQuant_func[log2TrSize - 2])(cu, coeff, ttype, absPartIdx, usePsy, fenc, fencStride);
     else
     {
         int deltaU[32 * 32];
@@ -601,8 +591,9 @@ void Quant::invtransformNxN(const CUData& cu, int16_t* residual, uint32_t resiSt
 
 /* Rate distortion optimized quantization for entropy coding engines using
  * probability models like CABAC */
-template<uint32_t log2TrSize>
-uint32_t Quant::rdoQuant(const CUData& cu, int16_t* dstCoeff, TextType ttype, uint32_t absPartIdx, bool usePsy)
+template <uint32_t log2TrSize>
+uint32_t Quant::rdoQuant(const CUData &cu, int16_t *dstCoeff, TextType ttype, uint32_t absPartIdx, bool usePsy,
+                         const pixel *fenc, uint32_t fencStride)
 {
     const int transformShift = MAX_TR_DYNAMIC_RANGE - X265_DEPTH - log2TrSize; /* Represents scaling through forward transform */
     int scalingListType = (cu.isIntra(absPartIdx) ? 0 : 3) + ttype;
@@ -622,6 +613,29 @@ uint32_t Quant::rdoQuant(const CUData& cu, int16_t* dstCoeff, TextType ttype, ui
     if (!numSig)
         return 0;
     const uint32_t trSize = 1 << log2TrSize;
+    if (usePsy)
+    {
+        /* Prediction candidates share the source transform for the same image block. */
+        const uint32_t sourcePartIdx = cu.m_absIdxInCTU + absPartIdx;
+        if (m_sourceDctCache.slice != cu.m_slice || m_sourceDctCache.poc != cu.m_slice->m_poc ||
+            m_sourceDctCache.log2Size != log2TrSize || m_sourceDctCache.cuAddr != cu.m_cuAddr ||
+            m_sourceDctCache.absPartIdx != sourcePartIdx)
+        {
+            primitives.cu[log2TrSize - 2].copy_ps(m_fencShortBuf, trSize, fenc, fencStride);
+            primitives.cu[log2TrSize - 2].dct(m_fencShortBuf, m_fencDctCoeff, trSize);
+            m_sourceDctCache.slice = cu.m_slice;
+            m_sourceDctCache.poc = cu.m_slice->m_poc;
+            m_sourceDctCache.log2Size = log2TrSize;
+            m_sourceDctCache.cuAddr = cu.m_cuAddr;
+            m_sourceDctCache.absPartIdx = sourcePartIdx;
+        }
+#if CHECKED_BUILD || _DEBUG
+        for (uint32_t y = 0; y < trSize; y++)
+            for (uint32_t x = 0; x < trSize; x++)
+                X265_CHECK(fenc[y * fencStride + x] == m_fencShortBuf[y * trSize + x], "source DCT cache mismatch\n");
+#endif
+    }
+
     int64_t lambda2 = m_qpParam[ttype].lambda2;
     int64_t psyScale = ((int64_t)m_psyRdoqScale * m_qpParam[ttype].lambda);
     /* unquant constants for measuring distortion. Scaling list quant coefficients have a (1 << 4)
@@ -1115,7 +1129,8 @@ uint32_t Quant::rdoQuant(const CUData& cu, int16_t* dstCoeff, TextType ttype, ui
 
     // Average 49.62 pixels
     /* clean uncoded coefficients */
-    X265_CHECK((uint32_t)(X265_MIN(lastScanPos, bestLastIdx) | (SCAN_SET_SIZE - 1)) < trSize * trSize, "array beyond bound\n");
+    X265_CHECK((uint32_t)(X265_MIN(lastScanPos, bestLastIdx) | (SCAN_SET_SIZE - 1)) < trSize * trSize,
+               "array beyond bound\n");
     for (int pos = bestLastIdx; pos <= (X265_MIN(lastScanPos, bestLastIdx) | (SCAN_SET_SIZE - 1)); pos++)
     {
         dstCoeff[scan[pos]] = 0;
