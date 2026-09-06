@@ -1077,13 +1077,15 @@ static void nonPsyRdoQuantAll_c(const int16_t *resiDctCoeff, int64_t *costUncode
     const int scaleBits = SCALE_BITS - 2 * transformShift;
     const int numCoeff = 1 << (2 * log2TrSize);
 
+    int64_t totalCost = 0;
     for (int blkPos = 0; blkPos < numCoeff; blkPos++)
     {
         int64_t signCoef = resiDctCoeff[blkPos];
         costUncoded[blkPos] = static_cast<int64_t>((double)((signCoef * signCoef) << scaleBits));
-        *totalUncodedCost += costUncoded[blkPos];
-        *totalRdCost += costUncoded[blkPos];
+        totalCost += costUncoded[blkPos];
     }
+    *totalUncodedCost += totalCost;
+    *totalRdCost += totalCost;
 }
 
 template<int log2TrSize>
@@ -1094,15 +1096,18 @@ static void psyRdoQuantAll_c(const int16_t *resiDctCoeff, const int16_t *fencDct
     const int psyShift = X265_MAX(0, 2 * transformShift + 1);
     const int numCoeff = 1 << (2 * log2TrSize);
 
+    const int64_t scale = *psyScale;
+    int64_t totalCost = 0;
     for (int blkPos = 0; blkPos < numCoeff; blkPos++)
     {
         int64_t signCoef = resiDctCoeff[blkPos];
         int64_t predictedCoef = fencDctCoeff[blkPos] - signCoef;
         costUncoded[blkPos] = static_cast<int64_t>((double)((signCoef * signCoef) << scaleBits));
-        costUncoded[blkPos] -= static_cast<int64_t>((double)((*psyScale * predictedCoef) >> psyShift));
-        *totalUncodedCost += costUncoded[blkPos];
-        *totalRdCost += costUncoded[blkPos];
+        costUncoded[blkPos] -= static_cast<int64_t>((double)((scale * predictedCoef) >> psyShift));
+        totalCost += costUncoded[blkPos];
     }
+    *totalUncodedCost += totalCost;
+    *totalRdCost += totalCost;
 }
 
 namespace X265_NS {
