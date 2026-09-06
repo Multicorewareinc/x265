@@ -1927,16 +1927,19 @@ double RateControl::tuneQScaleForZone(RateControlEntry *rce, double qScale)
     return qScale;
 }
 
-double RateControl::tuneQScaleForGrain(RateControlEntry *rce, double rcOverflow)
+double RateControl::tuneQScaleForGrain(double rcOverflow)
 {
+    /* change to moving average framerate */
+    double fpsFactor = 1. / m_timebase;
+
     double qpstep = rcOverflow > 1.1 ? rcOverflow : m_lstep;
     double qScaleAvg = x265_qp2qScale(m_avgPFrameQp);
     double  q = m_lastQScaleFor[P_SLICE];
     int curQp = int (x265_qScale2qp(m_lastQScaleFor[P_SLICE]) + 0.5);
     /* replace 1/timebase with the running average of the framerate  */
-    double curBitrate = m_qpToEncodedBits[curQp] * int(1./m_timebase + 0.5);
+    double curBitrate = m_qpToEncodedBits[curQp] * int(fpsFactor + 0.5);
     int newQp = rcOverflow > 1.1 ? curQp + 2 : rcOverflow > 1 ? curQp + 1 : curQp - 1 ;
-    double projectedBitrate =  int(1./m_timebase + 0.5) * m_qpToEncodedBits[newQp];
+    double projectedBitrate =  int(fpsFactor + 0.5) * m_qpToEncodedBits[newQp];
     if (curBitrate > 0 && projectedBitrate > 0)
         q =  std::abs(projectedBitrate - m_bitrate) < std::abs (curBitrate - m_bitrate) ? x265_qp2qScale(newQp) : m_lastQScaleFor[P_SLICE];
     else
@@ -2073,7 +2076,7 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
             m_avgPFrameQp = m_avgPFrameQp == 0 ? rce->qpNoVbv : m_avgPFrameQp;
             if (overflow != 1)
             {
-                qScale = tuneQScaleForGrain(rce, overflow);
+                qScale = tuneQScaleForGrain(overflow);
                 q = x265_qScale2qp(qScale);
             }
             rce->qpNoVbv = q;
@@ -2338,7 +2341,7 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
                     if(m_sliceType!= I_SLICE && m_framesDone && !isEncodeEnd &&
                         ((overflow < 1.05 && overflow > 0.95) || isEncodeBeg))
                     {
-                        q = tuneQScaleForGrain(rce, overflow);
+                        q = tuneQScaleForGrain(overflow);
                     }
                 }
             }
