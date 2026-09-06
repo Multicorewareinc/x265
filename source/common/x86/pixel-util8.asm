@@ -8251,12 +8251,8 @@ cglobal scanPosLast, 7,11,6
     pmovmskb    r6d, m2
     mov         [r3 + r9 * 2], r6w
 
-    ; get non-zero number, POPCNT is faster
-    pabsb       m2, m2
-    psadbw      m2, m4
-    movhlps     m3, m2
-    paddd       m2, m3
-    movd        r6d, m2
+    ; Count the nonzero flags already extracted above.
+    popcnt      r6d, r6d
     mov         [r4 + r9], r6b
 
     inc         r9d
