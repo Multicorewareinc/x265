@@ -217,7 +217,7 @@ public:
     CTURow*                  m_rows;
     uint16_t                 m_sliceAddrBits;
     uint32_t                 m_sliceGroupSize;
-    uint32_t*                m_sliceBaseRow;    
+    uint32_t*                m_sliceBaseRow;
     uint32_t*                m_sliceMaxBlockRow;
     int64_t                  m_rowSliceTotalBits[2];
     RateControlEntry         m_rce;

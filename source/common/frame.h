@@ -182,6 +182,15 @@ public:
     /* target QP for this picture.*/
     int                    m_targetQp;
 
+    /*HRD delays for this frame*/
+    unsigned int           m_duration;           // display duration of picture in ticks (VUI timebase)
+    double                 m_timebase;           // the timebase for this picture [seconds]
+    unsigned int           m_plannedCpbDuration; // lifetime in the CPB (VUI timebase)
+    unsigned int           m_cpbDelay;           // removal delay of the picture (VUI timebase)
+    uint64_t               m_displayPicCount;    // display picture count (counted in decoder ticks)
+    uint64_t               m_codedPicCount;      // coded picture count (counted in decoder ticks)
+    unsigned int           m_dpbOutputDelay;     // output delay of the picture (VUI timebase)
+
     Frame();
 
     bool create(x265_param *param, float* quantOffsets);
