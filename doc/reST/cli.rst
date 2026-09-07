@@ -2523,7 +2523,7 @@ VUI fields must be manually specified.
 .. option:: --nalu-file <filename>
 
 	Text file containing userSEI in POC order : <POC><space><PREFIX><space><NAL UNIT TYPE>/<SEI TYPE><space><SEI Payload>
-	Parse the input file specified and inserts SEI messages into the bitstream. 
+	Parse the input file specified and inserts SEI messages into the bitstream.
 	Currently, we support only PREFIX SEI messages. This is an "application-only" feature.
 
 .. option:: --atc-sei <integer>
@@ -2535,8 +2535,19 @@ VUI fields must be manually specified.
 .. option:: --pic-struct <integer>
 
 	Set the picture structure and emits it in the picture timing SEI message.
-	Values in the range 0..12. See D.3.3 of the HEVC spec. for a detailed explanation.
-	Required for HLG (Hybrid Log Gamma) signaling. Not signaled by default.
+	Values in the range 0..12. See Table D.2 and D.3.3 of the HEVC spec. for a detailed explanation.
+
+.. option:: --psfile <filename>
+
+	Specify a text file which contains the picture structure for some or all frames.
+	Allows for dynamic pulldown (VFR in CFR containers). The format of each line is
+
+	framenumber framefieldcoding picstruct
+
+	Framefieldcoding shall be 0, 1, 2 (progressive, bottom-first or top-first, resp.),
+	It shall not change for an encoded sequence and match the encoder configuration.
+
+	Picstruct is the picture structure to use in the framenumber's Picture Timing SEI.
 
 .. option:: --video-signal-type-preset <string>
 

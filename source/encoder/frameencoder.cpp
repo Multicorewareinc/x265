@@ -796,32 +796,34 @@ void FrameEncoder::compressFrame(int layer)
 
         if (vui->frameFieldInfoPresentFlag)
         {
-            if (m_param->interlaceMode > 0)
+            if (m_frame[layer]->m_picStruct == PIC_STRUCT_AUTO)
             {
-                if( m_param->interlaceMode == 2 )
+                if (m_param->interlaceMode > 0)
                 {
-                    // m_picStruct should be set to 3 or 4 when field feature is enabled
-                    if (m_param->bField)
-                        // 3: Top field, bottom field, in that order; 4: Bottom field, top field, in that order
-                        sei->m_picStruct = (slice->m_fieldNum == 1) ? 4 : 3;
-                    else
-                        sei->m_picStruct = (poc & 1) ? 1 /* top */ : 2 /* bottom */;
+                    if( m_param->interlaceMode == 2 )
+                    {
+                        // m_picStruct should be set to 3 or 4 when field feature is enabled
+                        if (m_param->bField)
+                            // 3: Top field, bottom field, in that order; 4: Bottom field, top field, in that order
+                            sei->m_picStruct = (slice->m_fieldNum == 1) ? PIC_STRUCT_BOTTOM_TOP : PIC_STRUCT_TOP_BOTTOM;
+                        else
+                            sei->m_picStruct = (poc & 1) ? PIC_STRUCT_FIELD_TOP : PIC_STRUCT_FIELD_BOTTOM;
+                    }
+                    else if (m_param->interlaceMode == 1)
+                    {
+                        if (m_param->bField)
+                            sei->m_picStruct = (slice->m_fieldNum == 1) ? PIC_STRUCT_TOP_BOTTOM: PIC_STRUCT_BOTTOM_TOP;
+                        else
+                            sei->m_picStruct = (poc & 1) ? PIC_STRUCT_FIELD_BOTTOM : PIC_STRUCT_FIELD_TOP;
+                    }
                 }
-                else if (m_param->interlaceMode == 1)
-                {
-                    if (m_param->bField)
-                        sei->m_picStruct = (slice->m_fieldNum == 1) ? 3: 4;
-                    else
-                        sei->m_picStruct = (poc & 1) ? 2 /* bottom */ : 1 /* top */;
-                }
+                else
+                    sei->m_picStruct = PIC_STRUCT_PROGRESSIVE_FRAME;
             }
-            else if (m_param->bEnableFrameDuplication)
-                sei->m_picStruct = m_frame[layer]->m_picStruct;
             else
-                sei->m_picStruct = m_param->pictureStructure;
+                sei->m_picStruct = m_frame[layer]->m_picStruct;
 
             sei->m_sourceScanType = m_param->interlaceMode ? 0 : 1;
-
             sei->m_duplicateFlag = false;
         }
 

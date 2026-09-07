@@ -780,7 +780,7 @@ typedef struct x265_zone
     struct x265_param* zoneParam;
     double* relativeComplexity;
 } x265_zone;
-    
+
 /* data to calculate aggregate VMAF score */
 typedef struct x265_vmaf_data
 {
@@ -797,8 +797,8 @@ typedef struct x265_vmaf_framedata
 {
     int width;
     int height;
-    int frame_set; 
-    int internalBitDepth; 
+    int frame_set;
+    int internalBitDepth;
     void *reference_frame; /* points to fenc of particular frame */
     void *distorted_frame; /* points to recon of particular frame */
 }x265_vmaf_framedata;
@@ -2810,6 +2810,25 @@ static const char * const x265_api_query_errnames[] = {
     "unable to bind a libx265 with requested bit depth",
     "unable to bind x265_api_query from libx265",
     "libx265 has an invalid bitdepth"
+};
+
+enum PicStruct
+{
+    PIC_STRUCT_PROGRESSIVE_FRAME = 0,
+    PIC_STRUCT_FIELD_TOP    = 1,
+    PIC_STRUCT_FIELD_BOTTOM = 2,
+    PIC_STRUCT_TOP_BOTTOM = 3,
+    PIC_STRUCT_BOTTOM_TOP = 4,
+    PIC_STRUCT_TOP_BOTTOM_TOP    = 5,
+    PIC_STRUCT_BOTTOM_TOP_BOTTOM = 6,
+    PIC_STRUCT_DOUBLING = 7,
+    PIC_STRUCT_TRIPLING = 8,
+    PIC_STRUCT_TOP_PREVBOTTOM = 9,
+    PIC_STRUCT_BOTTOM_PREVTOP = 10,
+    PIC_STRUCT_TOP_NEXTBOTTOM = 11,
+    PIC_STRUCT_BOTTOM_NEXTTOP = 12,
+    PIC_STRUCT_COUNT,
+    PIC_STRUCT_AUTO = PIC_STRUCT_PROGRESSIVE_FRAME,
 };
 
 #ifdef __cplusplus

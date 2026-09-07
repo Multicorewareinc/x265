@@ -220,8 +220,8 @@ void Encoder::create()
             framesize += (stride * (p->sourceHeight >> x265_cli_csps[p->internalCsp].height[i]));
         }
 
-        //Sets the picture structure and emits it in the picture timing SEI message
-        m_param->pictureStructure = 0; 
+        // Override user setting, let the dup logic decide.
+        m_param->pictureStructure = -1;
 
         for (uint32_t i = 0; i < DUP_BUFFER; i++)
         {
@@ -1268,7 +1268,7 @@ uint64_t Encoder::computeSSD(pixel *fenc, pixel *rec, intptr_t stride, uint32_t 
         }
     }
 
-    /* Handle last few rows of frames for videos 
+    /* Handle last few rows of frames for videos
     with height not divisble by 4 */
     uint32_t h = height % y;
     if (param->bEnableFrameDuplication && h)
@@ -1762,10 +1762,13 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
             inFrame[layer]->m_forceqp = inputPic[0]->forceqp;
             inFrame[layer]->m_param = (m_reconfigure || m_reconfigureRc || m_param->bConfigRCFrame) ? m_latestParam : m_param;
 
-            inFrame[layer]->m_picStruct = inputPic[0]->picStruct;
-            if (inFrame[layer]->m_param->pictureStructure > -1)
+            if (inFrame[layer]->m_param->pictureStructure >= 0)
                 inFrame[layer]->m_picStruct = inFrame[layer]->m_param->pictureStructure;
-            inFrame[layer]->m_picStruct = inFrame[layer]->m_picStruct < PIC_STRUCT_COUNT ? inFrame[layer]->m_picStruct : 0;
+            else
+               inFrame[layer]->m_picStruct = inputPic[0]->picStruct;
+
+            if (inFrame[layer]->m_picStruct >= PIC_STRUCT_COUNT)
+                inFrame[layer]->m_picStruct = PIC_STRUCT_PROGRESSIVE_FRAME;
 
             /* Set up frame timing info for slicetype and ratecontrol and the frame timebase (could change across cvs) */
             if (inFrame[layer]->m_param->bEmitVUITimingInfo)
@@ -3771,7 +3774,7 @@ void Encoder::initSPS(SPS *sps)
     vui.defaultDisplayWindow.bottomOffset = m_param->vui.defDispWinBottomOffset;
     vui.defaultDisplayWindow.leftOffset = m_param->vui.defDispWinLeftOffset;
 
-    vui.frameFieldInfoPresentFlag = !!m_param->interlaceMode || (m_param->pictureStructure >= 0);
+    vui.frameFieldInfoPresentFlag = !!m_param->interlaceMode || (m_param->bEmitHRDSEI);
     vui.fieldSeqFlag = !!m_param->interlaceMode;
 
     vui.hrdParametersPresentFlag = m_param->bEmitHRDSEI;
@@ -4591,10 +4594,10 @@ void Encoder::configure(x265_param *p)
         p->bEnableFrameDuplication = 0;
     }
 
-    if (p->bEnableFrameDuplication && p->pictureStructure != 0 && p->pictureStructure != -1)
+    if (p->bEnableFrameDuplication && p->pictureStructure > PIC_STRUCT_AUTO)
     {
-        x265_log(p, X265_LOG_WARNING, "Frame-duplication works only with pic_struct = 0. Setting pic-struct = 0.\n");
-        p->pictureStructure = 0;
+        x265_log(p, X265_LOG_WARNING, "Frame-duplication works only without forced pic-struct value. Ignoring the picture structure.\n");
+        p->pictureStructure = PIC_STRUCT_AUTO;
     }
 
     if (m_param->bEnableFrameDuplication && (!bIsVbv || !m_param->bEmitHRDSEI))

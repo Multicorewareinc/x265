@@ -535,7 +535,7 @@ ret:
                 int analysisWrite = m_parent->m_analysisWriteCnt[analysisQId].get();
                 int written = analysisWrite * m_parent->m_passEnc[analysisQId]->m_cliopt.numRefs;
                 int analysisRead = m_parent->m_analysisReadCnt[analysisQId].get();
-                
+
                 while (m_threadActive && written == analysisRead)
                 {
                     analysisWrite = m_parent->m_analysisWriteCnt[analysisQId].waitForChange(analysisWrite);
@@ -760,6 +760,17 @@ ret:
                                 pic_in[view]->poc, profileName);
                             fclose(m_cliopt.qpfile);
                             m_cliopt.qpfile = NULL;
+                        }
+                    }
+
+                    if (m_cliopt.psfile)
+                    {
+                        if (!m_cliopt.parsePSFile(pic_orig[view], m_param->interlaceMode, m_param->bField))
+                        {
+                            x265_log(NULL, X265_LOG_ERROR, "can't parse psfile for frame %d in %s\n",
+                                pic_in[view]->poc, profileName);
+                            fclose(m_cliopt.psfile);
+                            m_cliopt.psfile = NULL;
                         }
                     }
 
