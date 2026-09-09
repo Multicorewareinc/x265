@@ -1047,6 +1047,7 @@ Lookahead::Lookahead(x265_param *param, ThreadPool* pool, SPS* sps)
     m_pool  = pool;
     m_sps   = sps;
 
+    m_numPools = 0;
     m_lastNonB = NULL;
     m_isSceneTransition = false;
     m_scratch        = NULL;
@@ -1074,6 +1075,8 @@ Lookahead::Lookahead(x265_param *param, ThreadPool* pool, SPS* sps)
     /* HRD counters */
     m_codedPicCount = 0;
     m_cpbDelay = 0;
+
+    memset(m_frameVariance, 0, sizeof(m_frameVariance));
 
     /* Allow the strength to be adjusted via qcompress, since the two concepts
      * are very similar. */
