@@ -123,6 +123,7 @@ FUNCDEF_TU_S(void, cpy1Dto2D_shr, v, int16_t* dst, const int16_t* src, intptr_t 
 FUNCDEF_TU_S(void, ssimDist, v, const pixel *fenc, uint32_t fStride, const pixel *recon, intptr_t rstride, uint64_t *ssBlock, int shift, uint64_t *ac_k);
 FUNCDEF_TU_S(void, idct, v, const int16_t* src, int16_t* dst, intptr_t dstStride);
 FUNCDEF_TU_S(void, dct, v, const int16_t* src, int16_t* dst, intptr_t srcStride);
+FUNCDEF_TU_S(void, dct, v_opt, const int16_t* src, int16_t* dst, intptr_t srcStride);
 FUNCDEF_TU_S(void, getResidual, v, const pixel* fenc, const pixel* pred, int16_t* residual, intptr_t stride);
 
 FUNCDEF_TU_S2(void, intra_pred_planar, rvv, pixel* dst, intptr_t dstride, const pixel* srcPix, int, int);
