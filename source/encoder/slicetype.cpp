@@ -2129,7 +2129,6 @@ void Lookahead::slicetypeDecide()
                 x265_log(m_param, X265_LOG_WARNING, "B-ref at frame %d incompatible with B-pyramid\n",
                     frm.frameNum);
             }
-
             /* pyramid with multiple B-refs needs a big enough dpb that the preceding P-frame stays available.
              * smaller dpb could be supported by smart enough use of mmco, but it's easier just to forbid it. */
             else if (frm.sliceType == X265_TYPE_BREF && m_param->bBPyramid && brefs &&
@@ -2761,8 +2760,10 @@ void Lookahead::slicetypeDecide()
             int j;
             for (j = 0; j < maxSearch; j++)
             {
+                setDurationsToLowres(curFrame);
                 frames[j + 1] = &curFrame->m_lowres;
                 curFrame = curFrame->m_next;
+
             }
             m_inputLock.release();
 
@@ -2791,7 +2792,7 @@ void Lookahead::calculateDurations(Frame *frame, Frame *prevFrame)
 {
     frame->m_cpbDelay = m_cpbDelay;
     frame->m_dpbOutputDelay = frame->m_displayPicCount - m_codedPicCount;
-    frame->m_plannedCpbDuration = frame->m_duration;
+    frame->m_cpbDuration = frame->m_duration;
     frame->m_codedPicCount = m_codedPicCount;
 
     int dpbDelay = (int64_t)frame->m_displayPicCount - (int64_t)m_codedPicCount;
@@ -2817,14 +2818,28 @@ void Lookahead::calculateDurations(Frame *frame, Frame *prevFrame)
         frame->m_dpbOutputDelay = (unsigned int)dpbDelay;
     }
 
+    setDurationsToLowres(frame);
+
     /* Buffering Period SEI (attached with the keyframe) */
     if (!m_param->bIntraRefresh && frame->m_lowres.bKeyframe)
     {
         m_cpbDelay = 0;
     }
 
-    m_cpbDelay += frame->m_plannedCpbDuration;
+    m_cpbDelay += frame->m_cpbDuration;
     m_codedPicCount += frame->m_duration;
+}
+
+void Lookahead::setDurationsToLowres(Frame *frame)
+{
+    frame->m_lowres.dispPicCount = frame->m_displayPicCount;
+    frame->m_lowres.durationPicCount = frame->m_duration;
+
+    /* fair assumption: assume the cpb duration is equal to the display duration.
+     * It's only an issue with extreme VFR or low delay applications */
+    double durationSecs = frame->m_duration * frame->m_timebase;
+    frame->m_lowres.dispDurationSecs = durationSecs;
+    frame->m_lowres.cpbDurationSecs = durationSecs;
 }
 
 void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
@@ -2951,7 +2966,6 @@ void Lookahead::slicetypeAnalyse(Lowres **frames, bool bKeyframe)
 
     if (framecnt)
     {
-
         frames[framecnt + 1] = NULL;
 
         if (m_param->bResetZoneConfig)
@@ -4210,7 +4224,7 @@ int64_t Lookahead::frameCostRecalculate(Lowres** frames, int p0, int p1, int b)
                     qp_offset[cux * 2 + cuy * m_8x8Width * 4 + 1] +
                     qp_offset[cux * 2 + cuy * m_8x8Width * 4 + frames[b]->maxBlocksInRowFullRes] +
                     qp_offset[cux * 2 + cuy * m_8x8Width * 4 + frames[b]->maxBlocksInRowFullRes + 1]) / 4;
-                else 
+                else
                     qp_adj = qp_offset[cuxy];
                 cuCost = (cuCost * x265_exp2fix8(qp_adj) + 128) >> 8;
                 rowSatd[cuy] += cuCost;

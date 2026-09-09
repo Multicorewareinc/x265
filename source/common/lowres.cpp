@@ -352,6 +352,8 @@ void Lowres::init(PicYuv* origPic, int poc, bool bEnableTemporalFilter)
     noiseScore = -1;
     frameNum = poc;
     cpbDurationSecs = 0.;
+    dispDurationSecs = 0.;
+    dispPicCount = durationPicCount = 0;
     leadingBframes = 0;
     indB = 0;
     memset(costEst, -1, sizeof(costEst));

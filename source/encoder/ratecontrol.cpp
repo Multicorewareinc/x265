@@ -1377,7 +1377,7 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
         rce->keptAsRef = IS_REFERENCED(curFrame);
     m_predType = getPredictorType(curFrame->m_lowres.sliceType, m_sliceType);
     rce->poc = m_curSlice->m_poc;
-    rce->cpbDuration = curFrame->m_plannedCpbDuration;
+    rce->cpbDuration = curFrame->m_cpbDuration;
     rce->frameDuration = curFrame->m_duration;
 
     if (m_param->bEnableSBRC)
@@ -2661,7 +2661,7 @@ double RateControl::clipQscale(Frame* curFrame, RateControlEntry* rce, double q)
                 curBits = predictSize(&m_pred[m_predType], q, (double)m_currentSatd);
                 double bufferFillCur = m_bufferFill - curBits;
                 double targetFill;
-                double lastDuration = curFrame->m_plannedCpbDuration * curFrame->m_timebase;
+                double lastDuration = curFrame->m_cpbDuration * m_timebase;
                 double totalDuration = 0;
                 frameQ[P_SLICE] = m_sliceType == I_SLICE ? q * m_param->rc.ipFactor : (m_sliceType == B_SLICE ? q / m_param->rc.pbFactor : q);
                 frameQ[B_SLICE] = frameQ[P_SLICE] * m_param->rc.pbFactor;
@@ -3538,7 +3538,7 @@ double RateControl::forwardMasking(Frame* curFrame, double q)
     double qp = x265_qScale2qp(q);
     double fps = 1. / m_timebase;
     /* todo: consider exponential moving average for the window sizes, looking at each frame's duration */
-    fps = m_framesDone < fps ? 1/(curFrame->m_duration * curFrame->m_timebase) : m_durationDone / m_framesDone;
+    fps = m_framesDone < fps ? 1/(curFrame->m_duration * m_timebase) : m_durationDone / m_framesDone;
     uint32_t maxWindowSize = uint32_t((m_param->fwdMaxScenecutWindow / 1000.0) * fps + 0.5);
     uint32_t windowSize[6], prevWindow = 0;
     int lastScenecut = m_top->m_rateControl->m_lastScenecut;

@@ -181,8 +181,12 @@ struct Lowres : public ReferencePlanes
     int32_t noiseScore;     // Raw noise score from estimateNoise() at GOP start; -1 for non-GOP-start frames
 
     double ipCostRatio;
+
+    /* Vbv Lookahead & cuTree durations */
     double cpbDurationSecs;
     double dispDurationSecs;
+    int64_t dispPicCount;
+    int64_t durationPicCount;
 
     /* lookahead output data */
     int64_t   costEst[X265_BFRAME_MAX + 2][X265_BFRAME_MAX + 2];
@@ -209,7 +213,7 @@ struct Lowres : public ReferencePlanes
     /* used for vbvLookahead */
     int       plannedType[X265_LOOKAHEAD_MAX + 1];
     int64_t   plannedSatd[X265_LOOKAHEAD_MAX + 1];
-    double    plannedCpbDuration[X265_LOOKAHEAD_MAX + 1];
+    double    plannedCpbDuration[X265_LOOKAHEAD_MAX + 1]; /* durations of frames ahead for VBV */
     int       indB;
     int       bframes;
 
