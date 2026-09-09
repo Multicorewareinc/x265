@@ -83,7 +83,7 @@ void intraFilter_neon(const pixel* samples, pixel* filtered) /* 1:2:1 filtering 
     filtered[tuSize2 + tuSize2] = leftLast;
 }
 
-template<int width>
+template<int width, bool bTranspose>
 void intra_pred_ang_neon(pixel *dst, intptr_t dstStride, const pixel *srcPix0, int dirMode, int bFilter)
 {
     int width2 = width << 1;
@@ -229,7 +229,7 @@ void intra_pred_ang_neon(pixel *dst, intptr_t dstStride, const pixel *srcPix0, i
     }
 
     // Flip for horizontal.
-    if (horMode)
+    if (horMode && bTranspose)
     {
         if (width == 8)
         {
@@ -268,39 +268,7 @@ void all_angs_pred_neon(pixel *dest, pixel *refPix, pixel *filtPix, int bLuma)
         pixel *srcPix  = (g_intraFilterFlags[mode] & size ? filtPix  : refPix);
         pixel *out = dest + ((mode - 2) << (log2Size * 2));
 
-        intra_pred_ang_neon<size>(out, size, srcPix, mode, bLuma);
-
-        // Optimize code don't flip buffer
-        bool modeHor = (mode < 18);
-
-        // transpose the block if this is a horizontal mode
-        if (modeHor)
-        {
-            if (size == 8)
-            {
-                transpose8x8(out, out, size, size);
-            }
-            else if (size == 16)
-            {
-                transpose16x16(out, out, size, size);
-            }
-            else if (size == 32)
-            {
-                transpose32x32(out, out, size, size);
-            }
-            else
-            {
-                for (int k = 0; k < size - 1; k++)
-                {
-                    for (int l = k + 1; l < size; l++)
-                    {
-                        pixel tmp         = out[k * size + l];
-                        out[k * size + l] = out[l * size + k];
-                        out[l * size + k] = tmp;
-                    }
-                }
-            }
-        }
+        intra_pred_ang_neon<size, false>(out, size, srcPix, mode, bLuma);
     }
 }
 
@@ -714,15 +682,15 @@ void setupIntraPrimitives_neon(EncoderPrimitives &p)
 
     for (int i = 2; i < NUM_INTRA_MODE; i++)
     {
-        p.cu[BLOCK_8x8].intra_pred[i] = intra_pred_ang_neon<8>;
-        p.cu[BLOCK_16x16].intra_pred[i] = intra_pred_ang_neon<16>;
-        p.cu[BLOCK_32x32].intra_pred[i] = intra_pred_ang_neon<32>;
+        p.cu[BLOCK_8x8].intra_pred[i] = intra_pred_ang_neon<8, true>;
+        p.cu[BLOCK_16x16].intra_pred[i] = intra_pred_ang_neon<16, true>;
+        p.cu[BLOCK_32x32].intra_pred[i] = intra_pred_ang_neon<32, true>;
     }
-    p.cu[BLOCK_4x4].intra_pred[2] = intra_pred_ang_neon<4>;
-    p.cu[BLOCK_4x4].intra_pred[10] = intra_pred_ang_neon<4>;
-    p.cu[BLOCK_4x4].intra_pred[18] = intra_pred_ang_neon<4>;
-    p.cu[BLOCK_4x4].intra_pred[26] = intra_pred_ang_neon<4>;
-    p.cu[BLOCK_4x4].intra_pred[34] = intra_pred_ang_neon<4>;
+    p.cu[BLOCK_4x4].intra_pred[2] = intra_pred_ang_neon<4, true>;
+    p.cu[BLOCK_4x4].intra_pred[10] = intra_pred_ang_neon<4, true>;
+    p.cu[BLOCK_4x4].intra_pred[18] = intra_pred_ang_neon<4, true>;
+    p.cu[BLOCK_4x4].intra_pred[26] = intra_pred_ang_neon<4, true>;
+    p.cu[BLOCK_4x4].intra_pred[34] = intra_pred_ang_neon<4, true>;
 
     p.cu[BLOCK_4x4].intra_pred_allangs = all_angs_pred_neon<2>;
     p.cu[BLOCK_8x8].intra_pred_allangs = all_angs_pred_neon<3>;
@@ -742,6 +710,3 @@ void setupIntraPrimitives_neon(EncoderPrimitives &p)
     p.cu[BLOCK_32x32].intra_pred[DC_IDX] = intra_pred_dc_neon<32>;
 }
 }
-
-
-
