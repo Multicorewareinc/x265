@@ -372,7 +372,7 @@ void Encoder::create()
     }
     else
         lookAheadThreadPool = m_threadPool ? &m_threadPool[m_numTmePools] : NULL;
-    m_lookahead = new Lookahead(m_param, lookAheadThreadPool);
+    m_lookahead = new Lookahead(m_param, lookAheadThreadPool, &m_sps);
     m_lookahead->m_numPools = lookaheadPools;
     if (lookaheadPools)
     {
