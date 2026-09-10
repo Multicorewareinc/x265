@@ -1047,6 +1047,7 @@ Lookahead::Lookahead(x265_param *param, ThreadPool* pool, SPS* sps)
     m_pool  = pool;
     m_sps = sps;
 
+    m_numPools = 0;
     m_lastNonB = NULL;
     m_isSceneTransition = false;
     m_scratch        = NULL;
@@ -1151,6 +1152,8 @@ Lookahead::Lookahead(x265_param *param, ThreadPool* pool, SPS* sps)
     m_countFramecosts = 0;
     m_countTemporalFilter = 0;
 #endif
+
+    memset(m_frameVariance, 0, sizeof(m_frameVariance));
 
     m_accHistDiffRunningAvgCb = X265_MALLOC(uint32_t*, NUMBER_OF_SEGMENTS_IN_WIDTH * sizeof(uint32_t*));
     m_accHistDiffRunningAvgCb[0] = X265_MALLOC(uint32_t, NUMBER_OF_SEGMENTS_IN_WIDTH * NUMBER_OF_SEGMENTS_IN_HEIGHT);
@@ -2025,6 +2028,7 @@ void Lookahead::slicetypeDecide()
         for (j = 0; j < maxSearch; j++)
         {
             if (!curFrame) break;
+            setDurationsToLowres(curFrame);
             frames[j + 1] = &curFrame->m_lowres;
             refLowres[j] = curFrame;
 
@@ -2058,7 +2062,7 @@ void Lookahead::slicetypeDecide()
         {
             if (m_frameVariance[k]  == -1)
                 break;
-            if((k > 0 && m_frameVariance[k] >= m_frameVariance[k - 1]) || 
+            if((k > 0 && m_frameVariance[k] >= m_frameVariance[k - 1]) ||
                 (k == 0 && m_frameVariance[k] >= m_frameVariance[length - 1]))
             {
                 m_isFadeIn = true;
@@ -3777,7 +3781,7 @@ void Lookahead::cuTree(Lowres **frames, int numframes, bool bIntra)
     x265_emms();
     double totalDuration = 0.0;
     for (int j = 0; j <= numframes; j++)
-        totalDuration += (double)m_param->fpsDenom / m_param->fpsNum;
+        totalDuration += frames[j]->dispDurationSecs;
 
     double averageDuration = totalDuration / (numframes + 1);
 
@@ -3884,7 +3888,7 @@ void Lookahead::estimateCUPropagate(Lowres **frames, double averageDuration, int
     uint16_t *propagateCost = frames[b]->propagateCost;
 
     x265_emms();
-    double fpsFactor = CLIP_DURATION((double)m_param->fpsDenom / m_param->fpsNum) / CLIP_DURATION(averageDuration);
+    double fpsFactor = CLIP_DURATION(frames[b]->dispDurationSecs) / CLIP_DURATION(averageDuration);
 
     /* For non-referred frames the source costs are always zero, so just memset one row and re-use it. */
     if (!referenced)
@@ -3981,7 +3985,7 @@ void Lookahead::estimateCUPropagate(Lowres **frames, double averageDuration, int
 
 void Lookahead::computeCUTreeQpOffset(Lowres *frame, double averageDuration, int ref0Distance)
 {
-    int fpsFactor = (int)(CLIP_DURATION(averageDuration) / CLIP_DURATION((double)m_param->fpsDenom / m_param->fpsNum) * 256);
+    int fpsFactor = (int)(CLIP_DURATION(averageDuration) / CLIP_DURATION(frame->dispDurationSecs) * 256);
     uint32_t loopIncr = (m_param->rc.qgSize == 8) ? 8 : 16;
 
     double weightdelta = 0.0;
