@@ -130,6 +130,7 @@ Encoder::Encoder()
     m_encodedFrameNum = 0;
     m_pocLast = -1;
     m_firstPts = 0;
+    m_clockTickCount = 0;
     m_bframeDelayTime = 0;
     m_prevReorderedPts[0] = m_prevReorderedPts[1] = 0;
     m_curEncoder = 0;
@@ -1763,6 +1764,18 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
 
             if (inFrame[layer]->m_picStruct >= PIC_STRUCT_COUNT)
                 inFrame[layer]->m_picStruct = PIC_STRUCT_PROGRESSIVE_FRAME;
+
+            /* Set up frame timing info for slicetype and ratecontrol and the frame timebase (could change across cvs, if no HRD) */
+            if (inFrame[layer]->m_param->bEmitVUITimingInfo)
+                inFrame[layer]->m_timebase = ((double)m_sps.vuiParameters.timingInfo.numUnitsInTick / (double)m_sps.vuiParameters.timingInfo.timeScale);
+            else
+                inFrame[layer]->m_timebase = ((double)inFrame[layer]->m_param->fpsDenom / (double)inFrame[layer]->m_param->fpsNum);
+
+            inFrame[layer]->m_duration = g_deltaToDivisor[inFrame[layer]->m_picStruct];
+            inFrame[layer]->m_displayPicCount = m_clockTickCount;
+
+            /* update presentation tick count */
+            m_clockTickCount += inFrame[layer]->m_duration;
 
             /*Copy reconfigured RC parameters to frame*/
             if (m_param->rc.rateControlMode == X265_RC_ABR)
