@@ -59,7 +59,7 @@ Frame::Frame()
     m_classifyFrame = false;
     m_fieldNum = 0;
     m_sourcePoc = 0;
-    m_picStruct = 0;
+    m_picStruct = PIC_STRUCT_AUTO;
     m_edgePic = NULL;
     m_gaussianPic = NULL;
     m_thetaPic = NULL;

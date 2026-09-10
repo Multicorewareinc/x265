@@ -803,11 +803,10 @@ void FrameEncoder::compressFrame(int layer)
         SEIPictureTiming *sei = m_rce.picTimingSEI;
         const VUI *vui = &slice->m_sps->vuiParameters;
         const HRDInfo *hrd = &vui->hrdParameters;
-        int poc = slice->m_poc;
 
         if (vui->frameFieldInfoPresentFlag)
         {
-            if (m_param->interlaceMode > 0)
+            if (m_frame[layer]->m_picStruct == PIC_STRUCT_AUTO)
             {
                 /* field_seq_flag is 1, so each picture is a single field. Signal
                  * the field pair with pic_struct 9-12 (H.265 Table D.2, pairing in
@@ -817,16 +816,16 @@ void FrameEncoder::compressFrame(int layer)
                  * paired with the previous bottom field (bff frame). With --field,
                  * fieldNum 1 is the first field of the frame; with field input, or
                  * when a library caller leaves fieldNum at 0, the even POC is. */
-                bool firstField = slice->m_fieldNum ? slice->m_fieldNum == 1 : !(poc & 1);
-                if (m_param->interlaceMode == 2)   // bff: first field is the bottom field
-                    sei->m_picStruct = firstField ? 12 : 9;
-                else                               // tff: first field is the top field
-                    sei->m_picStruct = firstField ? 11 : 10;
+                const bool firstField = slice->m_fieldNum ? (slice->m_fieldNum == 1) : !(slice->m_poc & 1);
+                if (m_param->interlaceMode == 2)      /* bff: first field is the bottom field */
+                    sei->m_picStruct = firstField ? PIC_STRUCT_BOTTOM_NEXTTOP : PIC_STRUCT_TOP_PREVBOTTOM;
+                else if (m_param->interlaceMode == 1) /* tff: first field is the top field */
+                    sei->m_picStruct = firstField ? PIC_STRUCT_TOP_NEXTBOTTOM : PIC_STRUCT_BOTTOM_PREVTOP;
+                else
+                    sei->m_picStruct = PIC_STRUCT_PROGRESSIVE_FRAME;
             }
-            else if (m_param->bEnableFrameDuplication)
-                sei->m_picStruct = m_frame[layer]->m_picStruct;
             else
-                sei->m_picStruct = m_param->pictureStructure;
+                sei->m_picStruct = m_frame[layer]->m_picStruct;
 
             sei->m_sourceScanType = m_param->interlaceMode ? 0 : 1;
 
