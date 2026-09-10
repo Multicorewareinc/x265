@@ -50,6 +50,7 @@
 
 namespace X265_NS {
 const char g_sliceTypeToChar[] = {'B', 'P', 'I'};
+const uint8_t g_deltaToDivisor[PIC_STRUCT_COUNT] = {1, 1, 1, 2, 2, 3, 3, 2, 3, 1, 1, 1, 1};
 
 /* Dolby Vision profile specific settings */
 typedef struct
@@ -216,9 +217,6 @@ void Encoder::create()
             int stride = (p->sourceWidth >> x265_cli_csps[p->internalCsp].width[i]) * pixelbytes;
             framesize += (stride * (p->sourceHeight >> x265_cli_csps[p->internalCsp].height[i]));
         }
-
-        //Sets the picture structure and emits it in the picture timing SEI message
-        m_param->pictureStructure = 0; 
 
         for (uint32_t i = 0; i < DUP_BUFFER; i++)
         {
@@ -427,7 +425,7 @@ void Encoder::create()
     initVPS(&m_vps);
     initSPS(&m_sps);
     initPPS(&m_pps);
-   
+
     if (m_param->rc.vbvBufferSize)
     {
         m_offsetEmergency = (uint16_t(*)[MAX_NUM_TR_CATEGORIES][MAX_NUM_TR_COEFFS])X265_MALLOC(uint16_t, MAX_NUM_TR_CATEGORIES * MAX_NUM_TR_COEFFS * (QP_MAX_MAX - QP_MAX_SPEC));
@@ -1565,13 +1563,13 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                 {
                     if (m_dupBuffer[0]->bDup)
                     {
-                        m_dupBuffer[0]->dupPic->picStruct = tripling;
+                        m_dupBuffer[0]->dupPic->picStruct = PIC_STRUCT_TRIPLING;
                         m_dupBuffer[0]->bDup = false;
                         read++;
                     }
                     else
                     {
-                        m_dupBuffer[0]->dupPic->picStruct = doubling;
+                        m_dupBuffer[0]->dupPic->picStruct = PIC_STRUCT_DOUBLING;
                         m_dupBuffer[0]->bDup = true;
                         m_dupBuffer[1]->bOccupied = false;
                         read++;
@@ -1757,7 +1755,14 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
 
             inFrame[layer]->m_forceqp = inputPic[0]->forceqp;
             inFrame[layer]->m_param = (m_reconfigure || m_reconfigureRc || m_param->bConfigRCFrame) ? m_latestParam : m_param;
-            inFrame[layer]->m_picStruct = inputPic[0]->picStruct;
+
+            if (inFrame[layer]->m_param->pictureStructure >= PIC_STRUCT_AUTO)
+                inFrame[layer]->m_picStruct = inFrame[layer]->m_param->pictureStructure;
+            else
+               inFrame[layer]->m_picStruct = inputPic[0]->picStruct;
+
+            if (inFrame[layer]->m_picStruct >= PIC_STRUCT_COUNT)
+                inFrame[layer]->m_picStruct = PIC_STRUCT_PROGRESSIVE_FRAME;
 
             /*Copy reconfigured RC parameters to frame*/
             if (m_param->rc.rateControlMode == X265_RC_ABR)
@@ -1892,9 +1897,9 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
             m_param->bUseRcStats = 0;
         }
 
-        if (m_param->bEnableFrameDuplication && ((read < written) || (m_dupBuffer[0]->dupPic->picStruct == tripling && (read <= written))))
+        if (m_param->bEnableFrameDuplication && ((read < written) || (m_dupBuffer[0]->dupPic->picStruct == PIC_STRUCT_TRIPLING && (read <= written))))
         {
-            if (m_dupBuffer[0]->dupPic->picStruct == tripling)
+            if (m_dupBuffer[0]->dupPic->picStruct == PIC_STRUCT_TRIPLING)
                 m_dupBuffer[0]->bOccupied = m_dupBuffer[1]->bOccupied = false;
             else
             {
@@ -1969,7 +1974,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
 
             //TODO: Add subsampling here if required
             inFrame[0]->m_mcstffencPic->copyFromFrame(inFrame[0]->m_fencPic);
-            m_lookahead->m_origPicBuf->addPicture(inFrame[0]);;
+            m_lookahead->m_origPicBuf->addPicture(inFrame[0]);
         }
 
         m_lookahead->addPicture(*inFrame[0], sliceType);
@@ -3735,7 +3740,7 @@ void Encoder::initSPS(SPS *sps)
     vui.defaultDisplayWindow.bottomOffset = m_param->vui.defDispWinBottomOffset;
     vui.defaultDisplayWindow.leftOffset = m_param->vui.defDispWinLeftOffset;
 
-    vui.frameFieldInfoPresentFlag = !!m_param->interlaceMode || (m_param->pictureStructure >= 0);
+    vui.frameFieldInfoPresentFlag = !!m_param->interlaceMode || m_param->bEmitHRDSEI;
     vui.fieldSeqFlag = !!m_param->interlaceMode;
 
     vui.hrdParametersPresentFlag = m_param->bEmitHRDSEI;
@@ -4515,6 +4520,40 @@ void Encoder::configure(x265_param *p)
         x265_log(p, X265_LOG_WARNING, "Dynamic-rd disabled, requires RD <= 4, VBV and aq-mode enabled\n");
     }
 
+    /* Cannot use temporal layers with a picture structure whose DeltaToDivisor is not 1: we would have to drop access units in higher layers
+     * and enforce that structures in higher layers do not hide a frame in the lower layers: it's easier to just forbid it. */
+    if (p->bEnableTemporalSubLayers)
+    {
+        // PF, TB and BT have a DeltaToDivisor = 1 and convey a full frame (or pair of fields)
+        if (p->pictureStructure > PIC_STRUCT_PROGRESSIVE_FRAME && p->pictureStructure != PIC_STRUCT_TOP_BOTTOM && p->pictureStructure != PIC_STRUCT_BOTTOM_TOP)
+        {
+            x265_log(p, X265_LOG_WARNING, "Specified picture structure is not compatible with temporal sub layers. Ignoring the provided pic struct.\n");
+            p->pictureStructure = -1;
+        }
+        if (p->bEnableFrameDuplication)
+        {
+            x265_log(p, X265_LOG_WARNING, "Frame-duplication is not compatible with temporal sub layers. Disabling Frame Duplication.\n");
+            p->bEnableFrameDuplication = 0;
+            p->dupThreshold = 0; // prevent it from being enabled below
+        }
+    }
+
+    if (p->pictureStructure >= 0)
+    {
+        // reject any configuration that leads to orphaned fields (1, 2, 5, 6, 9, 10, 11, 12)
+        if (p->pictureStructure >= PIC_STRUCT_COUNT || ((1 << p->pictureStructure) & 0b1111001100110))
+        {
+            x265_log(p, X265_LOG_WARNING, "Invalid or illegal picture structure, not using the user-provided value.\n");
+            p->pictureStructure = -1;
+        }
+
+        if (!m_param->bEmitHRDSEI)
+        {
+            x265_log(p, X265_LOG_WARNING, "Pic struct requires HRD Timing information. Disabling picture structure.\n");
+            p->pictureStructure = -1;
+        }
+    }
+
     if (!p->bEnableFrameDuplication && p->dupThreshold && p->dupThreshold != 70)
     {
         x265_log(p, X265_LOG_WARNING, "Frame-duplication threshold works only with frame-duplication enabled. Enabling frame-duplication.\n");
@@ -4527,10 +4566,10 @@ void Encoder::configure(x265_param *p)
         p->bEnableFrameDuplication = 0;
     }
 
-    if (p->bEnableFrameDuplication && p->pictureStructure != 0 && p->pictureStructure != -1)
+    if (p->bEnableFrameDuplication && p->pictureStructure >= 0)
     {
-        x265_log(p, X265_LOG_WARNING, "Frame-duplication works only with pic_struct = 0. Setting pic-struct = 0.\n");
-        p->pictureStructure = 0;
+        x265_log(p, X265_LOG_WARNING, "Cannot enforce a picture structure with Frame-duplication. Ignoring specified picture structure.\n");
+        p->pictureStructure = -1;
     }
 
     if (m_param->bEnableFrameDuplication && (!bIsVbv || !m_param->bEmitHRDSEI))
