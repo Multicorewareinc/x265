@@ -85,6 +85,12 @@ Frame::Frame()
     m_targetBitrate = 0;
     m_targetCrf = 0;
     m_targetQp = 0;
+
+    /* HRD */
+    m_duration = m_cpbDuration = 0;
+    m_cpbDelay = m_dpbDelay = 0;
+    m_displayPicCount = m_codedPicCount = 0;
+    m_timebase = 0.;
 }
 
 bool Frame::create(x265_param *param, float* quantOffsets)

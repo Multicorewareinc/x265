@@ -184,6 +184,7 @@ public:
     int64_t            m_bframeDelayTime;
     int64_t            m_prevReorderedPts[2];
     int64_t            m_encodeStartTime;
+    uint64_t           m_clockTickCount;  /* Clock ticks elapsed since the first presentation */
 
     int                m_pocLast;         // time index (POC)
     int                m_encodedFrameNum;
