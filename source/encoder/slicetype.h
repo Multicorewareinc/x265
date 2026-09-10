@@ -211,7 +211,11 @@ public:
     OrigPicBuffer*          m_origPicBuf;
     MotionEstimatorTLD*     m_metld;
 
-    Lookahead(x265_param *param, ThreadPool *pool);
+    SPS            *m_sps;           /* for maximum picture re-ordering setting */
+    int64_t         m_cpbDelay;      /* latest cpb delay in lookahead (ticks) */
+    uint64_t        m_codedPicCount; /* latest coded picture count in lookahead (ticks) */
+
+    Lookahead(x265_param *param, ThreadPool *pool, SPS* sps);
 #if DETAILED_CU_STATS
     int64_t       m_slicetypeDecideElapsedTime;
     int64_t       m_preLookaheadElapsedTime;
@@ -257,6 +261,10 @@ protected:
 
     void    slicetypePath(Lowres **frames, int length, char(*best_paths)[X265_LOOKAHEAD_MAX + 1]);
     int64_t slicetypePathCost(Lowres **frames, char *path, int64_t threshold);
+
+    void    calculateDurations(Frame *frame, Frame *prevFrame);
+    void    setDurationsToLowres(Frame *frame);
+
     int64_t vbvFrameCost(Lowres **frames, int p0, int p1, int b);
     void    vbvLookahead(Lowres **frames, int numFrames, int keyframes);
     void    aqMotion(Lowres **frames, bool bintra);
