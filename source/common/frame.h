@@ -182,6 +182,15 @@ public:
     /* target QP for this picture.*/
     int                    m_targetQp;
 
+    /* HRD timing for this frame */
+    unsigned int           m_duration;           /* display duration [clock ticks] */
+    unsigned int           m_cpbDuration;        /* lifetime in the CPB [clock ticks] */
+    unsigned int           m_cpbDelay;           /* CPB removal delay [clock ticks] */
+    unsigned int           m_dpbDelay;           /* DPB output delay [clock ticks] */
+    uint64_t               m_displayPicCount;    /* PTS in clock ticks */
+    uint64_t               m_codedPicCount;      /* DTS in clock ticks */
+    double                 m_timebase;           /* timebase for this picture [seconds] */
+
     Frame();
 
     bool create(x265_param *param, float* quantOffsets);
