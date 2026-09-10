@@ -94,8 +94,6 @@ struct EncStats
 
 #define MAX_NUM_REF_IDX 64
 #define DUP_BUFFER 2
-#define doubling 7
-#define tripling 8
 
 struct RefIdxLastGOP
 {
@@ -250,7 +248,7 @@ public:
 
     /* For optimising slice QP */
     Lock               m_sliceQpLock;
-    int                m_iFrameNum;   
+    int                m_iFrameNum;
     int                m_iPPSQpMinus26;
     int64_t            m_iBitsCostSum[QP_MAX_MAX + 1];
     Lock               m_sliceRefIdxLock;
