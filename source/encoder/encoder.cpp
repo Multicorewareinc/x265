@@ -132,6 +132,7 @@ Encoder::Encoder()
     m_sourcePocNext = 0;
     m_firstPts = 0;
     m_clockTickCount = 0;
+    m_lastPirCpbDelay = 0;
     m_bframeDelayTime = 0;
     m_prevReorderedPts[0] = m_prevReorderedPts[1] = 0;
     m_curEncoder = 0;
@@ -373,7 +374,7 @@ void Encoder::create()
     }
     else
         lookAheadThreadPool = m_threadPool ? &m_threadPool[m_numTmePools] : NULL;
-    m_lookahead = new Lookahead(m_param, lookAheadThreadPool);
+    m_lookahead = new Lookahead(m_param, lookAheadThreadPool, &m_sps);
     m_lookahead->m_numPools = lookaheadPools;
     if (lookaheadPools)
     {
@@ -1076,6 +1077,10 @@ void Encoder::calcRefreshInterval(Frame* frameEnc)
     Slice* slice = frameEnc->m_encData->m_slice;
     uint32_t numBlocksInRow = slice->m_sps->numCuInWidth;
     FrameData::PeriodicIR* pir = &frameEnc->m_encData->m_pir;
+
+    const uint32_t lastCpbDelay = frameEnc->m_cpbDelay;
+    frameEnc->m_cpbDelay -= m_lastPirCpbDelay;
+
     if (slice->m_sliceType == I_SLICE)
     {
         pir->framesSinceLastPir = 0;
@@ -1107,6 +1112,10 @@ void Encoder::calcRefreshInterval(Frame* frameEnc)
         {
             pir->pirEndCol = numBlocksInRow;
         }
+    }
+    if (frameEnc->m_lowres.bKeyframe)
+    {
+        m_lastPirCpbDelay = lastCpbDelay;
     }
 }
 
