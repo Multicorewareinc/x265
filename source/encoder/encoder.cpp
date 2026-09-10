@@ -131,6 +131,7 @@ Encoder::Encoder()
     m_pocLast = -1;
     m_sourcePocNext = 0;
     m_firstPts = 0;
+    m_clockTickCount = 0;
     m_bframeDelayTime = 0;
     m_prevReorderedPts[0] = m_prevReorderedPts[1] = 0;
     m_curEncoder = 0;
@@ -1758,13 +1759,24 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
             inFrame[layer]->m_forceqp = inputPic[0]->forceqp;
             inFrame[layer]->m_param = (m_reconfigure || m_reconfigureRc || m_param->bConfigRCFrame) ? m_latestParam : m_param;
 
-            if (inFrame[layer]->m_param->pictureStructure >= PIC_STRUCT_AUTO)
+            if (inFrame[layer]->m_param->pictureStructure >= 0)
                 inFrame[layer]->m_picStruct = inFrame[layer]->m_param->pictureStructure;
+            else if (inFrame[layer]->m_param->bEmitHRDSEI)
+                inFrame[layer]->m_picStruct = inputPic[0]->picStruct;
             else
-               inFrame[layer]->m_picStruct = inputPic[0]->picStruct;
+                inFrame[layer]->m_picStruct = PIC_STRUCT_AUTO;
 
             if (inFrame[layer]->m_picStruct >= PIC_STRUCT_COUNT)
-                inFrame[layer]->m_picStruct = PIC_STRUCT_PROGRESSIVE_FRAME;
+                inFrame[layer]->m_picStruct = PIC_STRUCT_AUTO;
+
+            /* Set up frame timing info for slicetype and ratecontrol and the frame timebase (could change across cvs, if no HRD) */
+            if (inFrame[layer]->m_param->bEmitVUITimingInfo)
+                inFrame[layer]->m_timebase = ((double)m_sps.vuiParameters.timingInfo.numUnitsInTick / (double)m_sps.vuiParameters.timingInfo.timeScale);
+            else
+                inFrame[layer]->m_timebase = ((double)inFrame[layer]->m_param->fpsDenom / (double)inFrame[layer]->m_param->fpsNum);
+
+            inFrame[layer]->m_displayPicCount = m_clockTickCount;
+            inFrame[layer]->m_duration = g_deltaToDivisor[inFrame[layer]->m_picStruct];
 
             /*Copy reconfigured RC parameters to frame*/
             if (m_param->rc.rateControlMode == X265_RC_ABR)
@@ -1780,6 +1792,10 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
             /* Encoder holds a reference count until stats collection is finished */
             ATOMIC_INC(&inFrame[layer]->m_countRefEncoders);
         }
+
+        /* update presentation tick count */
+        m_clockTickCount += inFrame[0]->m_duration;
+
         m_sourcePocNext++;
         if (m_param->bEnableFrameDuplication)
         {
