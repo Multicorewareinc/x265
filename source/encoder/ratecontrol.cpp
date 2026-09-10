@@ -1534,7 +1534,7 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
             return m_qp;
         }
         else
-        { 
+        {
             int index = m_encOrder[rce->poc];
             index++;
             double totalDuration = m_frameDuration;
