@@ -169,7 +169,8 @@ public:
 
     /* pre-lookahead */
     int           m_fullQueueSize;
-    int           m_lastKeyframe;
+    int64_t       m_lastKeyframe;
+    int           m_lastKeyframeNum;
     int           m_8x8Width;
     int           m_8x8Height;
     int           m_8x8Blocks;

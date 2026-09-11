@@ -1083,7 +1083,7 @@ void Encoder::calcRefreshInterval(Frame* frameEnc)
 
     if (slice->m_sliceType == I_SLICE)
     {
-        pir->framesSinceLastPir = 0;
+        pir->ticksSinceLastPir = 0;
         m_bQueuedIntraRefresh = 0;
         /* PIR is currently only supported with ref == 1, so any intra frame effectively refreshes
          * the whole frame and counts as an intra refresh. */
@@ -1092,16 +1092,16 @@ void Encoder::calcRefreshInterval(Frame* frameEnc)
     else if (slice->m_sliceType == P_SLICE)
     {
         Frame* ref = frameEnc->m_encData->m_slice->m_refFrameList[0][0];
-        int pocdiff = frameEnc->m_poc - ref->m_poc;
-        int numPFramesInGOP = m_param->keyframeMax / pocdiff;
-        int increment = (numBlocksInRow + numPFramesInGOP - 1) / numPFramesInGOP;
+        int ticksdiff = (int)(frameEnc->m_displayPicCount - ref->m_displayPicCount);
+        int numPFramesTicksInGOP = m_param->keyframeMax / ticksdiff;
+        int increment = (numBlocksInRow + numPFramesTicksInGOP - 1) / numPFramesTicksInGOP;
         pir->pirEndCol = ref->m_encData->m_pir.pirEndCol;
-        pir->framesSinceLastPir = ref->m_encData->m_pir.framesSinceLastPir + pocdiff;
-        if (pir->framesSinceLastPir >= m_param->keyframeMax ||
+        pir->ticksSinceLastPir = ref->m_encData->m_pir.ticksSinceLastPir + ticksdiff;
+        if (pir->ticksSinceLastPir >= m_param->keyframeMax ||
             (m_bQueuedIntraRefresh && pir->pirEndCol >= numBlocksInRow))
         {
             pir->pirEndCol = 0;
-            pir->framesSinceLastPir = 0;
+            pir->ticksSinceLastPir = 0;
             m_bQueuedIntraRefresh = 0;
             frameEnc->m_lowres.bKeyframe = 1;
         }
