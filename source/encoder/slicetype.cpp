@@ -2810,7 +2810,7 @@ void Lookahead::calculateDurations(Frame *frame, Frame *prevFrame)
 
     int dpbDelay = (int64_t)frame->m_displayPicCount - (int64_t)m_codedPicCount;
     /* largest re-ordering at highest temporal layer */
-    dpbDelay += ((m_param->bframes > 0) ? 1 : 0) + m_sps->numReorderPics[X265_MAX(0, (m_param->bEnableTemporalSubLayers - 1))];
+    dpbDelay += ((m_param->bframes > 0) ? 1 : 0) + m_sps->numReorderPics[X265_MAX(0, (m_sps->maxTempSubLayers - 1))];
 
     if (dpbDelay < 0)
     {

@@ -106,7 +106,6 @@ void FrameEncoder::destroy()
     if (m_param->bEmitHRDSEI || !!m_param->interlaceMode)
     {
         delete m_rce.picTimingSEI;
-        delete m_rce.hrdTiming;
     }
 }
 
@@ -183,9 +182,8 @@ bool FrameEncoder::init(Encoder *top, int numRows, int numCols)
     if (m_param->bEmitHRDSEI || !!m_param->interlaceMode)
     {
         m_rce.picTimingSEI = new SEIPictureTiming;
-        m_rce.hrdTiming = new HRDTiming;
 
-        ok &= m_rce.picTimingSEI && m_rce.hrdTiming;
+        ok &= m_rce.picTimingSEI != NULL;
     }
 
     if (m_param->noiseReductionIntra || m_param->noiseReductionInter)
