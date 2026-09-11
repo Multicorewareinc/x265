@@ -1126,8 +1126,8 @@ namespace X265_NS {
 
     bool CLIOptions::parsePSFile(x265_picture &pic_org, int fieldOrder, bool frameFields)
     {
-        int32_t num = -1, ret;
-        uint32_t filePos, frameFieldCoding, pictureStructure;
+        int32_t num = -1;
+        uint32_t frameFieldCoding, pictureStructure;
 
         uint32_t validPicStructMask = 0x181; //progressive, doubling, tripling
         if (fieldOrder > 0)
@@ -1135,8 +1135,8 @@ namespace X265_NS {
 
         while (num < pic_org.poc)
         {
-            filePos = ftell(psfile);
-            ret = fscanf(psfile, "%u %u%*[ \t]%u\n", &num, &frameFieldCoding, &pictureStructure);
+            uint32_t filePos = ftell(psfile);
+            int32_t ret = fscanf(psfile, "%d %u%*[ \t]%u\n", &num, &frameFieldCoding, &pictureStructure);
 
             if (num > pic_org.poc || ret == EOF)
             {
