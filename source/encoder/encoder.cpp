@@ -2833,10 +2833,15 @@ void EncStats::addQP(double aveQp)
     m_totalQp += aveQp;
 }
 
+void EncStats::addDuration(unsigned int durationInVuiTB)
+{
+    m_totDuration += durationInVuiTB;
+}
+
 char* Encoder::statsString(EncStats& stat, char* buffer, size_t bufferSize)
 {
     double fps = (double)m_param->fpsNum / m_param->fpsDenom;
-    double scale = fps / 1000 / (double)stat.m_numPics;
+    double scale = (fps / 1000.) / double(stat.m_totDuration);
 
     int len = snprintf(buffer, bufferSize, "%6u, ", stat.m_numPics);
 
@@ -2906,7 +2911,8 @@ void Encoder::printSummary()
         {
             int p = 0;
             double elapsedEncodeTime = (double)(x265_mdate() - m_encodeStartTime) / 1000000;
-            double elapsedVideoTime = (double)m_analyzeAll[layer].m_numPics * m_param->fpsDenom / m_param->fpsNum;
+            /* with temporal layering totDuration and numPics of each layers are equal. Else they can differ (VFR or pulldown) */
+            double elapsedVideoTime = double(m_analyzeAll[layer].m_totDuration) * double(m_param->fpsDenom) / double(m_param->fpsNum);
             double bitrate = (0.001f * m_analyzeAll[layer].m_accBits) / elapsedVideoTime;
 
             p += snprintf(buffer + p, sizeof(buffer) - p,"\nencoded %d frames in %.2fs (%.2f fps), %.2f kb/s, Avg QP:%2.2lf", m_analyzeAll[layer].m_numPics,
@@ -3193,6 +3199,8 @@ void Encoder::finishFrameStats(Frame* curFrame, FrameEncoder *curEncoder, x265_f
     m_analyzeAll[layer].addBits(bits);
     m_analyzeAll[layer].addQP(curEncData.m_avgQpAq);
 
+    m_analyzeAll[layer].addDuration(curFrame->m_duration);
+
     if (m_param->bEnablePsnr)
         m_analyzeAll[layer].addPsnr(psnrY, psnrU, psnrV);
 
@@ -3206,6 +3214,7 @@ void Encoder::finishFrameStats(Frame* curFrame, FrameEncoder *curEncoder, x265_f
     {
         m_analyzeI[layer].addBits(bits);
         m_analyzeI[layer].addQP(curEncData.m_avgQpAq);
+        m_analyzeI[layer].addDuration(curFrame->m_duration);
         if (m_param->bEnablePsnr)
             m_analyzeI[layer].addPsnr(psnrY, psnrU, psnrV);
         if (m_param->bEnableSsim)
@@ -3215,6 +3224,7 @@ void Encoder::finishFrameStats(Frame* curFrame, FrameEncoder *curEncoder, x265_f
     {
         m_analyzeP[layer].addBits(bits);
         m_analyzeP[layer].addQP(curEncData.m_avgQpAq);
+        m_analyzeP[layer].addDuration(curFrame->m_duration);
         if (m_param->bEnablePsnr)
             m_analyzeP[layer].addPsnr(psnrY, psnrU, psnrV);
         if (m_param->bEnableSsim)
@@ -3224,6 +3234,7 @@ void Encoder::finishFrameStats(Frame* curFrame, FrameEncoder *curEncoder, x265_f
     {
         m_analyzeB[layer].addBits(bits);
         m_analyzeB[layer].addQP(curEncData.m_avgQpAq);
+        m_analyzeB[layer].addDuration(curFrame->m_duration);
         if (m_param->bEnablePsnr)
             m_analyzeB[layer].addPsnr(psnrY, psnrU, psnrV);
         if (m_param->bEnableSsim)
@@ -3447,7 +3458,7 @@ void Encoder::getStreamHeaders(NALList& list, Entropy& sbacCoder, Bitstream& bs)
         bs.write(0x10, 8);
         list.serialize(NAL_UNIT_ACCESS_UNIT_DELIMITER, bs);
     }
-    
+
     /* headers for start of bitstream */
     bs.resetBits();
 #if ENABLE_ALPHA || ENABLE_MULTIVIEW
@@ -5264,7 +5275,7 @@ void Encoder::readAnalysisFile(x265_analysis_data* analysis, int curPoc, const x
     X265_FREAD(&analysis->satdCost, sizeof(int64_t), 1, m_analysisFileIn, &(picData->satdCost));
     X265_FREAD(&analysis->numCUsInFrame, sizeof(int), 1, m_analysisFileIn, &(picData->numCUsInFrame));
     X265_FREAD(&analysis->numPartitions, sizeof(int), 1, m_analysisFileIn, &(picData->numPartitions));
-    
+
     if (m_param->bDisableLookahead)
     {
         X265_FREAD(&analysis->numCuInHeight, sizeof(uint32_t), 1, m_analysisFileIn, &(picData->numCuInHeight));
