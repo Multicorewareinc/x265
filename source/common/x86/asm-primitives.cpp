@@ -5484,7 +5484,7 @@ int __intel_cpu_indicator = 0;
 // CPU dispatcher function
 void PFX(intel_cpu_indicator_init)(void)
 {
-    uint32_t cpu = x265::cpu_detect(false);
+    uint32_t cpu = X265_NS::cpu_detect(false);
 
     if (cpu & X265_CPU_AVX)
         __intel_cpu_indicator = 0x20000;
@@ -5511,7 +5511,7 @@ void PFX(intel_cpu_indicator_init)(void)
  * that backs up all the registers. */
 void __intel_cpu_indicator_init(void)
 {
-    x265_safe_intel_cpu_indicator_init();
+    PFX(safe_intel_cpu_indicator_init)();
 }
 
 #else // ifdef __INTEL_COMPILER
