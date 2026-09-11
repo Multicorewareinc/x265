@@ -1062,7 +1062,7 @@ void Encoder::updateVbvPlan(RateControl* rc)
             int64_t bits = m_param->rc.bEnableConstVbv ? (int64_t)frameSizePlan : (int64_t)X265_MAX(frameSizeEst, frameSizePlan);
             rc->m_bufferFill -= bits;
             rc->m_bufferFill = X265_MAX(rc->m_bufferFill, 0);
-            rc->m_bufferFill += encoder->m_rce.bufferRate;
+            rc->m_bufferFill += encoder->m_rce.bufferRate * encoder->m_rce.cpbDuration;
             rc->m_bufferFill = X265_MIN(rc->m_bufferFill, rc->m_bufferSize);
             if (rc->m_2pass)
                 rc->m_predictedBits += bits;
