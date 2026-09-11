@@ -70,6 +70,7 @@ int64_t no_atomic_add64(int64_t* ptr, int64_t val);
 #define ATOMIC_ADD(ptr, val)  (sizeof(*(ptr)) == 8 ? \
                                no_atomic_add64(const_cast<int64_t*>(reinterpret_cast<volatile int64_t*>(ptr)), (int64_t)(val)) : \
                                no_atomic_add(const_cast<int*>(reinterpret_cast<volatile int*>(ptr)), (int)(val)))
+#define ATOMIC_LOAD(ptr)          (*(ptr))
 #define ATOMIC_STORE(ptr, val)    (*(ptr) = (int)(val))
 #define ATOMIC64_LOAD(ptr)        (*(ptr))
 #define ATOMIC64_STORE(ptr, val)  (*(ptr) = (val))
@@ -90,8 +91,9 @@ int64_t no_atomic_add64(int64_t* ptr, int64_t val);
 #define ATOMIC_INC(ptr)       __atomic_add_fetch(reinterpret_cast<volatile int32_t*>(ptr), 1, __ATOMIC_SEQ_CST)
 #define ATOMIC_DEC(ptr)       __atomic_sub_fetch(reinterpret_cast<volatile int32_t*>(ptr), 1, __ATOMIC_SEQ_CST)
 #define ATOMIC_ADD(ptr, val)  __atomic_fetch_add(reinterpret_cast<volatile __typeof__(*(ptr))*>(ptr), (__typeof__(*(ptr) + 0))(val), __ATOMIC_SEQ_CST)
+#define ATOMIC_LOAD(ptr)          __atomic_load_n(ptr, __ATOMIC_SEQ_CST)
 #define ATOMIC_STORE(ptr, val)    __atomic_exchange_n(reinterpret_cast<volatile int32_t*>(ptr), (int32_t)(val), __ATOMIC_SEQ_CST)
-#define ATOMIC64_LOAD(ptr)        __atomic_fetch_add(reinterpret_cast<volatile int64_t*>(ptr), 0, __ATOMIC_SEQ_CST)
+#define ATOMIC64_LOAD(ptr)        __atomic_load_n(reinterpret_cast<volatile int64_t*>(ptr), __ATOMIC_SEQ_CST)
 #define ATOMIC64_STORE(ptr, val)  __atomic_exchange_n(reinterpret_cast<volatile int64_t*>(ptr), val, __ATOMIC_SEQ_CST)
 #define ATOMIC64_ADD(ptr, val)    __atomic_fetch_add(reinterpret_cast<volatile int64_t*>(ptr), val, __ATOMIC_SEQ_CST)
 #define GIVE_UP_TIME()        usleep(0)
@@ -111,6 +113,7 @@ int64_t no_atomic_add64(int64_t* ptr, int64_t val);
                                InterlockedExchangeAdd(reinterpret_cast<volatile LONG*>(ptr), (LONG)(val)))
 #define ATOMIC_OR(ptr, mask)  _InterlockedOr(reinterpret_cast<volatile LONG*>(ptr), static_cast<LONG>(mask))
 #define ATOMIC_AND(ptr, mask) _InterlockedAnd(reinterpret_cast<volatile LONG*>(ptr), static_cast<LONG>(mask))
+#define ATOMIC_LOAD(ptr)          _InterlockedOr(reinterpret_cast<volatile LONG*>(ptr), 0)
 #define ATOMIC_STORE(ptr, val)    InterlockedExchange(reinterpret_cast<volatile LONG*>(ptr), (LONG)(val))
 #define ATOMIC64_LOAD(ptr)        InterlockedAdd64(reinterpret_cast<volatile LONG64*>(ptr), 0)
 #define ATOMIC64_STORE(ptr, val)  InterlockedExchange64(reinterpret_cast<volatile LONG64*>(ptr), val)
@@ -896,7 +899,7 @@ template<int N> struct AtomicOps;
 template<> struct AtomicOps<4>
 {
     typedef int32_t Storage;
-    static int32_t load(volatile Storage* p)              { return (int32_t)ATOMIC_OR(p, 0); }
+    static int32_t load(volatile Storage* p)              { return (int32_t)ATOMIC_LOAD(p); }
     static void    store(volatile Storage* p, int32_t v)  { ATOMIC_STORE(p, v); }
     static int32_t inc(volatile Storage* p)               { return (int32_t)ATOMIC_INC(p); }
     static int32_t dec(volatile Storage* p)               { return (int32_t)ATOMIC_DEC(p); }
@@ -989,7 +992,7 @@ public:
 
     operator bool() const
     {
-        return (int32_t)ATOMIC_OR(&m_val, 0) != 0;
+        return (int32_t)ATOMIC_LOAD(&m_val) != 0;
     }
 
     AtomicBool& operator=(bool v)

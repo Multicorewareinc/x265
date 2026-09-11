@@ -158,16 +158,16 @@ void WorkerThread::threadMain()
             /* if the current job provider still wants help, only switch to a
              * higher priority provider (lower slice type). Else take the first
              * available job provider with the highest priority */
-            int curPriority = (bool)m_curJobProvider->m_helpWanted ? m_curJobProvider->m_sliceType.get() :
+            int curPriority = (bool)m_curJobProvider->m_helpWanted ? m_curJobProvider->m_sliceType :
                                                                  INVALID_SLICE_PRIORITY + 1;
             int nextProvider = -1;
             for (int i = 0; i < m_pool.m_numProviders; i++)
             {
                 if ((bool)m_pool.m_jpTable[i]->m_helpWanted &&
-                    m_pool.m_jpTable[i]->m_sliceType.get() < curPriority)
+                    m_pool.m_jpTable[i]->m_sliceType < curPriority)
                 {
                     nextProvider = i;
-                    curPriority = m_pool.m_jpTable[i]->m_sliceType.get();
+                    curPriority = m_pool.m_jpTable[i]->m_sliceType;
                 }
             }
             if (nextProvider != -1 && m_curJobProvider != m_pool.m_jpTable[nextProvider])

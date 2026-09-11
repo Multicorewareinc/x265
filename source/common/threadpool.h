@@ -36,16 +36,10 @@ class BondedTaskGroup;
 
 #if X86_64 || X265_ARCH_ARM64
 typedef uint64_t sleepbitmap_t;
-#ifdef __GNUC__
-#define SLEEPBITMAP_LOAD(ptr) __sync_fetch_and_or(ptr, 0)
-#elif defined(_MSC_VER)
-/* LONG64 vs. uint64_t signedness mismatch is intentional: InterlockedOr64 only needs the bit pattern */
-#define SLEEPBITMAP_LOAD(ptr) InterlockedOr64(reinterpret_cast<volatile LONG64*>(ptr), 0)
-#endif
+#define SLEEPBITMAP_LOAD(ptr) ATOMIC64_LOAD(ptr)
 #else
 typedef uint32_t sleepbitmap_t;
-/* use 32-bit primitives defined in threading.h */
-#define SLEEPBITMAP_LOAD(ptr) ATOMIC_OR(ptr, 0)
+#define SLEEPBITMAP_LOAD(ptr) ATOMIC_LOAD(ptr)
 #endif
 
 static const sleepbitmap_t ALL_POOL_THREADS = (sleepbitmap_t)-1;
@@ -61,19 +55,18 @@ public:
     ThreadPool*   m_pool;
     sleepbitmap_t m_ownerBitmap;
     int           m_jpId;
-    ThreadSafeInteger m_sliceType;
-    AtomicInt32   m_helpWanted;
+    AtomicInt32   m_sliceType;
+    AtomicBool    m_helpWanted;
     bool          m_isFrameEncoder; /* rather ugly hack, but nothing better presents itself */
 
     JobProvider()
         : m_pool(NULL)
         , m_ownerBitmap(0)
         , m_jpId(-1)
+        , m_sliceType(INVALID_SLICE_PRIORITY)
         , m_helpWanted(false)
         , m_isFrameEncoder(false)
-    {
-        m_sliceType.set(INVALID_SLICE_PRIORITY);
-    }
+    {}
 
     virtual ~JobProvider() {}
 
