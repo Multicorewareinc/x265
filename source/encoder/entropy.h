@@ -216,7 +216,16 @@ private:
     void start();
     void finish();
 
-    void encodeBin(uint32_t binValue, uint8_t& ctxModel);
+    void encodeBin(uint32_t binValue, uint8_t& ctxModel)
+    {
+        uint32_t mstate = ctxModel;
+        ctxModel = sbacNext(mstate, binValue);
+        if (!m_bitIf)
+            m_fracBits += sbacGetEntropyBits(mstate, binValue);
+        else
+            writeBin(binValue, mstate);
+    }
+    void writeBin(uint32_t binValue, uint32_t mstate);
     void encodeBinEP(uint32_t binValue);
     void encodeBinsEP(uint32_t binValues, int numBins);
     void encodeBinTrm(uint32_t binValue);

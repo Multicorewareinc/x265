@@ -2864,18 +2864,8 @@ void Entropy::resetBits()
 }
 
 /** Encode bin */
-void Entropy::encodeBin(uint32_t binValue, uint8_t &ctxModel)
+void Entropy::writeBin(uint32_t binValue, uint32_t mstate)
 {
-    uint32_t mstate = ctxModel;
-
-    ctxModel = sbacNext(mstate, binValue);
-
-    if (!m_bitIf)
-    {
-        m_fracBits += sbacGetEntropyBits(mstate, binValue);
-        return;
-    }
-
     uint32_t range = m_range;
     uint32_t state = sbacGetState(mstate);
     uint32_t lps = g_lpsTable[state][((uint8_t)range >> 6)];
