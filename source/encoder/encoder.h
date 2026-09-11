@@ -70,6 +70,7 @@ struct EncStats
     double        m_totalQp;
     double        m_maxFALL;
     uint64_t      m_accBits;
+    uint64_t      m_totDuration;
     uint32_t      m_numPics;
     uint16_t      m_maxCLL;
 
@@ -81,6 +82,7 @@ struct EncStats
         m_totalQp = 0;
         m_maxCLL = 0;
         m_maxFALL = 0;
+        m_totDuration = 0;
     }
 
     void addQP(double aveQp);
@@ -90,6 +92,8 @@ struct EncStats
     void addBits(uint64_t bits);
 
     void addSsim(double ssim);
+
+    void addDuration(unsigned int durationInVuiTB);
 };
 
 #define MAX_NUM_REF_IDX 64
