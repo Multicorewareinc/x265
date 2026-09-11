@@ -930,6 +930,17 @@ endif()
 configure_file("${PROJECT_SOURCE_DIR}/x265_config.h.in"
                "${PROJECT_BINARY_DIR}/x265_config.h")
 
+# Build a single library containing the 8-bit, 10-bit and 12-bit encoders,
+# switching bit depths at runtime (see build/linux/multilib.sh). Toolchain
+# settings that CMake cannot infer (e.g. a packaging toolchain's target
+# triplet) can be passed through MULTILIB_CMAKE_ARGS.
+option(ENABLE_MULTILIB "Build a single library containing all supported bit depths" OFF)
+set(MULTILIB_CMAKE_ARGS "" CACHE STRING "Extra CMake arguments for the multilib sub-builds")
+set(MULTILIB_ARCHIVER "" CACHE STRING "Archiver used to merge the multilib static libraries")
+if(ENABLE_MULTILIB)
+    include(cmake/multilib.cmake)
+endif()
+
 add_subdirectory(encoder)
 add_subdirectory(common)
 
@@ -1088,6 +1099,24 @@ endif()
 if(EXTRA_LIB)
     target_link_libraries(x265-static ${EXTRA_LIB})
 endif()
+if(ENABLE_MULTILIB AND NOT ENABLE_SHARED)
+    # Statically merge the 10/12-bit archives into the 8-bit API archive so
+    # that consumers only need to link against a single library
+    add_custom_command(TARGET x265-static POST_BUILD
+        COMMAND "${CMAKE_COMMAND}"
+            "-DOUTPUT=$<TARGET_FILE:x265-static>"
+            "-DINPUT1=$<TARGET_FILE:x265-static>"
+            "-DINPUT2=${CMAKE_CURRENT_BINARY_DIR}/multilib/10bit/${_multilib_archive_name}"
+            "-DINPUT3=${CMAKE_CURRENT_BINARY_DIR}/multilib/12bit/${_multilib_archive_name}"
+            "-DARCHIVER=${MULTILIB_ARCHIVER}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/x265-merge.cmake"
+        VERBATIM)
+endif()
+if(ENABLE_MULTILIB)
+    # Make sure the 10/12-bit sub-builds are done before this library is
+    # archived and merged
+    add_dependencies(x265-static x265-multilib-10bit x265-multilib-12bit)
+endif()
 if(ENABLE_LIBVMAF)
     target_link_libraries(x265-static ${VMAF})
 endif()
@@ -1176,6 +1205,11 @@ if(ENABLE_SHARED)
     endif()
     if(EXTRA_LIB)
         target_link_libraries(x265-shared ${EXTRA_LIB})
+    endif()
+    if(ENABLE_MULTILIB)
+        # Make sure the 10/12-bit sub-builds are done before linking this
+        # shared library
+        add_dependencies(x265-shared x265-multilib-10bit x265-multilib-12bit)
     endif()
 	 target_link_libraries(x265-shared ${PLATFORM_LIBS})
     if(SVTHEVC_FOUND)
