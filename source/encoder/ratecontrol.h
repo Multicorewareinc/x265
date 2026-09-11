@@ -57,13 +57,6 @@ struct Predictor
     double offset;
 };
 
-struct HRDTiming
-{
-    double cpbInitialAT;
-    double cpbFinalAT;
-    double dpbOutputTime;
-    double cpbRemovalTime;
-};
 
 struct RateControlEntry
 {
@@ -89,8 +82,6 @@ struct RateControlEntry
     double  bufferFillActual;
     double  targetFill;
     bool    vbvEndAdj;
-    double  frameDuration;
-    double  clippedDuration;
     AtomicDouble frameSizeEstimated; /* hold frameSize, updated from cu level vbv rc */
     double  frameSizeMaximum;   /* max frame Size according to minCR restrictions and level of the video */
     int     sliceType;
@@ -118,7 +109,8 @@ struct RateControlEntry
     bool     scenecut;
     bool     isIdr;
     SEIPictureTiming *picTimingSEI;
-    HRDTiming        *hrdTiming;
+    unsigned int cpbDuration;   /* in clock ticks */
+    unsigned int frameDuration; /* in clock ticks */
     int      rpsIdx;
     RPS      rpsData;
     bool     isFadeEnd;
@@ -153,14 +145,13 @@ public:
     int    m_lastScenecut;
     int    m_lastScenecutAwareIFrame;
     double m_rateTolerance;
-    double m_frameDuration;     /* current frame duration in seconds */
     double m_bitrate;
     double m_rateFactorConstant;
     double m_bufferSize;
     AtomicDouble m_bufferFillFinal;  /* real buffer as of the last finished frame */
     double m_unclippedBufferFillFinal; /* real unclipped buffer as of the last finished frame used to log in CSV*/
     double m_bufferFill;       /* planned buffer, if all in-progress frames hit their bit budget */
-    double m_bufferRate;       /* # of bits added to buffer_fill after each frame */
+    double m_bufferRate;       /* # of bits added to buffer_fill after each tick */
     double m_vbvMaxRate;       /* in kbps */
     double m_rateFactorMaxIncrement; /* Don't allow RF above (CRF + this value). */
     double m_rateFactorMaxDecrement; /* don't allow RF below (this value). */
@@ -180,6 +171,7 @@ public:
     int     m_qpConstant[3];
     int     m_lastNonBPictType;
     int     m_framesDone;        /* # of frames passed through RateCotrol already */
+    uint64_t m_durationDone;     /* duration passed through RateCotrol already, in ticks */
     int64_t m_iBits;
     double  m_cplxrSum;          /* sum of bits*qscale/rceq */
     AtomicDouble m_wantedBitsWindow;  /* target bitrate * window */
@@ -200,6 +192,7 @@ public:
     int     m_frameCountSeg[3];
     double  m_segDur;
     double  m_fps;
+    double  m_timebase;
     int64_t m_satdCostWindow[50];
     int64_t m_encodedBitsWindow[50];
     int     m_sliderPos;
@@ -233,8 +226,6 @@ public:
 
     /* hrd stuff */
     SEIBufferingPeriod m_bufPeriodSEI;
-    double  m_nominalRemovalTime;
-    double  m_prevCpbFinalAT;
 
     /* 2 pass */
     bool    m_2pass;
