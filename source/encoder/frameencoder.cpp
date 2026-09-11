@@ -283,7 +283,7 @@ bool FrameEncoder::startCompressFrame(Frame* curFrame[MAX_LAYERS])
         curFrame[layer]->m_encData->m_jobProvider = this;
         curFrame[layer]->m_encData->m_slice->m_mref = m_mref;
     }
-    m_sliceType.set(curFrame[0]->m_lowres.sliceType);
+    m_sliceType = curFrame[0]->m_lowres.sliceType;
 
     if (!m_cuGeoms)
     {

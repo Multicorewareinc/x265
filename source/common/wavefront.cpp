@@ -103,7 +103,7 @@ void WaveFront::findJob(int threadId)
     /* Loop over each word until all available rows are finished */
     for (int w = 0; w < m_numWords; w++)
     {
-        uint32_t oldval = ATOMIC_OR(&m_internalDependencyBitmap[w], 0) & ATOMIC_OR(&m_externalDependencyBitmap[w], 0);
+        uint32_t oldval = ATOMIC_LOAD(&m_internalDependencyBitmap[w]) & ATOMIC_LOAD(&m_externalDependencyBitmap[w]);
         while (oldval)
         {
             BSF(id, oldval);
@@ -117,7 +117,7 @@ void WaveFront::findJob(int threadId)
                 return; /* check for a higher priority task */
             }
 
-            oldval = ATOMIC_OR(&m_internalDependencyBitmap[w], 0) & ATOMIC_OR(&m_externalDependencyBitmap[w], 0);
+            oldval = ATOMIC_LOAD(&m_internalDependencyBitmap[w]) & ATOMIC_LOAD(&m_externalDependencyBitmap[w]);
         }
     }
 
