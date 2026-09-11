@@ -2536,14 +2536,25 @@ VUI fields must be manually specified.
 
 	Set the picture structure and emits it in the picture timing SEI message.
 	Values in the range 0..12. See D.3.3 of the HEVC spec. for a detailed explanation.
-	Required for HLG (Hybrid Log Gamma) signaling. Not signaled by default.
+
+.. option:: --psfile <filename>
+
+	Specify a text file which contains the picture structure for some or all frames.
+	Allows for dynamic pulldown (VFR in CFR containers). The format of each line is
+
+	framenumber framefieldcoding picstruct
+
+	Framefieldcoding shall be 0, 1, 2 (progressive, bottom-first or top-first, resp.),
+	It shall not change for an encoded sequence and match the encoder configuration.
+
+	Picstruct is the picture structure to use in the framenumber's Picture Timing SEI.
 
 .. option:: --video-signal-type-preset <string>
 
 	Specify combinations of color primaries, transfer characteristics, color matrix,
 	range of luma and chroma signals, and chroma sample location.
 	String format: <system-id>[:<color-volume>]
-	
+
 	This has higher precedence than individual VUI parameters. If any individual VUI option
 	is specified together with this, which changes the values set corresponding to the system-id
 	or color-volume, it will be discarded.
@@ -2657,7 +2668,7 @@ Bitstream options
 	Picture Timing SEI messages providing timing information to the
 	decoder. Default disabled
 
-    	
+
 .. option:: --hrd-concat, --no-hrd-concat
 
     Set concatenation flag for the first keyframe in the HRD buffering period SEI. This
