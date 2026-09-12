@@ -191,7 +191,7 @@ public:
     double  m_movingSumComplexitySeg[3];
     int     m_frameCountSeg[3];
     double  m_segDur;
-    double  m_fps;
+    double  m_fps;              /* only a true framerate for CFR content */
     double  m_timebase;
     int64_t m_satdCostWindow[50];
     int64_t m_encodedBitsWindow[50];

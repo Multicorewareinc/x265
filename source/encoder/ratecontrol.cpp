@@ -202,6 +202,7 @@ RateControl::RateControl(x265_param& p, Encoder *top)
     m_rateFactorMaxIncrement = 0;
     m_rateFactorMaxDecrement = 0;
     m_timebase = (double)m_param->fpsDenom / m_param->fpsNum;
+    m_fps = (double)m_param->fpsNum / m_param->fpsDenom;
     m_startEndOrder.set(0);
     m_bTerminated = false;
     m_finalFrameCount.set(0);
@@ -460,6 +461,7 @@ bool RateControl::init(const SPS& sps)
     m_encodedBits = 0;
     m_encodedSegmentBits = 0;
     m_framesDone = 0;
+    m_durationDone = 0;
     m_segDur = 0;
     m_residualCost = 0;
     m_partialResidualCost = 0;
