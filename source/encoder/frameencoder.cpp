@@ -834,7 +834,7 @@ void FrameEncoder::compressFrame(int layer)
             /* The m_aucpbremoval delay specifies how many clock ticks the access unit
              * with the picture timing SEI message has to wait after removal of the
              * access unit with the most recent buffering period SEI message */
-            sei->m_auCpbRemovalDelay = X265_MIN(X265_MAX(1, m_frame[layer]->m_cpbDelay), (1 << hrd->cpbRemovalDelayLength));
+            sei->m_auCpbRemovalDelay = X265_MIN(X265_MAX(1u, m_frame[layer]->m_cpbDelay), (1 << hrd->cpbRemovalDelayLength));
             sei->m_picDpbOutputDelay = m_frame[layer]->m_dpbDelay;
         }
 

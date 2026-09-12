@@ -224,10 +224,10 @@ struct Lowres : public ReferencePlanes
     int*      edgeInclined;
 
     /* Vbv Lookahead & cuTree durations */
-    double cpbDurationSecs;
-    double dispDurationSecs;
-    int64_t dispPicCount;
-    int64_t durationPicCount;
+    double   cpbDurationSecs;
+    double   dispDurationSecs;
+    int64_t  dispPicCount;
+    uint32_t durationPicCount;
 
     /* cutree intermediate data */
     PicQPAdaptationLayer* pAQLayer;

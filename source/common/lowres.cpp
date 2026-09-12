@@ -377,8 +377,13 @@ void Lowres::init(PicYuv* origPic, int poc, bool bEnableTemporalFilter)
     for (int i = 0; i < bframes + 2; i++)
         intraMbs[i] = 0;
     if (origPic->m_param->rc.vbvBufferSize)
+    {
         for (int i = 0; i < X265_LOOKAHEAD_MAX + 1; i++)
+        {
             plannedType[i] = X265_TYPE_AUTO;
+            plannedCpbDuration[i] = origPic->m_param->fpsDenom / (double)origPic->m_param->fpsNum;
+        }
+    }
 
     /* downscale and generate 4 hpel planes for lookahead */
     if (bEnableTemporalFilter)
@@ -391,7 +396,7 @@ void Lowres::init(PicYuv* origPic, int poc, bool bEnableTemporalFilter)
     extendPicBorder(lowresPlane[1], lumaStride, width, lines, origPic->m_lumaMarginX, origPic->m_lumaMarginY);
     extendPicBorder(lowresPlane[2], lumaStride, width, lines, origPic->m_lumaMarginX, origPic->m_lumaMarginY);
     extendPicBorder(lowresPlane[3], lumaStride, width, lines, origPic->m_lumaMarginX, origPic->m_lumaMarginY);
-    
+
     if (origPic->m_param->bEnableHME || origPic->m_param->bEnableTemporalFilter)
     {
         if (bEnableTemporalFilter)

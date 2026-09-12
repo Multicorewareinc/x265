@@ -2331,7 +2331,7 @@ void Lookahead::slicetypeDecide()
 
     if (m_param->bEnableTemporalSubLayers > 2)
     {
-        uint8_t codedFrameOrderedIndex[X265_BFRAME_MAX+1];
+        int codedFrameOrderedIndex[X265_BFRAME_MAX+1];
 
         //Split the partial mini GOP into sub mini GOPs when temporal sub layers are enabled
         if (bframes < m_param->bframes)
@@ -2722,7 +2722,7 @@ void Lookahead::slicetypeDecide()
          * in the output queue. The order is important because Frame can
          * only be in one list at a time */
         int64_t pts[X265_BFRAME_MAX + 1];
-        uint8_t codedFrameOrderedIndex[X265_BFRAME_MAX + 1];
+        int codedFrameOrderedIndex[X265_BFRAME_MAX + 1];
         for (int i = 0; i <= bframes; i++)
         {
             Frame *curFrame;
@@ -2815,11 +2815,10 @@ void Lookahead::slicetypeDecide()
 void Lookahead::calculateDurations(Frame *frame, Frame *prevFrame)
 {
     frame->m_cpbDelay = m_cpbDelay;
-    frame->m_dpbDelay = frame->m_displayPicCount - m_codedPicCount;
     frame->m_cpbDuration = frame->m_duration;
     frame->m_codedPicCount = m_codedPicCount;
 
-    int dpbDelay = (int64_t)frame->m_displayPicCount - (int64_t)m_codedPicCount;
+    int dpbDelay = (int)((int64_t)frame->m_displayPicCount - (int64_t)m_codedPicCount);
     /* largest re-ordering at highest temporal layer */
     dpbDelay += ((m_param->bframes > 0) ? 1 : 0) + m_sps->numReorderPics[X265_MAX(0, (m_sps->maxTempSubLayers - 1))];
 
@@ -2839,7 +2838,7 @@ void Lookahead::calculateDurations(Frame *frame, Frame *prevFrame)
     }
     else
     {
-        frame->m_dpbDelay = (unsigned int)dpbDelay;
+        frame->m_dpbDelay = (uint32_t)dpbDelay;
     }
 
     setDurationsToLowres(frame);
@@ -2971,9 +2970,11 @@ void Lookahead::slicetypeAnalyse(Lowres **frames, bool bKeyframe)
     int resetStart;
     bool bIsVbvLookahead = m_param->rc.vbvBufferSize && m_param->lookaheadDepth;
 
-    int keyintTimeLimit = m_param->keyframeMax + (int)(m_lastKeyframe - (frames[0]->dispPicCount + frames[0]->durationPicCount));
-    int keyIntFrameCnt = 0, durationAhead = 0, keyIntFrameCntExtended = 0;
-    int extendedKeyIntTime = keyintTimeLimit + m_param->gopLookahead;
+    uint32_t keyintTimeLimit = m_param->keyframeMax + (int)(m_lastKeyframe - (frames[0]->dispPicCount + frames[0]->durationPicCount));
+    uint32_t extendedKeyIntTime = keyintTimeLimit + m_param->gopLookahead;
+
+    int keyIntFrameCnt = 0, keyIntFrameCntExtended = 0;
+    uint32_t durationAhead = 0;
 
     /* count undecided frames */
     for (framecnt = 0; framecnt < maxSearch; framecnt++)
@@ -3238,13 +3239,15 @@ void Lookahead::slicetypeAnalyse(Lowres **frames, bool bKeyframe)
             bool bLastMiniGop = (framecnt >= m_param->bframes + 1) ? false : true;
             int radl = m_param->radl ? m_param->radl : zoneRadl;
             int nextIRAP = -1;
-            for (int j = numFrames; j >= 0; --j)
+            int minDiff = 1 << 30;
+            for (int j = numFrames; j > 0; --j)
             {
                 int diff = (frames[j]->dispPicCount - m_lastKeyframe) + frames[j]->durationPicCount;
-                if (diff >= m_param->keyframeMax)
+                if (diff >= m_param->keyframeMax && diff < minDiff)
+                {
+                    minDiff = diff;
                     nextIRAP = j;
-                else
-                    break;
+                }
             }
             /* radl in frame counts: frame preceeding RADL in POC order*/
             int preRADL = nextIRAP > 0 ? frames[nextIRAP]->frameNum - radl - 1 : -1;
@@ -3289,7 +3292,7 @@ void Lookahead::slicetypeAnalyse(Lowres **frames, bool bKeyframe)
 
         if (!m_param->bIntraRefresh)
         {
-            unsigned int duration = 0;
+            uint32_t duration = 0;
             for (int j = keyintLimit + 1; j <= numFrames; ++j)
             {
                 if (duration % m_param->keyframeMax == 0)

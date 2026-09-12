@@ -214,7 +214,7 @@ public:
 
     SPS            *m_sps;           /* for maximum picture re-ordering setting */
     int64_t         m_cpbDelay;      /* latest cpb delay in lookahead (ticks) */
-    uint64_t        m_codedPicCount; /* latest coded picture count in lookahead (ticks) */
+    int64_t         m_codedPicCount; /* latest coded picture count in lookahead (ticks) */
 
     Lookahead(x265_param *param, ThreadPool *pool, SPS* sps);
 #if DETAILED_CU_STATS
