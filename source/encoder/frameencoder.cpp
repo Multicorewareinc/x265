@@ -106,7 +106,6 @@ void FrameEncoder::destroy()
     if (m_param->bEmitHRDSEI || !!m_param->interlaceMode)
     {
         delete m_rce.picTimingSEI;
-        delete m_rce.hrdTiming;
     }
 }
 
@@ -183,9 +182,8 @@ bool FrameEncoder::init(Encoder *top, int numRows, int numCols)
     if (m_param->bEmitHRDSEI || !!m_param->interlaceMode)
     {
         m_rce.picTimingSEI = new SEIPictureTiming;
-        m_rce.hrdTiming = new HRDTiming;
 
-        ok &= m_rce.picTimingSEI && m_rce.hrdTiming;
+        ok &= m_rce.picTimingSEI != NULL;
     }
 
     if (m_param->noiseReductionIntra || m_param->noiseReductionInter)
@@ -761,7 +759,6 @@ void FrameEncoder::compressFrame(int layer)
     }
 
     m_rce.encodeOrder = m_frame[layer]->m_encodeOrder;
-    int prevBPSEI = m_rce.encodeOrder ? m_top->m_lastBPSEI : 0;
 
     if (m_frame[layer]->m_lowres.bKeyframe)
     {
@@ -778,8 +775,6 @@ void FrameEncoder::compressFrame(int layer)
             // hrdFullness() calculates the initial CPB removal delay and offset
             m_top->m_rateControl->hrdFullness(bpSei);
             bpSei->writeSEImessages(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer);
-
-            m_top->m_lastBPSEI = m_rce.encodeOrder;
         }
 
         if (m_frame[layer]->m_lowres.sliceType == X265_TYPE_IDR && m_param->bEmitIDRRecoverySEI)
@@ -802,29 +797,32 @@ void FrameEncoder::compressFrame(int layer)
 
         if (vui->frameFieldInfoPresentFlag)
         {
-            if (m_param->interlaceMode > 0)
+            if (m_frame[layer]->m_picStruct == PIC_STRUCT_AUTO)
             {
-                if( m_param->interlaceMode == 2 )
-                {   
-                    // m_picStruct should be set to 3 or 4 when field feature is enabled
-                    if (m_param->bField)
-                        // 3: Top field, bottom field, in that order; 4: Bottom field, top field, in that order
-                        sei->m_picStruct = (slice->m_fieldNum == 1) ? 4 : 3;
-                    else
-                        sei->m_picStruct = (poc & 1) ? 1 /* top */ : 2 /* bottom */;
-                }     
-                else if (m_param->interlaceMode == 1)
+                if (m_param->interlaceMode > 0)
                 {
-                    if (m_param->bField)
-                        sei->m_picStruct = (slice->m_fieldNum == 1) ? 3: 4;
-                    else
-                        sei->m_picStruct = (poc & 1) ? 2 /* bottom */ : 1 /* top */;
+                    if( m_param->interlaceMode == 2 )
+                    {
+                        // m_picStruct should be set to 3 or 4 when field feature is enabled
+                        if (m_param->bField)
+                            // 3: Top field, bottom field, in that order; 4: Bottom field, top field, in that order
+                            sei->m_picStruct = (slice->m_fieldNum == 1) ? PIC_STRUCT_BOTTOM_TOP : PIC_STRUCT_TOP_BOTTOM;
+                        else
+                            sei->m_picStruct = (poc & 1) ? PIC_STRUCT_FIELD_TOP : PIC_STRUCT_FIELD_BOTTOM;
+                    }
+                    else if (m_param->interlaceMode == 1)
+                    {
+                        if (m_param->bField)
+                            sei->m_picStruct = (slice->m_fieldNum == 1) ? PIC_STRUCT_TOP_BOTTOM : PIC_STRUCT_BOTTOM_TOP;
+                        else
+                            sei->m_picStruct = (poc & 1) ? PIC_STRUCT_FIELD_BOTTOM : PIC_STRUCT_FIELD_TOP;
+                    }
                 }
+                else
+                    sei->m_picStruct = PIC_STRUCT_PROGRESSIVE_FRAME;
             }
-            else if (m_param->bEnableFrameDuplication)
-                sei->m_picStruct = m_frame[layer]->m_picStruct;
             else
-                sei->m_picStruct = m_param->pictureStructure;
+                sei->m_picStruct = m_frame[layer]->m_picStruct;
 
             sei->m_sourceScanType = m_param->interlaceMode ? 0 : 1;
 
@@ -833,12 +831,11 @@ void FrameEncoder::compressFrame(int layer)
 
         if (vui->hrdParametersPresentFlag)
         {
-            // The m_aucpbremoval delay specifies how many clock ticks the
-            // access unit associated with the picture timing SEI message has to
-            // wait after removal of the access unit with the most recent
-            // buffering period SEI message
-            sei->m_auCpbRemovalDelay = X265_MIN(X265_MAX(1, m_rce.encodeOrder - prevBPSEI), (1 << hrd->cpbRemovalDelayLength));
-            sei->m_picDpbOutputDelay = slice->m_sps->numReorderPics[m_frame[layer]->m_tempLayer] + poc - m_rce.encodeOrder;
+            /* The m_aucpbremoval delay specifies how many clock ticks the access unit
+             * with the picture timing SEI message has to wait after removal of the
+             * access unit with the most recent buffering period SEI message */
+            sei->m_auCpbRemovalDelay = X265_MIN(X265_MAX(1u, m_frame[layer]->m_cpbDelay), (1 << hrd->cpbRemovalDelayLength));
+            sei->m_picDpbOutputDelay = m_frame[layer]->m_dpbDelay;
         }
 
         sei->writeSEImessages(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer);
