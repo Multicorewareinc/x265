@@ -923,8 +923,20 @@ void Entropy::codeHrdParameters(const HRDInfo& hrd, int maxSubTLayers)
 
     for (int i = 0; i < maxSubTLayers; i++)
     {
-        WRITE_FLAG(1, "fixed_pic_rate_general_flag");
-        WRITE_UVLC(0, "elemental_duration_in_tc_minus1");
+        /* Only the highest sub-layer is guaranteed to output one picture per
+         * ClockTick (E-76 normalises pic_struct durations by DeltaToDivisor).
+         * Lower sub-layers follow the miniGOP structure, which keyframes,
+         * lookahead decisions and the end of the stream can shorten, so no
+         * fixed picture rate is signalled for them. */
+        bool bFixedPicRate = (i == maxSubTLayers - 1);
+        WRITE_FLAG(bFixedPicRate, "fixed_pic_rate_general_flag");
+        if (bFixedPicRate)
+            WRITE_UVLC(0, "elemental_duration_in_tc_minus1");
+        else
+        {
+            WRITE_FLAG(0, "fixed_pic_rate_within_cvs_flag");
+            WRITE_FLAG(0, "low_delay_hrd_flag");
+        }
         WRITE_UVLC(0, "cpb_cnt_minus1");
 
         WRITE_UVLC(hrd.bitRateValue - 1, "bit_rate_value_minus1");
