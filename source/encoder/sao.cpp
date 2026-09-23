@@ -718,7 +718,7 @@ void SAO::generateChromaOffsets(SaoCtuParam* ctuParam[3], int idxY, int idxX)
                     m_offsetEo[2][edgeType] = (int8_t)offset[s_eoTable[edgeType]];
             }
         }
-        applyPixelOffsets(addr, typeIdxCb, 2);
+        applyPixelOffsets(addr, typeIdxCr, 2);
     }
 
     std::swap(m_tmpL1[1], m_tmpL2[1]);
