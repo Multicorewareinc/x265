@@ -182,6 +182,10 @@ public:
     /* target QP for this picture.*/
     int                    m_targetQp;
 
+    // ML CTU split predictions, float[numCTUs * 21]: [n*21+0]=split64,
+    // [n*21+1..4]=split32 quadrants, [n*21+5..20]=split16 (Z-scan). NULL if disabled.
+    float*                 m_MLCTUPred;
+
     Frame();
 
     bool create(x265_param *param, float* quantOffsets);

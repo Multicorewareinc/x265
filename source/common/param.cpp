@@ -399,6 +399,10 @@ void x265_param_default(x265_param* param)
     param->maxAUSizeFactor = 1;
     param->naluFile[0] = 0;
 
+    /* ML CTU partition prediction */
+    param->bEnableMLCTUPred = 0;
+    param->bEnableIntra64x64 = 0;
+
     /* DCT Approximations */
     param->bLowPassDct = 0;
     param->bAnalysisType = 0;
@@ -1567,6 +1571,9 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
         OPT("fovea-delta") p->foveaDelta = (float)atof(value);
         OPT("fovea-sigma") p->foveaSigma = (float)atof(value);
         OPT("fovea-gaze-file") p->foveaGazeFile = strdup(value);
+        OPT("ml-ctu-pred") p->bEnableMLCTUPred = atobool(value);
+        OPT("intra-64x64") p->bEnableIntra64x64 = atobool(value);
+
         else
             return X265_PARAM_BAD_NAME;
     }
@@ -2234,6 +2241,7 @@ void x265_print_params(x265_param* param)
     TOOLOPT(param->bEnableTemporalMvp, "tmvp");
     TOOLOPT(param->bEnableConstrainedIntra, "cip");
     TOOLOPT(param->bIntraInBFrames, "b-intra");
+    TOOLOPT(param->bEnableIntra64x64, "intra-64x64");
     TOOLOPT(param->bEnableFastIntra, "fast-intra");
     TOOLOPT(param->bEnableStrongIntraSmoothing, "strong-intra-smoothing");
     TOOLVAL(param->lookaheadSlices, "lslices=%d");
@@ -2404,6 +2412,7 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     BOOL(p->bEnableTSkipFast, "tskip-fast");
     BOOL(p->bCULossless, "cu-lossless");
     BOOL(p->bIntraInBFrames, "b-intra");
+    BOOL(p->bEnableIntra64x64, "intra-64x64");
     BOOL(p->bEnableSplitRdSkip, "splitrd-skip");
     s += snprintf(s, bufSize - (s - buf), " rdpenalty=%d", p->rdPenalty);
     s += snprintf(s, bufSize - (s - buf), " psy-rd=%.2f", p->psyRd);
@@ -3042,6 +3051,8 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->vbvBufferEnd = src->vbvBufferEnd;
     dst->vbvEndFrameAdjust = src->vbvEndFrameAdjust;
     dst->bAnalysisType = src->bAnalysisType;
+    dst->bEnableMLCTUPred = src->bEnableMLCTUPred;
+    dst->bEnableIntra64x64 = src->bEnableIntra64x64;
     dst->bCopyPicToFrame = src->bCopyPicToFrame;
     if (strlen(src->analysisSave)) snprintf(dst->analysisSave, X265_MAX_STRING_SIZE, "%s", src->analysisSave);
     else dst->analysisSave[0] = 0;

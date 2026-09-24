@@ -37,6 +37,9 @@
 #include "slicetype.h"
 #include "frameencoder.h"
 #include "ratecontrol.h"
+#ifdef ENABLE_MLCTUPRED
+#include "mlctu.h"
+#endif
 #include "dpb.h"
 #include "nal.h"
 #include "threadedme.h"
@@ -139,6 +142,10 @@ Encoder::Encoder()
     m_lookahead = NULL;
     m_threadedME = NULL;
     m_rateControl = NULL;
+#ifdef ENABLE_MLCTUPRED
+    m_MLCTUPredictor = NULL;
+    m_mlThreadPool = NULL;
+#endif
     m_dpb = NULL;
     m_numDelayedPic = 0;
     m_outputCount = 0;
@@ -528,6 +535,51 @@ void Encoder::create()
         m_aborted = true;
     if (!m_lookahead->create())
         m_aborted = true;
+
+#ifdef ENABLE_MLCTUPRED
+    if (m_param->bEnableMLCTUPred)
+    {
+        m_MLCTUPredictor = new MLCTUPredictor(m_param);
+        if (!m_MLCTUPredictor->init())
+        {
+            x265_log(m_param, X265_LOG_WARNING,
+                     "ML CTU pred: init failed, feature disabled\n");
+            delete m_MLCTUPredictor;
+            m_MLCTUPredictor = NULL;
+            m_param->bEnableMLCTUPred = 0;
+        }
+        else
+        {
+            int numNodes = ThreadPool::getNumaNodeCount();
+            uint64_t mlNodeMask = 0;
+            for (int ni = 0; ni < numNodes; ni++)
+                mlNodeMask |= ((uint64_t)1 << ni);
+
+            /* ML pool width = concurrent frame inferences; each is further sized
+             * by intra-op threads in mlctu.cpp. */
+            const int mlThreads = X265_MIN(m_param->frameNumThreads, MAX_POOL_THREADS);
+            m_mlThreadPool = new ThreadPool();
+            if (!m_mlThreadPool->create(mlThreads, 1, mlNodeMask))
+            {
+                x265_log(m_param, X265_LOG_WARNING,
+                         "ML CTU pred: failed to create ML thread pool, "
+                         "falling back to synchronous inference\n");
+                delete m_mlThreadPool;
+                m_mlThreadPool = NULL;
+            }
+            else
+            {
+                m_MLCTUPredictor->m_pool = m_mlThreadPool;
+                m_MLCTUPredictor->m_jpId = m_mlThreadPool->m_numProviders++;
+                m_mlThreadPool->m_jpTable[m_MLCTUPredictor->m_jpId] = m_MLCTUPredictor;
+                m_mlThreadPool->start();
+                x265_log(m_param, X265_LOG_INFO,
+                         "ML CTU pred: async thread pool started (%d threads)\n",
+                         mlThreads);
+            }
+        }
+    }
+#endif
 
     initRefIdx();
 
@@ -1003,6 +1055,20 @@ void Encoder::destroy()
         m_rateControl->destroy();
         delete m_rateControl;
     }
+
+#ifdef ENABLE_MLCTUPRED
+    if (m_mlThreadPool)
+    {
+        m_mlThreadPool->stopWorkers();
+        delete m_mlThreadPool;
+        m_mlThreadPool = NULL;
+    }
+    if (m_MLCTUPredictor)
+    {
+        delete m_MLCTUPredictor;
+        m_MLCTUPredictor = NULL;
+    }
+#endif
 
     X265_FREE(m_offsetEmergency);
 
@@ -2354,8 +2420,8 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
             /* Initiate reconfigure for this FE if necessary */
             curEncoder->m_param = m_reconfigure ? m_latestParam : m_param;
             curEncoder->m_reconfigure = m_reconfigure;
-
             /* give this frame a FrameData instance before encoding */
+
             for (int layer = 0; layer < m_param->numLayers; layer++)
             {
                 if (m_dpb->m_frameDataFreeList)
@@ -2575,6 +2641,8 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                     }
                 }
             }
+
+
 
             /* Allow FrameEncoder::compressFrame() to start in the frame encoder thread */
             if (!curEncoder->startCompressFrame(frameEnc))
@@ -3257,19 +3325,19 @@ void Encoder::finishFrameStats(Frame* curFrame, FrameEncoder *curEncoder, x265_f
                     frameStats->list1POC[ref] = ref < slice->m_numRefIdx[1] ? slice->m_refPOCList[1][ref] - slice->m_lastIDR : -1;
             }
         }
-#define ELAPSED_MSEC(start, end) (((double)(end) - (start)) / 1000)
-        if (m_param->csvLogLevel >= 2)
-        {
-#if ENABLE_LIBVMAF
-            frameStats->vmafFrameScore = curFrame->m_fencPic->m_vmafScore;
-#endif
-            frameStats->decideWaitTime = ELAPSED_MSEC(0, curEncoder->m_slicetypeWaitTime[layer]);
+        #define ELAPSED_MSEC(start, end) (((double)(end) - (start)) / 1000)
+        frameStats->decideWaitTime = ELAPSED_MSEC(0, curEncoder->m_slicetypeWaitTime[layer]);
             frameStats->row0WaitTime = ELAPSED_MSEC(curEncoder->m_startCompressTime[layer], curEncoder->m_row0WaitTime[layer]);
             frameStats->wallTime = ELAPSED_MSEC(curEncoder->m_row0WaitTime[layer], curEncoder->m_endCompressTime[layer]);
             frameStats->refWaitWallTime = ELAPSED_MSEC(curEncoder->m_row0WaitTime[layer], curEncoder->m_allRowsAvailableTime[layer]);
             frameStats->totalCTUTime = ELAPSED_MSEC(0, curEncoder->m_totalWorkerElapsedTime[layer]);
             frameStats->stallTime = ELAPSED_MSEC(0, curEncoder->m_totalNoWorkerTime[layer]);
             frameStats->totalFrameTime = ELAPSED_MSEC(curFrame->m_encodeStartTime, x265_mdate());
+        if (m_param->csvLogLevel >= 2)
+        {
+#if ENABLE_LIBVMAF
+            frameStats->vmafFrameScore = curFrame->m_fencPic->m_vmafScore;
+#endif
 
             frameStats->tmeTime = curEncoder->m_totalThreadedMETime[layer];
             frameStats->tmeWaitTime = curEncoder->m_totalThreadedMEWait[layer];

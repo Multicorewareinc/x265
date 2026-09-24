@@ -1648,6 +1648,10 @@ typedef struct x265_param
      * regardless of this setting */
     int       bIntraInBFrames;
 
+    /* Enable 64x64 intra analysis. If enabled, the encoder will perform
+     * 64x64 intra block analysis. Default disabled */
+    int       bEnableIntra64x64;
+
     /* Apply an optional penalty to the estimated cost of 32x32 intra blocks in
      * non-intra slices. 0 is disabled, 1 enables a small penalty, and 2 enables
      * a full penalty. This favors inter-coding and its low bitrate over
@@ -2403,6 +2407,8 @@ typedef struct x265_param
      * When set, overrides foveaGazeX/foveaGazeY with per-frame values.
      * NULL = use static gaze from foveaGazeX/foveaGazeY. */
     char* foveaGazeFile;
+    /* Enable ML-based CTU partition prediction */
+    int     bEnableMLCTUPred;
 } x265_param;
 
 /* x265_param_alloc:

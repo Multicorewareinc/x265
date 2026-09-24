@@ -36,6 +36,11 @@
 
 using namespace X265_NS;
 
+/* ML split confidence gates: split trusted at 0.5, no-split only near-certain
+ * (a wrong no-split veto costs far more than an extra split trial). */
+#define ML_SPLIT_CONFIDENT_THRESHOLD   0.5f
+#define ML_NOSPLIT_CONFIDENT_THRESHOLD 0.2f
+
 /* An explanation of rate distortion levels (--rd-level)
  *
  * rd-level 0 generates no recon per CU (NO RDO or Quant)
@@ -85,6 +90,9 @@ Analysis::Analysis()
         memset(m_modeDepth[i].pred, 0, sizeof(m_modeDepth[i].pred));
     }
 
+#if ENABLE_MLCTUPRED
+    m_MLCTUPred = NULL;
+#endif
     m_reuseInterDataCTU = NULL;
     m_reuseRef = NULL;
     m_reuseDepth = NULL;
@@ -311,6 +319,12 @@ Mode& Analysis::compressCTU(CUData& ctu, Frame& frame, const CUGeom& cuGeom, con
     m_frame = &frame;
     m_bChromaSa8d = m_param->rdLevel >= 3;
     m_param = m_frame->m_param;
+
+#if ENABLE_MLCTUPRED
+    const int mlPredSize = (m_param->maxCUSize == 64) ? 21 : 1;
+    m_MLCTUPred = (m_param->bEnableMLCTUPred && m_frame->m_MLCTUPred && IS_X265_TYPE_I(m_frame->m_lowres.sliceType))
+    ? m_frame->m_MLCTUPred + ctu.m_cuAddr * mlPredSize : NULL;
+#endif
 
 #if _DEBUG || CHECKED_BUILD
     invalidateContexts(0);
@@ -713,6 +727,29 @@ uint64_t Analysis::compressIntraCU(const CUData& parentCTU, const CUGeom& cuGeom
     bool bAlreadyDecided = m_param->intraRefine != 4 && parentCTU.m_lumaIntraDir[cuGeom.absPartIdx] != (uint8_t)ALL_IDX && !(m_param->bAnalysisType == HEVC_INFO);
     bool bDecidedDepth = m_param->intraRefine != 4 && parentCTU.m_cuDepth[cuGeom.absPartIdx] == depth;
     int split = 0;
+#if ENABLE_MLCTUPRED
+    if (m_MLCTUPred)
+    {
+        bool canSplit = !(cuGeom.flags & CUGeom::LEAF);
+
+        if (m_param->maxCUSize != 64)
+        {
+            if (depth == 0 && mightNotSplit && canSplit)
+                mightNotSplit = !(m_MLCTUPred[0] >= ML_SPLIT_CONFIDENT_THRESHOLD);
+        }
+        else
+        {
+            if (depth == 0 && mightNotSplit && canSplit)
+                mightNotSplit = !(m_MLCTUPred[0] >= ML_SPLIT_CONFIDENT_THRESHOLD);
+
+            if (depth == 1 && mightNotSplit && canSplit)
+                mightNotSplit = !(m_MLCTUPred[1 + (cuGeom.absPartIdx / 64)] >= ML_SPLIT_CONFIDENT_THRESHOLD);
+
+            if (depth == 2 && mightNotSplit && canSplit)
+                mightNotSplit = !(m_MLCTUPred[5 + (cuGeom.absPartIdx / 16)] >= ML_SPLIT_CONFIDENT_THRESHOLD);
+        }
+    }
+#endif
     if (m_param->intraRefine && m_param->intraRefine != 4)
     {
         split = m_param->scaleFactor && bDecidedDepth && (!mightNotSplit || 
@@ -744,7 +781,7 @@ uint64_t Analysis::compressIntraCU(const CUData& parentCTU, const CUGeom& cuGeom
                 addSplitFlagCost(*md.bestMode, cuGeom.depth);
         }
     }
-    else if (cuGeom.log2CUSize != MAX_LOG2_CU_SIZE && mightNotSplit)
+    else if ((m_param->bEnableIntra64x64 || cuGeom.log2CUSize != MAX_LOG2_CU_SIZE) && mightNotSplit)
     {
         md.pred[PRED_INTRA].cu.initSubCU(parentCTU, cuGeom, qp);
         checkIntra(md.pred[PRED_INTRA], cuGeom, SIZE_2Nx2N);
@@ -889,6 +926,46 @@ uint64_t Analysis::compressIntraCU(const CUData& parentCTU, const CUGeom& cuGeom
     // stop recursion if we reach the depth of previous analysis decision
     mightSplit &= !(bAlreadyDecided && bDecidedDepth) || split;
 
+#if ENABLE_MLCTUPRED
+    if (m_MLCTUPred)
+    {
+        /* Forces split when confident; vetoes it only when near-certain no-split. */
+        bool mandatorySplit = (cuGeom.flags & CUGeom::SPLIT_MANDATORY);
+        bool canSplit = !(cuGeom.flags & CUGeom::LEAF);
+
+        auto gateSplit = [&](float pred, bool canVeto, float vetoThreshold = ML_NOSPLIT_CONFIDENT_THRESHOLD)
+        {
+            if (mandatorySplit || pred >= ML_SPLIT_CONFIDENT_THRESHOLD)
+                mightSplit = true;
+            else if (canVeto && pred <= vetoThreshold)
+                mightSplit = false;
+            mightSplit &= canSplit;
+        };
+
+        if (m_param->maxCUSize != 64)
+        {
+            if (depth == 0)
+                gateSplit(m_MLCTUPred[0], true);
+        }
+        else
+        {
+            // At depth 0, force a split when unsplit coding isn't legal (e.g. no intra-64x64) --
+            // don't let a confident ML "no split" veto the only option.
+            bool canStopSplit = mightNotSplit && (m_param->bEnableIntra64x64 || cuGeom.log2CUSize != MAX_LOG2_CU_SIZE);
+
+            if (depth == 0)
+                gateSplit(m_MLCTUPred[0], canStopSplit);
+
+            else if (depth == 1)
+                gateSplit(m_MLCTUPred[1 + (cuGeom.absPartIdx / 64)], true);
+
+            // level16 tolerates a smaller dead zone than level64/32 (full trust hurt quality).
+            else if (depth == 2)
+                gateSplit(m_MLCTUPred[5 + (cuGeom.absPartIdx / 16)], true, 0.35f);
+        }
+    }
+#endif
+
     if (mightSplit)
     {
         Mode* splitPred = &md.pred[PRED_SPLIT];
@@ -989,6 +1066,8 @@ uint64_t Analysis::compressIntraCU(const CUData& parentCTU, const CUGeom& cuGeom
     }
 
     /* Copy best data to encData CTU and recon */
+    X265_CHECK(md.bestMode != NULL, "compressIntraCU: no mode evaluated at depth %d "
+               "(mightSplit=%d mightNotSplit=%d)\n", depth, mightSplit, mightNotSplit);
     md.bestMode->cu.copyToPic(depth);
     if (md.bestMode != &md.pred[PRED_SPLIT])
     {
@@ -1278,7 +1357,7 @@ uint32_t Analysis::compressInterCU_dist(const CUData& parentCTU, const CUGeom& c
     if (mightNotSplit && depth >= minDepth)
     {
         int bTryAmp = m_slice->m_sps->maxAMPDepth > depth;
-        int bTryIntra = (m_slice->m_sliceType != B_SLICE || m_param->bIntraInBFrames) && (!m_param->limitReferences || splitIntra) && (cuGeom.log2CUSize != MAX_LOG2_CU_SIZE);
+        int bTryIntra = (m_slice->m_sliceType != B_SLICE || m_param->bIntraInBFrames) && (!m_param->limitReferences || splitIntra) && (m_param->bEnableIntra64x64 || cuGeom.log2CUSize != MAX_LOG2_CU_SIZE);
 
         if (m_slice->m_pps->bUseDQP && depth <= m_slice->m_pps->maxCuDQPDepth && m_slice->m_pps->maxCuDQPDepth != 0)
             setLambdaFromQP(parentCTU, qp);
@@ -1667,6 +1746,7 @@ SplitData Analysis::compressInterCU_rd0_4(const CUData& parentCTU, const CUGeom&
         }
         if (m_param->bAnalysisType == AVC_INFO && md.bestMode && cuGeom.numPartitions <= 16 && m_param->analysisLoadReuseLevel == 7)
             skipRecursion = true;
+
         /* Step 2. Evaluate each of the 4 split sub-blocks in series */
         if (mightSplit && !skipRecursion)
         {
@@ -1924,7 +2004,7 @@ SplitData Analysis::compressInterCU_rd0_4(const CUData& parentCTU, const CUGeom&
                         }
                     }
                 }
-                bool bTryIntra = (m_slice->m_sliceType != B_SLICE || m_param->bIntraInBFrames) && cuGeom.log2CUSize != MAX_LOG2_CU_SIZE && !((m_param->bCTUInfo & 4) && bCtuInfoCheck);
+                bool bTryIntra = (m_slice->m_sliceType != B_SLICE || m_param->bIntraInBFrames) && (m_param->bEnableIntra64x64 || cuGeom.log2CUSize != MAX_LOG2_CU_SIZE) && !((m_param->bCTUInfo & 4) && bCtuInfoCheck);
                 if (m_param->rdLevel >= 3)
                 {
                     /* Calculate RD cost of best inter option */
@@ -2389,6 +2469,7 @@ SplitData Analysis::compressInterCU_rd5_6(const CUData& parentCTU, const CUGeom&
         }
         if (m_param->bAnalysisType == AVC_INFO && md.bestMode && cuGeom.numPartitions <= 16 && m_param->analysisLoadReuseLevel == 7)
             skipRecursion = true;
+
         // estimate split cost
         /* Step 2. Evaluate each of the 4 split sub-blocks in series */
         if (mightSplit && !skipRecursion)
@@ -2738,7 +2819,7 @@ SplitData Analysis::compressInterCU_rd5_6(const CUData& parentCTU, const CUGeom&
                 }
 #endif
 
-                if ((m_slice->m_sliceType != B_SLICE || m_param->bIntraInBFrames) && (cuGeom.log2CUSize != MAX_LOG2_CU_SIZE) && !((m_param->bCTUInfo & 4) && bCtuInfoCheck))
+                if ((m_slice->m_sliceType != B_SLICE || m_param->bIntraInBFrames) && (m_param->bEnableIntra64x64 || cuGeom.log2CUSize != MAX_LOG2_CU_SIZE) && !((m_param->bCTUInfo & 4) && bCtuInfoCheck))
                 {
                     if (!m_param->limitReferences || splitIntra)
                     {

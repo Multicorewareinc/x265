@@ -106,6 +106,7 @@ namespace X265_NS {
         H0("   --[no-]pmode                  Parallel mode analysis. Deprecated from release 4.1. Default %s\n", OPT(param->bDistributeModeAnalysis));
         H0("   --[no-]pme                    Parallel motion estimation. Deprecated from release 4.1. Default %s\n", OPT(param->bDistributeMotionEstimation));
         H0("   --[no-]threaded-me            Enables standalone multi-threaded module for motion estimation at CTU level. Default %s\n", OPT(param->bThreadedME));
+        H0("   --[no-]ml-ctu-pred            Enable ML based CTU Partition Prediction. Default %s\n", OPT(param->bEnableMLCTUPred));
         H0("   --[no-]asm <bool|int|string>  Override CPU detection. Default: auto\n");
         H0("\nPresets:\n");
         H0("-p/--preset <string>             Trade off performance for compression efficiency. Default medium\n");
@@ -172,6 +173,7 @@ namespace X265_NS {
         H0("   --[no-]strong-intra-smoothing Enable strong intra smoothing for 32x32 blocks. Default %s\n", OPT(param->bEnableStrongIntraSmoothing));
         H0("   --[no-]constrained-intra      Constrained intra prediction (use only intra-coded reference pixels) Default %s\n", OPT(param->bEnableConstrainedIntra));
         H0("   --[no-]b-intra                Enable intra in B frames in veryslow presets. Default %s\n", OPT(param->bIntraInBFrames));
+        H1("   --[no-]intra-64x64            Enable intra 64x64 analysis. Default %s\n", OPT(param->bEnableIntra64x64));
         H0("   --[no-]fast-intra             Enable faster search method for angular intra predictions. Default %s\n", OPT(param->bEnableFastIntra));
         H0("   --rdpenalty <0..2>            penalty for 32x32 intra TU in non-I slices. 0:disabled 1:RD-penalty 2:maximum. Default %d\n", param->rdPenalty);
         H0("\nSlice decision options:\n");
