@@ -379,8 +379,8 @@ namespace X265_NS {
         H0("   --[no-]eos                    Emit end of sequence nal unit at the end of every coded video sequence. Default %s\n", OPT(param->bEnableEndOfSequence));
         H1("   --hash <integer>              Decoded Picture Hash SEI 0: disabled, 1: MD5, 2: CRC, 3: Checksum. Default %d\n", param->decodedPictureHashSEI);
         H0("   --atc-sei <integer>           Emit the alternative transfer characteristics SEI message where the integer is the preferred transfer characteristic. Default disabled\n");
-        H0("   --pic-struct <integer>        Set the picture structure and emit it in the picture timing SEI message. Values in the range 0..12. See D.3.3 of the HEVC spec. for a detailed explanation.\n");
-        H0("   --log2-max-poc-lsb <integer>  Maximum of the picture order count\n");
+        H0("   --pic-struct <integer>        Specify a unique picture structure to emit in every frames' picture timing SEI message. Values in the range 0..12. See D.3.3 of the HEVC spec. for a detailed explanation.\n");
+        H0("   --psfile <filename>           PicStruct file specifying the picture structure for some or all frames.\n");        H0("   --log2-max-poc-lsb <integer>  Maximum of the picture order count\n");
         H0("   --[no-]vui-timing-info        Emit VUI timing information in the bitstream. Default %s\n", OPT(param->bEmitVUITimingInfo));
         H0("   --[no-]vui-hrd-info           Emit VUI HRD information in the bitstream. Default %s\n", OPT(param->bEmitVUIHRDInfo));
         H0("   --[no-]opt-qp-pps             Dynamically optimize QP in PPS (instead of default 26) based on QPs in previous GOP. Default %s\n", OPT(param->bOptQpPPS));
@@ -472,6 +472,9 @@ namespace X265_NS {
                 recon[i]->release();
             recon[i] = NULL;
         }
+        if (psfile)
+            fclose(psfile);
+        psfile = NULL;
         if (qpfile)
             fclose(qpfile);
         qpfile = NULL;
@@ -803,6 +806,12 @@ namespace X265_NS {
                 OPT("output-depth")   /* handled above */;
                 OPT("recon-y4m-exec") reconPlayCmd = optarg;
                 OPT("svt")    /* handled above */;
+                OPT("psfile")
+                {
+                    this->psfile = x265_fopen(optarg, "rb");
+                    if (!this->psfile)
+                        x265_log_file(param, X265_LOG_ERROR, "%s psfile not found or error in opening ps file\n", optarg);
+                }
                 OPT("qpfile")
                 {
                     this->qpfile = x265_fopen(optarg, "rb");
@@ -1113,6 +1122,43 @@ namespace X265_NS {
             }
         }
         return false;
+    }
+
+    bool CLIOptions::parsePSFile(x265_picture &pic_org, int fieldOrder, bool frameFields)
+    {
+        int32_t num = -1;
+        uint32_t frameFieldCoding, pictureStructure;
+
+        uint32_t validPicStructMask = 0x181; //progressive, doubling, tripling
+        if (fieldOrder > 0)
+            validPicStructMask = frameFields ? 0x78 : 0x1e06; /* D.2 field_seq_flag = 0 or 1 */
+
+        while (num < pic_org.poc)
+        {
+            uint32_t filePos = ftell(psfile);
+            int32_t ret = fscanf(psfile, "%d %u%*[ \t]%u\n", &num, &frameFieldCoding, &pictureStructure);
+
+            if (num > pic_org.poc || ret == EOF)
+            {
+                fseek(psfile, filePos, SEEK_SET);
+                break;
+            }
+            if (num < pic_org.poc && ret >= 1)
+                continue;
+            if (ret == 3 && pictureStructure < PIC_STRUCT_COUNT)
+            {
+                /* don't allow to change frame_field coding */
+                if ((frameFieldCoding > 0) ^ (fieldOrder > 0))
+                    return 0;
+                if ((1 << pictureStructure) & validPicStructMask)
+                    pic_org.picStruct = pictureStructure;
+                return 1;
+            }
+            if (ret < 3)
+                return 0;
+        }
+        /* not changed, use default from constructor */
+        return 1;
     }
 
     bool CLIOptions::parseQPFile(x265_picture &pic_org)

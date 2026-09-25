@@ -763,6 +763,16 @@ ret:
                         }
                     }
 
+                    if (m_cliopt.psfile)
+                    {
+                        if (!m_cliopt.parsePSFile(pic_orig[view], m_param->interlaceMode, m_param->bField))
+                        {
+                            x265_log(NULL, X265_LOG_ERROR, "can't parse psfile for frame %d in %s\n",
+                                pic_in[view]->poc, profileName);
+                            fclose(m_cliopt.psfile);
+                            m_cliopt.psfile = NULL;
+                        }
+                    }
                     if (m_cliopt.framesToBeEncoded && inFrameCount >= m_cliopt.framesToBeEncoded)
                         pic_in[view] = NULL;
                     else if (readPicture(pic_in[view], view)){
