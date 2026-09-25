@@ -924,7 +924,7 @@ void Entropy::codeHrdParameters(const HRDInfo& hrd, int maxSubTLayers)
     for (int i = 0; i < maxSubTLayers; i++)
     {
         WRITE_FLAG(1, "fixed_pic_rate_general_flag");
-        WRITE_UVLC(0, "elemental_duration_in_tc_minus1");
+        WRITE_UVLC((1u << (maxSubTLayers-i)) - 1, "elemental_duration_in_tc_minus1");
         WRITE_UVLC(0, "cpb_cnt_minus1");
 
         WRITE_UVLC(hrd.bitRateValue - 1, "bit_rate_value_minus1");
