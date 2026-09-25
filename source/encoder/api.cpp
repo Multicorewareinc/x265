@@ -33,6 +33,7 @@
 
 #if ENABLE_LIBVMAF
 #include "libvmaf/libvmaf.h"
+#include "libvmaf/version.h"
 #endif
 
 /* multilib namespace reflectors */
@@ -1975,6 +1976,14 @@ int compute_vmaf(double* vmaf_score, char* fmt, int width, int height, int bitde
     float *temp_data = new float[height * stride];
     enum VmafOutputFormat output_fmt = log_fmt_map(log_fmt);
 
+#if VMAF_API_VERSION_MAJOR >= 2 && VMAF_API_VERSION_MINOR >= 1
+    if (width < 3656 && height < 1714) {
+        vmaf_model_load(&model, &model_cfg, "vmaf_float_v0.6.1");
+    } else {
+        vmaf_model_load(&model, &model_cfg, "vmaf_float_4k_v0.6.1");
+    }
+    vmaf_use_features_from_model(vmaf, model);
+#else
 	err = vmaf_model_load_from_path(&model, &model_cfg, model_path);
 	if (err) {
 		printf("problem loading model file: %s\n", model_path);
@@ -1985,6 +1994,7 @@ int compute_vmaf(double* vmaf_score, char* fmt, int width, int height, int bitde
 		printf("problem loading feature extractors from model file: %s\n", model_path);
 		goto end;
 	}
+#endif
 
 	if (do_psnr) {
 		VmafFeatureDictionary *d = NULL;
