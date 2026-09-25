@@ -1498,11 +1498,13 @@ me_hex2:
 
         /* Successive elimination by comparing DC before a full SAD,
          * because sum(abs(diff)) >= abs(diff(sum)). */
+        int sad4DeltaX = (horizontalRect && w <= 8) ? (w >> 1) : deltaX;
+        int sad4DeltaY = (verticalRect && h <= 8) ? (h >> 1) : deltaY;
         primitives.pu[tempPartEnum].sad_x4(zero,
                          fenc,
-                         fenc + deltaX,
-                         fenc + deltaY * FENC_STRIDE,
-                         fenc + deltaX + deltaY * FENC_STRIDE,
+                         fenc + sad4DeltaX,
+                         fenc + sad4DeltaY * FENC_STRIDE,
+                         fenc + sad4DeltaX + sad4DeltaY * FENC_STRIDE,
                          FENC_STRIDE,
                          encDC);
 
