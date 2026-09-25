@@ -1041,6 +1041,11 @@ namespace X265_NS {
         {
             if (reconFileBitDepth == 0)
                 reconFileBitDepth = param->internalBitDepth;
+            else if (reconFileBitDepth != param->internalBitDepth && reconFileBitDepth != 8)
+            {
+                x265_log(param, X265_LOG_ERROR, "unsupported output-depth and recon-depth combination\n");
+                return true;
+            }
 #if ENABLE_ALPHA || ENABLE_MULTIVIEW
             if (param->bEnableAlpha || param->numViews > 1)
             {
@@ -1058,7 +1063,7 @@ namespace X265_NS {
             for (int i = 0; i < param->numLayers; i++)
             {
                 this->recon[i] = ReconFile::open(reconfn[i], param->sourceWidth, param->sourceHeight, reconFileBitDepth,
-                    param->fpsNum, param->fpsDenom, param->internalCsp, param->sourceBitDepth);
+                    param->fpsNum, param->fpsDenom, param->internalCsp);
                 if (this->recon[i]->isFail())
                 {
                     x265_log(param, X265_LOG_WARNING, "unable to write reconstructed outputs file\n");

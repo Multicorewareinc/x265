@@ -30,14 +30,14 @@
 
 using namespace X265_NS;
 
-ReconFile* ReconFile::open(const char *fname, int width, int height, uint32_t bitdepth, uint32_t fpsNum, uint32_t fpsDenom, int csp, int sourceBitDepth)
+ReconFile* ReconFile::open(const char *fname, int width, int height, uint32_t bitdepth, uint32_t fpsNum, uint32_t fpsDenom, int csp)
 {
     const char * s = strrchr(fname, '.');
 
     if (s && !strcmp(s, ".y4m"))
-        return new Y4MOutput(fname, width, height, bitdepth, fpsNum, fpsDenom, csp, sourceBitDepth);
+        return new Y4MOutput(fname, width, height, bitdepth, fpsNum, fpsDenom, csp);
     else
-        return new YUVOutput(fname, width, height, bitdepth, csp, sourceBitDepth);
+        return new YUVOutput(fname, width, height, bitdepth, csp);
 }
 
 OutputFile* OutputFile::open(const char *fname, InputFileInfo& inputInfo)
