@@ -206,6 +206,29 @@ bool MBDstHarness::check_dequant_primitive(dequant_scaling_t ref, dequant_scalin
 
 bool MBDstHarness::check_quant_primitive(quant_t ref, quant_t opt)
 {
+    // Test saturation with both signs, including nonzero levels that truncate to zero.
+    // qBits=8 keeps the C reference's intermediate arithmetic in range.
+    static const int levels[] = { 0, 1, 32767, 32768, 32769, 65535, 65536, 65537 };
+    ALIGN_VAR_32(int16_t, coef[1024]);
+    ALIGN_VAR_32(int32_t, quantCoeff[1024]);
+    for (int i = 0; i < 1024; i++)
+    {
+        coef[i] = (i & 1) ? -1 : 1;
+        quantCoeff[i] = levels[(i / 2) % 8] * 256;
+    }
+    for (int count = 16; count <= 1024; count *= 4)
+    {
+        uint32_t expected = ref(coef, quantCoeff, mintbuf1, mshortbuf2, 8, 0, count);
+        uint32_t actual = (uint32_t)checked(opt, coef, quantCoeff, mintbuf3, mshortbuf3, 8, 0, count);
+        if (expected != actual || memcmp(mshortbuf2, mshortbuf3, count * sizeof(int16_t)) ||
+            memcmp(mintbuf1, mintbuf3, count * sizeof(int32_t)))
+        {
+            printf("quant saturation boundary mismatch (numCoeff=%d, numSig=%u/%u)\n", count, actual, expected);
+            return false;
+        }
+        reportfail();
+    }
+
     int j = 0;
 
     for (int i = 0; i < ITERS; i++)
@@ -252,6 +275,27 @@ bool MBDstHarness::check_quant_primitive(quant_t ref, quant_t opt)
 
 bool MBDstHarness::check_nquant_primitive(nquant_t ref, nquant_t opt)
 {
+    // Both signs matter: abs(clip(-32768)) must retain the 0x8000 bit pattern.
+    static const int levels[] = { 0, 1, 32767, 32768, 32769, 65535, 65536, 65537 };
+    ALIGN_VAR_32(int16_t, coef[1024]);
+    ALIGN_VAR_32(int32_t, quantCoeff[1024]);
+    for (int i = 0; i < 1024; i++)
+    {
+        coef[i] = (i & 1) ? -1 : 1;
+        quantCoeff[i] = levels[(i / 2) % 8] * 256;
+    }
+    for (int count = 16; count <= 1024; count *= 4)
+    {
+        uint32_t expected = ref(coef, quantCoeff, mshortbuf2, 8, 0, count);
+        uint32_t actual = (uint32_t)checked(opt, coef, quantCoeff, mshortbuf3, 8, 0, count);
+        if (expected != actual || memcmp(mshortbuf2, mshortbuf3, count * sizeof(int16_t)))
+        {
+            printf("nquant saturation boundary mismatch (numCoeff=%d, numSig=%u/%u)\n", count, actual, expected);
+            return false;
+        }
+        reportfail();
+    }
+
     int j = 0;
     for (int i = 0; i < ITERS; i++)
     {

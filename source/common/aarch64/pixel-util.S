@@ -517,21 +517,29 @@ function PFX(quant_neon)
     sshl            v17.4s, v26.4s, v2.4s
     st1             {v16.4s, v17.4s}, [x2], #32
 
-    // numsig
-    uzp1            v7.8h, v7.8h, v27.8h
-    cmeq            v16.8h, v7.8h, #0
-    add             v4.8h, v4.8h, v16.8h
+    // numsig (before narrowing)
+    cmeq            v16.4s, v7.4s, #0
+    cmeq            v17.4s, v27.4s, #0
+    add             v4.4s, v4.4s, v16.4s
+    add             v4.4s, v4.4s, v17.4s
 
     // level *= sign
     cmlt            v5.8h, v18.8h, #0
-    eor             v16.16b, v7.16b, v5.16b
-    sub             v5.8h, v16.8h, v5.8h
+    sxtl            v16.4s, v5.4h
+    sxtl2           v17.4s, v5.8h
+    eor             v7.16b, v7.16b, v16.16b
+    eor             v27.16b, v27.16b, v17.16b
+    sub             v7.4s, v7.4s, v16.4s
+    sub             v27.4s, v27.4s, v17.4s
+    // signed saturation
+    sqxtn           v5.4h, v7.4s
+    sqxtn2          v5.8h, v27.4s
     st1             {v5.8h}, [x3], #16
 
     subs            w7, w7, #1
     b.ne            .Loop_quant
 
-    saddlv          s4, v4.8h
+    addv            s4, v4.4s
     fmov            w9, s4
     add             w0, w6, w9
     ret
@@ -563,21 +571,29 @@ function PFX(nquant_neon)
     sshl            v19.4s, v19.4s, v0.4s  // v20 = level =(tmplevel+add) >> qbits
     sshl            v20.4s, v20.4s, v0.4s  // v21 = level =(tmplevel+add) >> qbits
 
-    // numsig
-    uzp1            v19.8h, v19.8h, v20.8h
-    cmeq            v20.8h, v19.8h, #0
-    add             v4.8h, v4.8h, v20.8h
+    // numsig (before narrowing)
+    cmeq            v17.4s, v19.4s, #0
+    cmeq            v18.4s, v20.4s, #0
+    add             v4.4s, v4.4s, v17.4s
+    add             v4.4s, v4.4s, v18.4s
 
     // level *= sign
     cmlt            v16.8h, v16.8h, #0
-    eor             v19.16b, v19.16b, v16.16b
-    sub             v19.8h, v19.8h, v16.8h
+    sxtl            v17.4s, v16.4h
+    sxtl2           v18.4s, v16.8h
+    eor             v19.16b, v19.16b, v17.16b
+    eor             v20.16b, v20.16b, v18.16b
+    sub             v19.4s, v19.4s, v17.4s
+    sub             v20.4s, v20.4s, v18.4s
+    // saturate before abs
+    sqxtn           v19.4h, v19.4s
+    sqxtn2          v19.8h, v20.4s
     abs             v19.8h, v19.8h
     st1             {v19.8h}, [x2], #16
 
     cbnz            w6, .Loop_nquant
 
-    saddlv          s4, v4.8h
+    addv            s4, v4.4s
     fmov            w9, s4
     add             w0, w5, w9
     ret
