@@ -2432,6 +2432,14 @@ typedef struct x265_param
      * rejected. When disabled, x265 writes its own UUID in front of the payload.
      * Default 0 (disabled). */
     int      bUserSEIRaw;
+
+    /* Enable ML-based CTU partition prediction on I-frames. Requires a build
+     * with ENABLE_MLCTUPRED and a CTU size of 64 or 32. Default disabled */
+    int     bEnableMLCTUPred;
+
+    /* Directory containing the ML CTU partition prediction models. If empty,
+     * default locations are searched, see --ml-model-dir. Default empty */
+    char    mlModelDir[X265_MAX_STRING_SIZE];
 } x265_param;
 
 /* x265_param_alloc:
