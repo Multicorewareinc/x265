@@ -31,6 +31,9 @@
 
 #include "encoder.h"
 #include "frameencoder.h"
+#ifdef ENABLE_MLCTUPRED
+#include "mlctu.h"
+#endif
 #include "common.h"
 #include "slicetype.h"
 #include "nal.h"
@@ -40,6 +43,16 @@
 
 namespace X265_NS {
 void weightAnalyse(Slice& slice, Frame& frame, x265_param& param);
+
+#ifdef ENABLE_MLCTUPRED
+/* ML prediction runs on I-frames only */
+static inline bool shouldRunMLPred(const Encoder* top, const Frame* frame)
+{
+    return top->m_MLCTUPredictor &&
+           frame->m_MLCTUPred &&
+           IS_X265_TYPE_I(frame->m_lowres.sliceType);
+}
+#endif
 
 FrameEncoder::FrameEncoder()
 {
@@ -100,6 +113,10 @@ void FrameEncoder::destroy()
     X265_FREE(m_substreamSizes);
     X265_FREE(m_nr);
     X265_FREE(m_retFrameBuffer);
+
+#ifdef ENABLE_MLCTUPRED
+    m_mlBuffers.destroy();
+#endif
 
     m_frameFilter.destroy();
 
@@ -207,6 +224,17 @@ bool FrameEncoder::init(Encoder *top, int numRows, int numCols)
     m_retFrameBuffer = X265_MALLOC(Frame*, m_param->numLayers);
     for (int layer = 0; layer < m_param->numLayers; layer++)
         m_retFrameBuffer[layer] = NULL;
+
+#ifdef ENABLE_MLCTUPRED
+    if (m_param->bEnableMLCTUPred)
+    {
+        const int numBlocksW = (m_param->sourceWidth  + ML_BLOCK_SIZE - 1) / ML_BLOCK_SIZE;
+        const int numBlocksH = (m_param->sourceHeight + ML_BLOCK_SIZE - 1) / ML_BLOCK_SIZE;
+        ok &= m_mlBuffers.init(numBlocksW * numBlocksH);
+        m_mlRequest.buffers = &m_mlBuffers;
+    }
+#endif
+
     return ok;
 }
 
@@ -284,6 +312,19 @@ bool FrameEncoder::startCompressFrame(Frame* curFrame[MAX_LAYERS])
         curFrame[layer]->m_encData->m_slice->m_mref = m_mref;
     }
     m_sliceType = curFrame[0]->m_lowres.sliceType;
+
+#ifdef ENABLE_MLCTUPRED
+    if (shouldRunMLPred(m_top, curFrame[0]))
+    {
+        m_mlRequest.plane  = curFrame[0]->m_fencPic->m_picOrg[0];
+        m_mlRequest.stride = curFrame[0]->m_fencPic->m_stride;
+        m_mlRequest.output = curFrame[0]->m_MLCTUPred;
+        /* Overlap preprocessing with rate control; inference needs the QP */
+        m_mlRequest.preprocessQueued = m_top->m_MLCTUPredictor->enqueuePreprocessRequest(&m_mlRequest);
+    }
+    else
+        m_mlRequest.preprocessQueued = false;
+#endif
 
     if (!m_cuGeoms)
     {
@@ -599,6 +640,31 @@ void FrameEncoder::compressFrame(int layer)
     int qp = (layer == 0) ? m_top->m_rateControl->rateControlStart(m_frame[layer], &m_rce, m_top) : (int)m_rce.newQp;
 
     m_rce.newQp = qp;
+
+#ifdef ENABLE_MLCTUPRED
+    if (layer == 0 && shouldRunMLPred(m_top, m_frame[0]))
+    {
+        /* plane, stride and output are set in startCompressFrame() */
+        const bool preprocessed = m_mlRequest.preprocessQueued;
+        if (preprocessed)
+        {
+            m_mlRequest.preprocessDone.wait();
+            m_mlRequest.preprocessQueued = false;
+        }
+
+        m_mlRequest.qp = qp;
+        m_mlRequest.cuTreeOffsets = m_frame[0]->m_lowres.qpCuTreeOffset;
+        m_mlRequest.qgSize = (m_param->rc.qgSize == 8) ? 8 : 16;
+        m_mlRequest.rowsReady = &m_mlRowsReady;
+        m_mlRequest.numActualRows = (int)m_numRows;
+        m_mlRowsReady.set(0);
+        m_mlRequest.done.reset();
+        if (preprocessed)
+            m_top->m_MLCTUPredictor->enqueuePreparedRequest(&m_mlRequest);
+        else
+            m_top->m_MLCTUPredictor->enqueueRequest(&m_mlRequest);
+    }
+#endif
 
     if (!!layer && m_top->m_lookahead->m_bAdaptiveQuant)
     {
@@ -981,7 +1047,16 @@ void FrameEncoder::compressFrame(int layer)
                             m_mref[l][ref].applyWeight(rowIdx, m_numRows, sliceEndRow, sliceId);
                     }
                 }
-                
+
+#ifdef ENABLE_MLCTUPRED
+                if (shouldRunMLPred(m_top, m_frame[layer]))
+                {
+                    int mlRowsReady = m_mlRowsReady.get();
+                    while (mlRowsReady <= (int)row)
+                        mlRowsReady = m_mlRowsReady.waitForChange(mlRowsReady);
+                }
+#endif
+
                 enableRowEncoder(m_row_to_idx[row]); /* clear external dependency for this row */
 
                 if (m_top->m_threadedME && !slice->isIntra())
@@ -1031,10 +1106,19 @@ void FrameEncoder::compressFrame(int layer)
                         while (refpic->m_reconRowFlag[rowIdx].get() == 0)
                             refpic->m_reconRowFlag[rowIdx].waitForChange(0);
 
-                        if ((bUseWeightP || bUseWeightB) && m_mref[l][ref].isWeighted)
+                        if ((bUseWeightP || bUseWeightB) && m_mref[list][ref].isWeighted)
                             m_mref[list][ref].applyWeight(rowIdx, m_numRows, m_numRows, 0);
                     }
                 }
+
+#ifdef ENABLE_MLCTUPRED
+                if (shouldRunMLPred(m_top, m_frame[layer]))
+                {
+                    int mlRowsReady = m_mlRowsReady.get();
+                    while (mlRowsReady <= (int)i)
+                        mlRowsReady = m_mlRowsReady.waitForChange(mlRowsReady);
+                }
+#endif
 
                 if (m_top->m_threadedME && !slice->isIntra())
                 {
@@ -1055,6 +1139,12 @@ void FrameEncoder::compressFrame(int layer)
                 m_frameFilter.processRow(i - m_filterRowDelay, layer);
         }
     }
+
+#ifdef ENABLE_MLCTUPRED
+    if (shouldRunMLPred(m_top, m_frame[layer]))
+        m_mlRequest.done.wait();
+#endif
+
 #if ENABLE_LIBVMAF
     vmafFrameLevelScore();
 #endif

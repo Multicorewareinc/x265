@@ -422,6 +422,52 @@ Performance Options
 		fewer cores, the overhead of the additional motion estimation work
 		may outweigh the parallelism gains.
 
+.. option:: --ml-ctu-pred, --no-ml-ctu-pred
+
+	Predict CTU partitions with a convolutional neural network and use the
+	predictions to prune the intra partition search. For each 64x64 block of
+	the source luma, the network outputs split probabilities for the
+	64x64, 32x32 and 16x16 levels. A confident split skips the unsplit
+	candidate, a confident no-split skips the split candidate, and anything
+	in between is left to the regular RD search.
+
+	Inference runs on a dedicated thread pool, one worker per frame thread,
+	and results are published per CTU row so wavefront encoding can start
+	before the whole frame is predicted.
+
+	Predictions are made and used on I-frames only; P- and B-frames are
+	analyzed as usual and cost nothing extra. The speedup therefore scales
+	with the share of I-frames, and is largest for all-intra encodes
+	(:option:`--keyint` 1).
+
+	Requirements and limitations:
+
+	- x265 built with ``-DENABLE_MLCTUPRED=ON`` and ``ONNXRUNTIME_DIR``
+	  pointing at an ONNX Runtime package.
+	- :option:`--ctu` 64 or 32. With 32, only the 32x32 split decision is
+	  predicted.
+	- Not supported with multi-layer encodes.
+
+	Default disabled. **Experimental Feature**
+
+.. option:: --ml-model-dir <dir>
+
+	Directory containing the :option:`--ml-ctu-pred` models
+	(``eth_cnn_qp*.onnx``). If a directory is given, by this option or
+	the ``X265_ML_MODEL_DIR`` environment variable, only that directory is
+	used. Otherwise the first of these holding all models is used:
+
+	- ``models`` next to the x265 executable or library
+	- the install directory, relative to the executable or library, so a
+	  relocated install still works
+	- the install directory, ``<prefix>/share/x265/models`` by default (CMake
+	  option ``ML_MODEL_INSTALL_DIR``)
+
+	Paths are UTF-8. On Windows, ``/`` and ``\`` are both accepted as
+	separators.
+
+	Default: auto
+
 .. option:: --preset, -p <integer|string>
 
 	Sets parameters to preselected values, trading off compression efficiency against 
@@ -937,6 +983,18 @@ the prediction quad-tree.
 .. option:: --b-intra, --no-b-intra
 
 	Enables the evaluation of intra modes in B slices. Default enabled.
+
+.. option:: --intra-64x64, --no-intra-64x64
+
+	Enables intra coding of 64x64 CUs. HEVC allows them, but x265 normally
+	starts intra analysis at 32x32, so a 64x64 CTU is always split before
+	intra modes are tried. With this option, the unsplit 64x64 intra CU is
+	also evaluated, in I-slices and as an intra candidate in P- and
+	B-slices, and is coded with 32x32 transforms. This adds analysis time.
+	Only meaningful with :option:`--ctu` 64. Suggested for high resolution,
+	low bitrate encodes.
+
+	Default disabled.
 
 .. option:: --cu-lossless, --no-cu-lossless
 

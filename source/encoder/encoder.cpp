@@ -37,6 +37,9 @@
 #include "slicetype.h"
 #include "frameencoder.h"
 #include "ratecontrol.h"
+#ifdef ENABLE_MLCTUPRED
+#include "mlctu.h"
+#endif
 #include "dpb.h"
 #include "nal.h"
 #include "threadedme.h"
@@ -139,6 +142,10 @@ Encoder::Encoder()
     m_lookahead = NULL;
     m_threadedME = NULL;
     m_rateControl = NULL;
+#ifdef ENABLE_MLCTUPRED
+    m_MLCTUPredictor = NULL;
+    m_mlThreadPool = NULL;
+#endif
     m_dpb = NULL;
     m_numDelayedPic = 0;
     m_outputCount = 0;
@@ -528,6 +535,50 @@ void Encoder::create()
         m_aborted = true;
     if (!m_lookahead->create())
         m_aborted = true;
+
+#ifdef ENABLE_MLCTUPRED
+    if (m_param->bEnableMLCTUPred)
+    {
+        m_MLCTUPredictor = new MLCTUPredictor(m_param);
+        if (!m_MLCTUPredictor->init())
+        {
+            x265_log(m_param, X265_LOG_WARNING,
+                     "ML CTU pred: init failed, feature disabled\n");
+            delete m_MLCTUPredictor;
+            m_MLCTUPredictor = NULL;
+            m_param->bEnableMLCTUPred = 0;
+        }
+        else
+        {
+            int numNodes = ThreadPool::getNumaNodeCount();
+            uint64_t mlNodeMask = 0;
+            for (int ni = 0; ni < numNodes; ni++)
+                mlNodeMask |= ((uint64_t)1 << ni);
+
+            /* One worker per concurrent frame inference */
+            const int mlThreads = X265_MIN(m_param->frameNumThreads, MAX_POOL_THREADS);
+            m_mlThreadPool = new ThreadPool();
+            if (!m_mlThreadPool->create(mlThreads, 1, mlNodeMask))
+            {
+                x265_log(m_param, X265_LOG_WARNING,
+                         "ML CTU pred: failed to create ML thread pool, "
+                         "falling back to synchronous inference\n");
+                delete m_mlThreadPool;
+                m_mlThreadPool = NULL;
+            }
+            else
+            {
+                m_MLCTUPredictor->m_pool = m_mlThreadPool;
+                m_MLCTUPredictor->m_jpId = m_mlThreadPool->m_numProviders++;
+                m_mlThreadPool->m_jpTable[m_MLCTUPredictor->m_jpId] = m_MLCTUPredictor;
+                m_mlThreadPool->start();
+                x265_log(m_param, X265_LOG_DEBUG,
+                         "ML CTU pred: async thread pool started (%d threads)\n",
+                         mlThreads);
+            }
+        }
+    }
+#endif
 
     initRefIdx();
 
@@ -1003,6 +1054,20 @@ void Encoder::destroy()
         m_rateControl->destroy();
         delete m_rateControl;
     }
+
+#ifdef ENABLE_MLCTUPRED
+    if (m_mlThreadPool)
+    {
+        m_mlThreadPool->stopWorkers();
+        delete m_mlThreadPool;
+        m_mlThreadPool = NULL;
+    }
+    if (m_MLCTUPredictor)
+    {
+        delete m_MLCTUPredictor;
+        m_MLCTUPredictor = NULL;
+    }
+#endif
 
     X265_FREE(m_offsetEmergency);
 
@@ -3986,6 +4051,25 @@ void Encoder::configure(x265_param *p)
     {
         p->minCUSize = 8;
         x265_log(p, X265_LOG_WARNING, "Setting minCuSize = 8, AVCINFO expects 8x8 blocks\n");
+    }
+
+    if (p->bEnableMLCTUPred)
+    {
+#ifdef ENABLE_MLCTUPRED
+        if (p->maxCUSize != 64 && p->maxCUSize != 32)
+        {
+            x265_log(p, X265_LOG_WARNING, "ML CTU pred requires --ctu 64 or 32, disabling ml-ctu-pred\n");
+            p->bEnableMLCTUPred = 0;
+        }
+        else if (p->numLayers > 1)
+        {
+            x265_log(p, X265_LOG_WARNING, "ML CTU pred does not support multi-layer encodes, disabling ml-ctu-pred\n");
+            p->bEnableMLCTUPred = 0;
+        }
+#else
+        x265_log(p, X265_LOG_WARNING, "x265 built without ENABLE_MLCTUPRED, disabling ml-ctu-pred\n");
+        p->bEnableMLCTUPred = 0;
+#endif
     }
 
     if (p->keyframeMax < 0)
