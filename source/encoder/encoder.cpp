@@ -2545,11 +2545,11 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                     slice->m_bUseSao = curEncoder->m_frameFilter.m_useSao = 0;
                 }
             }
-            if (m_param->rc.rateControlMode != X265_RC_CQP)
-                m_lookahead->getEstimatedPictureCost(frameEnc[0]);
-
             if (m_param->bIntraRefresh)
                  calcRefreshInterval(frameEnc[0]);
+
+            if (m_param->rc.rateControlMode != X265_RC_CQP)
+                m_lookahead->getEstimatedPictureCost(frameEnc[0]);
 
             // Generate MCSTF References and perform HME
             if (m_param->bEnableTemporalFilter && isFilterThisframe(frameEnc[0]->m_mcstf->m_sliceTypeConfig, frameEnc[0]->m_lowres.sliceType))
