@@ -535,6 +535,11 @@ int main() {
             message(STATUS "Found RVV")
             add_definitions(-DHAVE_RVV=1)
 
+	    option(RVV_DCT32_OPT "Enable use of RVV DCT32 OPT" ON)
+            if(RVV_DCT32_OPT)
+                add_definitions(-DHAVE_RVV_OPT=1)
+            endif()
+
             set(RVV_INTRINSIC_TEST [[
 #include <riscv_vector.h>
 #include <stdint.h>
@@ -1027,6 +1032,7 @@ if((MSVC_IDE OR XCODE OR GCC) AND ENABLE_ASSEMBLY)
         enable_language(ASM)
         foreach(ASM ${RISCV64_ASMS})
             set(ASM_SRC ${CMAKE_CURRENT_SOURCE_DIR}/common/riscv64/${ASM})
+	    message(STATUS "add ... ${ASM_SRC}")
             list(APPEND ASM_SRCS ${ASM_SRC})
             list(APPEND ASM_OBJS ${ASM}.${SUFFIX})
             add_custom_command(
