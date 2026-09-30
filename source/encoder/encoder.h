@@ -70,6 +70,7 @@ struct EncStats
     double        m_totalQp;
     double        m_maxFALL;
     uint64_t      m_accBits;
+    uint64_t      m_totDuration;
     uint32_t      m_numPics;
     uint16_t      m_maxCLL;
 
@@ -81,6 +82,7 @@ struct EncStats
         m_totalQp = 0;
         m_maxCLL = 0;
         m_maxFALL = 0;
+        m_totDuration = 0;
     }
 
     void addQP(double aveQp);
@@ -90,12 +92,12 @@ struct EncStats
     void addBits(uint64_t bits);
 
     void addSsim(double ssim);
+
+    void addDuration(unsigned int durationInVuiTB);
 };
 
 #define MAX_NUM_REF_IDX 64
 #define DUP_BUFFER 2
-#define doubling 7
-#define tripling 8
 
 struct RefIdxLastGOP
 {
@@ -186,6 +188,7 @@ public:
     int64_t            m_bframeDelayTime;
     int64_t            m_prevReorderedPts[2];
     int64_t            m_encodeStartTime;
+    uint64_t           m_clockTickCount;  /* Clock ticks elapsed since the first presentation */
 
     int                m_pocLast;         // time index (POC)
     int                m_encodedFrameNum;
@@ -201,7 +204,6 @@ public:
     int                m_numLumaWPBiFrames;  // number of B frames with weighted luma reference
     int                m_numChromaWPBiFrames; // number of B frames with weighted chroma reference
     int                m_conformanceMode;
-    int                m_lastBPSEI;
     uint32_t           m_numDelayedPic;
 
     ThreadPool*        m_threadPool;
@@ -250,7 +252,7 @@ public:
 
     /* For optimising slice QP */
     Lock               m_sliceQpLock;
-    int                m_iFrameNum;   
+    int                m_iFrameNum;
     int                m_iPPSQpMinus26;
     int64_t            m_iBitsCostSum[QP_MAX_MAX + 1];
     Lock               m_sliceRefIdxLock;
