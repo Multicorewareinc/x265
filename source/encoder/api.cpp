@@ -118,6 +118,25 @@ x265_encoder *x265_encoder_open(x265_param *p)
     x265_copy_params(latestParam, p);
     x265_copy_params(zoneParam, p);
     x265_log(param, X265_LOG_INFO, "HEVC encoder version %s\n", PFX(version_str));
+#if ENABLE_LIBVMAF
+    if (param->sourceWidth < 3656 && param->sourceHeight < 1714) {
+        if (!param->bEnablePsnr && !param->bEnableSsim)
+            if (param->tune) {
+                if ((strcmp(param->tune, "psnr") && strcmp(param->tune, "ssim")) ||
+                     !strcmp(param->tune, "vmaf"))
+                    x265_log(param, X265_LOG_INFO, "VMAF tune version %s\n", vmaf_version());
+            } else
+                x265_log(param, X265_LOG_INFO, "VMAF tune version %s\n", vmaf_version());
+    } else {
+        if (!param->bEnablePsnr && !param->bEnableSsim)
+            if (param->tune) {
+                if ((strcmp(param->tune, "psnr") && strcmp(param->tune, "ssim")) ||
+                     !strcmp(param->tune, "vmaf"))
+                    x265_log(param, X265_LOG_INFO, "VMAF 4K tune version %s\n", vmaf_version());
+            } else
+                x265_log(param, X265_LOG_INFO, "VMAF 4K tune version %s\n", vmaf_version());
+    }
+#endif
     x265_log(param, X265_LOG_INFO, "build info %s\n", PFX(build_info_str));
 
 #ifdef SVT_HEVC
