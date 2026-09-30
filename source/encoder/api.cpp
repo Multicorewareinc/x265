@@ -282,7 +282,10 @@ int x265_encoder_headers(x265_encoder *enc, x265_nal **pp_nal, uint32_t *pi_nal)
                 return -1;
             }
         }
-        encoder->getStreamHeaders(encoder->m_nalList, sbacCoder, bs);
+        NALList nalList;
+        nalList.m_annexB = encoder->m_nalList.m_annexB;
+        encoder->getStreamHeaders(nalList, sbacCoder, bs);
+        encoder->m_nalList.takeContents(nalList);
         *pp_nal = &encoder->m_nalList.m_nal[0];
         if (pi_nal) *pi_nal = encoder->m_nalList.m_numNal;
         return encoder->m_nalList.m_occupancy;
