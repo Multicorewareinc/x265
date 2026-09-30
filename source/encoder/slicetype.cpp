@@ -1531,9 +1531,10 @@ void Lookahead::getEstimatedPictureCost(Frame *curFrame)
                             int32_t intraCuCost = curFrame->m_lowres.intraCost[lowresCuIdx];
                             curFrame->m_lowres.intraCost[lowresCuIdx] = (intraCuCost * x265_exp2fix8(qpOffset) + 128) >> 8;
                         }
-                        if (curFrame->m_param->bIntraRefresh && slice->m_sliceType == X265_TYPE_P)
-                            for (uint32_t x = curFrame->m_encData->m_pir.pirStartCol; x <= curFrame->m_encData->m_pir.pirEndCol; x++)
-                                diff += curFrame->m_lowres.intraCost[lowresCuIdx] - lowresCuCost;
+                        if (curFrame->m_param->bIntraRefresh && slice->m_sliceType == P_SLICE &&
+                            lowresCol >= curFrame->m_encData->m_pir.pirStartCol * scale &&
+                            lowresCol < curFrame->m_encData->m_pir.pirEndCol * scale)
+                            diff += curFrame->m_lowres.intraCost[lowresCuIdx] - lowresCuCost;
                         curFrame->m_lowres.lowresCostForRc[lowresCuIdx] = lowresCuCost;
                         sum += lowresCuCost;
                         intraSum += curFrame->m_lowres.intraCost[lowresCuIdx];
