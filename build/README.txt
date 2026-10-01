@@ -1,10 +1,8 @@
 = Mandatory Prerequisites =
 
-* GCC, MSVC (9, 10, 11, 12), Xcode or Intel C/C++
+* GCC, MSVC (Visual Studio 2017 15.3 or later, 2022, 2026), Xcode or Intel C/C++
 * CMake 2.8.8 or later http://www.cmake.org
 * On linux, ccmake is helpful, usually a package named cmake-curses-gui 
-
-Note: MSVC12 requires cmake 2.8.11 or later
 
 Note: When the SVE/SVE2 instruction set of Arm AArch64 architecture is to be used, the GCC10.x and onwards must
       be installed in order to compile x265.
