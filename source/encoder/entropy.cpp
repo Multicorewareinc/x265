@@ -1377,17 +1377,17 @@ void Entropy::encodeTransform(const CUData& cu, uint32_t absPartIdx, uint32_t cu
     }
 
     uint32_t absPartIdxC = bSmallChroma ? absPartIdx & 0xFC : absPartIdx;
-
-    if (cu.isInter(absPartIdxC) && !curDepth && !cu.getCbf(absPartIdxC, TEXT_CHROMA_U, 0) && !cu.getCbf(absPartIdxC, TEXT_CHROMA_V, 0))
-    {
-        X265_CHECK(cu.getCbf(absPartIdxC, TEXT_LUMA, 0), "CBF should have been set\n");
-    }
-    else
-        codeQtCbfLuma(cu.getCbf(absPartIdx, TEXT_LUMA, curDepth), curDepth);
-
     uint32_t cbfY = cu.getCbf(absPartIdx, TEXT_LUMA, curDepth);
     uint32_t cbfU = cu.getCbf(absPartIdxC, TEXT_CHROMA_U, curDepth);
     uint32_t cbfV = cu.getCbf(absPartIdxC, TEXT_CHROMA_V, curDepth);
+
+    if (cu.isInter(absPartIdxC) && !curDepth && !cbfU && !cbfV)
+    {
+        X265_CHECK(cbfY, "CBF should have been set\n");
+    }
+    else
+        codeQtCbfLuma(cbfY, curDepth);
+
     if (!(cbfY || cbfU || cbfV))
         return;
 
@@ -1601,9 +1601,10 @@ void Entropy::codeCoeff(const CUData& cu, uint32_t absPartIdx, bool& bCodeDQP, c
 {
     if (!cu.isIntra(absPartIdx))
     {
+        bool rootCbf = cu.getQtRootCbf(absPartIdx);
         if (!(cu.m_mergeFlag[absPartIdx] && cu.m_partSize[absPartIdx] == SIZE_2Nx2N))
-            codeQtRootCbf(cu.getQtRootCbf(absPartIdx));
-        if (!cu.getQtRootCbf(absPartIdx))
+            codeQtRootCbf(rootCbf);
+        if (!rootCbf)
             return;
     }
 
@@ -3077,4 +3078,3 @@ extern "C" const uint32_t PFX(entropyStateBits)[128] =
     0x7200050C, 0x48029BAB, 0x740004C1, 0x4802A674, 0x760004A7, 0x4A02AA5E, 0x7800046F, 0x4A02B32F,
     0x7A00041F, 0x4A02C0AD, 0x7C0003E7, 0x4C02CA8D, 0x7C0003BA, 0x4C02D323, 0x7E00010C, 0x7E03BFBB,
 };
-
