@@ -148,8 +148,9 @@ unsigned long x265_getauxval(unsigned long type)
 #if HAVE_GETAUXVAL
     return getauxval(type);
 #elif HAVE_ELF_AUX_INFO
-    unsigned long aux = 0;
-    elf_aux_info(type, &aux, sizeof(aux));
+    unsigned long aux;
+    if (elf_aux_info(type, &aux, sizeof(aux)) != 0)
+        aux = 0;
     return aux;
 #else
     (void)type;
