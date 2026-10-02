@@ -930,6 +930,10 @@ endif()
 configure_file("${PROJECT_SOURCE_DIR}/x265_config.h.in"
                "${PROJECT_BINARY_DIR}/x265_config.h")
 
+# Declared before the multilib logic below, which reads it to decide whether
+# the 10/12-bit archives should be merged into the static library.
+option(ENABLE_SHARED "Build shared library" ON)
+
 # Build a single library containing the 8-bit, 10-bit and 12-bit encoders,
 # switching bit depths at runtime (see build/linux/multilib.sh). Toolchain
 # settings that CMake cannot infer (e.g. a packaging toolchain's target
@@ -939,6 +943,15 @@ set(MULTILIB_CMAKE_ARGS "" CACHE STRING "Extra CMake arguments for the multilib 
 set(MULTILIB_ARCHIVER "" CACHE STRING "Archiver used to merge the multilib static libraries")
 if(ENABLE_MULTILIB)
     include(cmake/multilib.cmake)
+elseif(X265_MULTILIB_CACHE_OWNED)
+    # ENABLE_MULTILIB was switched back OFF in an existing build tree; drop the
+    # cache entries that the ON configuration force-wrote so the 8-bit library
+    # stops trying to link the (now stale) multilib archives.
+    unset(EXTRA_LIB CACHE)
+    unset(EXTRA_LIB)
+    unset(LINKED_10BIT CACHE)
+    unset(LINKED_12BIT CACHE)
+    unset(X265_MULTILIB_CACHE_OWNED CACHE)
 endif()
 
 add_subdirectory(encoder)
@@ -1108,7 +1121,7 @@ if(ENABLE_MULTILIB AND NOT ENABLE_SHARED)
             "-DINPUT1=$<TARGET_FILE:x265-static>"
             "-DINPUT2=${CMAKE_CURRENT_BINARY_DIR}/multilib/10bit/${_multilib_archive_name}"
             "-DINPUT3=${CMAKE_CURRENT_BINARY_DIR}/multilib/12bit/${_multilib_archive_name}"
-            "-DARCHIVER=${MULTILIB_ARCHIVER}"
+            "-DARCHIVER=${_multilib_archiver}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/x265-merge.cmake"
         VERBATIM)
 endif()
@@ -1184,7 +1197,6 @@ endif()
 if(NOT (MSVC_IDE OR XCODE))
     add_custom_target(clean-generated COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/clean-generated.cmake)
 endif()
-option(ENABLE_SHARED "Build shared library" ON)
 if(ENABLE_SHARED)
     if(ENABLE_HDR10_PLUS)
         add_library(x265-shared SHARED "${PROJECT_BINARY_DIR}/x265.def" ${ASM_OBJS}
