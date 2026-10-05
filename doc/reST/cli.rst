@@ -2767,6 +2767,32 @@ Bitstream options
 	Emit SEI messages in a single NAL unit instead of multiple NALs. Default disabled.
 	When HRD SEI is enabled the HM decoder will throw a warning.
 
+.. option:: --frame-packing <integer>
+
+	Emit the frame packing arrangement SEI message (H.265 D.2.16, D.3.16) that
+	tells the decoder how the two views of a stereoscopic video are packed into
+	the coded pictures. Frame 0 is always the left view. The values are those
+	that H.265 defines (Table D.8), any other value is an error:
+
+	3. Side by side: the left view is on the left, the right view on the right.
+	4. Top and bottom: the left view is on top, the right view on the bottom.
+	5. Temporal interleaving: alternate frames in output order are the left
+	   and right views.
+
+	Types 3 and 4 write the message with each IRAP picture, and it persists until
+	the next one or the end of the coded video sequence. Type 5 writes it with every picture, because
+	current_frame_is_frame0_flag alternates with the frame. The first encoded
+	picture is the left view, so an odd :option:`--seek` swaps the views.
+	With :option:`--interlace` both fields of a frame belong to the same view,
+	whether the input pictures are already fields or :option:`--field` splits
+	each input frame into fields.
+
+	The message is written on the base layer only, so with :option:`--alpha` the
+	alpha layer does not carry it. It cannot be combined with
+	:option:`--num-views` greater than 1: each layer is then a full view and the
+	message would describe it as packed, so x265 gives an error.
+	The source must already be packed this way, x265 only signals it. Default disabled.
+
 .. option:: --film-grain <filename>
 
     Refers to the film grain model characteristics for signal enhancement information transmission.

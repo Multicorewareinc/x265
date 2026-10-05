@@ -854,6 +854,21 @@ void FrameEncoder::compressFrame(int layer)
         m_seiAlternativeTC.m_preferredTransferCharacteristics = m_param->preferredTransferCharacteristics;
         m_seiAlternativeTC.writeSEImessages(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer);
     }
+
+    /* The message describes the packed pictures of the base layer: an alpha layer is not a view. */
+    bool writeFramePacking = m_param->framePacking > -1 && !layer && (slice->isIRAP() || m_param->framePacking == 5);
+    if (writeFramePacking)
+    {
+        /* Type 5 alternates the views frame by frame, so every picture carries its own message. The
+         * other types persist until the next IRAP, which repeats the message. With --interlace the
+         * pictures are fields and both fields of a frame belong to the same view. */
+        int frameIdx = m_param->interlaceMode ? m_frame[layer]->m_poc >> 1 : m_frame[layer]->m_poc;
+        SEIFramePacking m_seiFramePacking;
+        m_seiFramePacking.m_arrangementType = m_param->framePacking;
+        m_seiFramePacking.m_currentFrameIsFrame0 = m_param->framePacking == 5 && !(frameIdx & 1);
+        m_seiFramePacking.m_persistence = m_param->framePacking != 5;
+        m_seiFramePacking.writeSEImessages(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer);
+    }
     /* Write Film grain characteristics if present */
     if (this->m_top->m_filmGrainIn)
     {
@@ -898,6 +913,7 @@ void FrameEncoder::compressFrame(int layer)
 
     bool isSei = ((m_frame[layer]->m_lowres.bKeyframe && m_param->bRepeatHeaders) || m_param->bEmitHRDSEI ||
                  !!m_param->interlaceMode || (m_frame[layer]->m_lowres.sliceType == X265_TYPE_IDR && m_param->bEmitIDRRecoverySEI) ||
+                   writeFramePacking ||
                    m_frame[layer]->m_userSEI.numPayloads);
 
     if (isSei && m_param->bSingleSeiNal)
