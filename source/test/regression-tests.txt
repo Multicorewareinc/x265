@@ -215,3 +215,8 @@ crowd_run_1080p50.y4m, --bitrate 5000 --selective-mcstf --preset veryslow
 #Fovea tests
 nature_1920x1080_25.yuv,--crf 28 --fovea-gaze 960,540 --fovea-delta 20
 nature_1920x1080_25.yuv,--qp 28 --fovea-delta 20 --fovea-gaze-file gaze_nature.txt
+
+#Frame packing arrangement SEI tests
+big_buck_bunny_360p24.y4m,--preset ultrafast --frame-packing 3
+big_buck_bunny_360p24.y4m,--preset superfast --bframes 4 --frame-packing 4
+big_buck_bunny_360p24.y4m,--preset veryfast --frame-packing 5
