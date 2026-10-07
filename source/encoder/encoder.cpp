@@ -3500,12 +3500,31 @@ void Encoder::getStreamHeaders(NALList& list, Entropy& sbacCoder, Bitstream& bs)
         list.serialize(NAL_UNIT_SPS, bs, layer);
     }
 
-    for (int layer = 0; layer < m_param->numLayers; layer++)
+    if ((m_param->bEnableWeightedPred || m_param->bEnableWeightedBiPred) && m_param->numLayers == 1)
     {
-        bs.resetBits();
-        sbacCoder.codePPS(m_pps, (m_param->maxSlices <= 1), m_iPPSQpMinus26, layer);
-        bs.writeByteAlignment();
-        list.serialize(NAL_UNIT_PPS, bs, layer);
+        /* Adaptive WP signalling: weighted_pred_flag / weighted_bipred_flag live in
+         * the PPS, so with a single PPS every P/B slice codes a pred_weight_table
+         * even when no reference is weighted. Two PPSs are emitted instead.
+         * pps_id 0: weighted_pred_flag = weighted_bipred_flag = 0, used by slices
+         * without any non-trivial weight. pps_id 1: WP flags as configured, used
+         * only by slices that actually carry weights */
+        for (int ppsId = 0; ppsId < 2; ppsId++)
+        {
+            bs.resetBits();
+            sbacCoder.codePPS(m_pps, (m_param->maxSlices <= 1), m_iPPSQpMinus26, 0, ppsId, !!ppsId);
+            bs.writeByteAlignment();
+            list.serialize(NAL_UNIT_PPS, bs, 0);
+        }
+    }
+    else
+    {
+        for (int layer = 0; layer < m_param->numLayers; layer++)
+        {
+            bs.resetBits();
+            sbacCoder.codePPS(m_pps, (m_param->maxSlices <= 1), m_iPPSQpMinus26, layer);
+            bs.writeByteAlignment();
+            list.serialize(NAL_UNIT_PPS, bs, layer);
+        }
     }
 
 #if ENABLE_ALPHA
