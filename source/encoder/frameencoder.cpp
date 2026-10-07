@@ -760,6 +760,11 @@ void FrameEncoder::compressFrame(int layer)
         }
     }
 
+    /* In single SEI NAL mode the SEI messages of this access unit are collected in m_bs, which still holds the
+     * previous picture's slice header unless the AUD or the repeated stream headers above have reset it */
+    if (m_param->bSingleSeiNal && !(m_frame[layer]->m_lowres.bKeyframe && m_param->bRepeatHeaders))
+        m_bs.resetBits();
+
     m_rce.encodeOrder = m_frame[layer]->m_encodeOrder;
     int prevBPSEI = m_rce.encodeOrder ? m_top->m_lastBPSEI : 0;
 
