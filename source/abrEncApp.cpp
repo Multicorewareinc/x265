@@ -502,7 +502,7 @@ namespace X265_NS {
         }
 
 ret:
-        //increment analysis Write counter 
+        //increment analysis Write counter
         m_parent->m_analysisWriteCnt[m_id].incr();
         m_parent->m_analysisWrite[m_id][index].incr();
         return;
@@ -535,7 +535,7 @@ ret:
                 int analysisWrite = m_parent->m_analysisWriteCnt[analysisQId].get();
                 int written = analysisWrite * m_parent->m_passEnc[analysisQId]->m_cliopt.numRefs;
                 int analysisRead = m_parent->m_analysisReadCnt[analysisQId].get();
-                
+
                 while (m_threadActive && written == analysisRead)
                 {
                     analysisWrite = m_parent->m_analysisWriteCnt[analysisQId].waitForChange(analysisWrite);
@@ -762,7 +762,6 @@ ret:
                             m_cliopt.qpfile = NULL;
                         }
                     }
-
                     if (m_cliopt.psfile)
                     {
                         if (!m_cliopt.parsePSFile(pic_orig[view], m_param->interlaceMode))
@@ -879,6 +878,18 @@ ret:
                                     goto fail;
                             }
                         }
+                    }
+
+                    if (m_cliopt.pulldownFpsRatioNum > 0)
+                    {
+                        if (view == 0 && !m_cliopt.determineStructureForPulldown(pic_orig[0]))
+                        {
+                            x265_log(NULL, X265_LOG_ERROR, "Cannot determine a valid pulldown pattern for picture %d\n",
+                                pic_in[0]->poc);
+                            goto fail;
+                        }
+                        else /* copy the structure of the main view */
+                            pic_orig[view].picStruct = pic_orig[0].picStruct;
                     }
                 }
 
