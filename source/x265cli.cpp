@@ -66,7 +66,7 @@ namespace X265_NS {
         H0("\nInput Options:\n");
         H0("   --input <filename>            Raw YUV or Y4M input file name. `-` for stdin\n");
         H1("   --y4m                         Force parsing of input stream as YUV4MPEG2 regardless of file extension\n");
-        H0("   --fps <float|rational>        Source frame rate (float or num/denom), auto-detected if Y4M\n");
+        H0("   --fps <float|rational>        Source frame rate (float or num/denom), auto-detected if Y4M. Defines the bitstream timescale.\n");
         H0("   --input-res WxH               Source picture size [w x h], auto-detected if Y4M\n");
         H1("   --input-depth <integer>       Bit-depth of input file. Default 8\n");
         H1("   --input-csp <string>          Chroma subsampling, auto-detected if Y4M\n");
@@ -380,7 +380,11 @@ namespace X265_NS {
         H1("   --hash <integer>              Decoded Picture Hash SEI 0: disabled, 1: MD5, 2: CRC, 3: Checksum. Default %d\n", param->decodedPictureHashSEI);
         H0("   --atc-sei <integer>           Emit the alternative transfer characteristics SEI message where the integer is the preferred transfer characteristic. Default disabled\n");
         H0("   --pic-struct <integer>        Specify a unique picture structure to emit in every frames' picture timing SEI message. Values in the range 0..12. See D.3.3 of the HEVC spec. for a detailed explanation.\n");
-        H0("   --psfile <filename>           PicStruct file specifying the picture structure for some or all frames.\n");        H0("   --log2-max-poc-lsb <integer>  Maximum of the picture order count\n");
+        H0("   --psfile <filename>           PicStruct file specifying the picture structure for some or all frames.\n");
+        H0("                                 Format of each line: framenum ffo picstruct.\n");
+        H0("                                 ffo is the frame field order (0: progressive, 1: bff, 2: tff) and shall match the encode settings.\n");
+        H0("                                 picstruct value, from H.265 Table D.2 enumeration, shall be compatible with the encode settings.\n");
+        H0("   --log2-max-poc-lsb <integer>  Maximum of the picture order count\n");
         H0("   --[no-]vui-timing-info        Emit VUI timing information in the bitstream. Default %s\n", OPT(param->bEmitVUITimingInfo));
         H0("   --[no-]vui-hrd-info           Emit VUI HRD information in the bitstream. Default %s\n", OPT(param->bEmitVUIHRDInfo));
         H0("   --[no-]opt-qp-pps             Dynamically optimize QP in PPS (instead of default 26) based on QPs in previous GOP. Default %s\n", OPT(param->bOptQpPPS));
@@ -1129,14 +1133,14 @@ namespace X265_NS {
         return false;
     }
 
-    bool CLIOptions::parsePSFile(x265_picture &pic_org, int fieldOrder, bool frameFields)
+    bool CLIOptions::parsePSFile(x265_picture &pic_org, int fieldOrder, bool fieldSequence)
     {
         int32_t num = -1;
         uint32_t frameFieldCoding, pictureStructure;
 
-        uint32_t validPicStructMask = 0x181; //progressive, doubling, tripling
+        uint32_t validPicStructMask = 0x181; /* progressive, doubling, tripling */
         if (fieldOrder > 0)
-            validPicStructMask = frameFields ? 0x78 : 0x1e06; /* D.2 field_seq_flag = 0 or 1 */
+            validPicStructMask = fieldSequence ? 0x1e06 : 0x78; /* D.2 field_seq_flag = 1 or 0 */
 
         while (num < pic_org.poc)
         {
@@ -1157,12 +1161,15 @@ namespace X265_NS {
                     return 0;
                 if ((1 << pictureStructure) & validPicStructMask)
                     pic_org.picStruct = pictureStructure;
+                else
+                    x265_log(NULL, X265_LOG_WARNING, "Ignored structure for pic %u: not compatible with %s.\n",
+                             num, (!fieldOrder ? "progressive" : (fieldSequence ? "field sequences" : "interlaced")));
                 return 1;
             }
             if (ret < 3)
                 return 0;
         }
-        /* not changed, use default from constructor */
+        /* not changed, use frame's initial value (default) */
         return 1;
     }
 

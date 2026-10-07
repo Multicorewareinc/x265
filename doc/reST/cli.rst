@@ -2547,7 +2547,8 @@ VUI fields must be manually specified.
 	Framefieldcoding shall be 0, 1, 2 (progressive, bottom-first or top-first, resp.),
 	It shall not change for an encoded sequence and match the encoder configuration.
 
-	Picstruct is the picture structure to use in the framenumber's Picture Timing SEI.
+	Picstruct is the structure to specify in the framenumber's Picture Timing SEI.
+	It shall be compatible with the encoder configuration for the given sequence.
 
 .. option:: --video-signal-type-preset <string>
 

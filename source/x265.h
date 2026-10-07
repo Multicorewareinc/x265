@@ -1698,17 +1698,17 @@ typedef struct x265_param
      * Default is 0, which is recommended */
     int       crQpOffset;
 
-	/* Specifies the preferred transfer characteristics syntax element in the
-	 * alternative transfer characteristics SEI message (see. D.2.38 and D.3.38 of
-	 * JCTVC-W1005 http://phenix.it-sudparis.eu/jct/doc_end_user/documents/23_San%20Diego/wg11/JCTVC-W1005-v4.zip
-	 * */
-	int       preferredTransferCharacteristics;
-	
-	/*
-	 * Specifies the value for the pic_struc syntax element of the picture timing SEI message (See D2.3 and D3.3)
-	 * of the HEVC spec. for a detailed explanation
-	 * */
-	int       pictureStructure;	
+    /* Specifies the preferred transfer characteristics syntax element in the
+     * alternative transfer characteristics SEI message (see. D.2.38 and D.3.38 of
+     * JCTVC-W1005 http://phenix.it-sudparis.eu/jct/doc_end_user/documents/23_San%20Diego/wg11/JCTVC-W1005-v4.zip
+     * */
+    int       preferredTransferCharacteristics;
+
+    /*
+     * Specifies the value for the pic_struc syntax element of the picture timing SEI message (See D2.3 and D3.3)
+     * of the HEVC spec. for a detailed explanation
+     * */
+    int       pictureStructure;
 
     struct
     {
@@ -2813,6 +2813,8 @@ static const char * const x265_api_query_errnames[] = {
     "libx265 has an invalid bitdepth"
 };
 
+/* Picture Structure conveyed in Pic Timing SEI.
+ * The enumeration is defined in H.265 Table D.2 */
 enum PicStruct
 {
     PIC_STRUCT_PROGRESSIVE_FRAME = 0,
