@@ -2593,6 +2593,23 @@ VUI fields must be manually specified.
 	Ignored with :option:`--interlace`, which sets pic_struct from the field
 	order. Requires :option:`--hrd`.
 
+.. option:: --prepulldown-fps <integer|float|numerator/denominator>
+
+    Specify the input content frame rate. If it is lower than the output
+    rate (:option:`--fps`), x265 performs adaptive soft pulldown to reach
+    the target rate. Default disabled.
+
+    The ratio between the two rates shall not exceed 3. It can be
+    fractional or a real number. Fractions are preferred to avoid drift
+    from rounding errors.
+
+    Requires :option:`--hrd`, :option:`--vbv-maxrate` and
+    :option:`--vbv-bufsize`. Without VBV, the HRD SEI is disabled and
+    the pulldown is not written to the stream.
+
+    Cannot be used concurrently with :option:`--frame-dup`, :option:`--psfile`,
+    :option:`--pic-struct`, :option:`--interlace` or :option:`--temporal-layers`.
+
 .. option:: --psfile <filename>
 
 	Specify a text file which contains the picture structure for some or all frames.
@@ -2607,7 +2624,12 @@ VUI fields must be manually specified.
 	It shall be compatible with the encoder configuration for the given sequence.
 	Unspecified framenumbers get a default structure (single frame or field).
 
-	Requires :option:`--hrd`.
+    Requires :option:`--hrd`, :option:`--vbv-maxrate` and
+    :option:`--vbv-bufsize`. Without VBV, the HRD SEI is disabled and the structures
+    are not written to the stream.
+
+    Cannot be used concurrently with :option:`--frame-dup`, :option:`--pic-struct`,
+    :option:`--interlace`, :option:`--temporal-layers` or :option:`--prepulldown-fps`
 
 .. option:: --video-signal-type-preset <string>
 
