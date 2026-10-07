@@ -785,7 +785,6 @@ int x265_scenecut_aware_qp_param_parse(x265_param* p, const char* name, const ch
     return bError ? X265_PARAM_BAD_VALUE : 0;
 }
 
-
 /* internal versions of string-to-int with additional error checking */
 #undef atoi
 #undef atof
@@ -1016,22 +1015,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     }
     OPT("fps")
     {
-        if (sscanf(value, "%u/%u", &p->fpsNum, &p->fpsDenom) == 2)
-            ;
-        else
-        {
-            float fps = (float)atof(value);
-            if (fps > 0 && fps <= INT_MAX / 1000 && ceilf(fps) != floorf(fps))
-            {
-                p->fpsNum = (int)(fps * 1000 + .5);
-                p->fpsDenom = 1000;
-            }
-            else
-            {
-                p->fpsNum = atoi(value);
-                p->fpsDenom = 1;
-            }
-        }
+        x265_parse_fps(value, p->fpsNum, p->fpsDenom, bError);
     }
     OPT("frame-threads") p->frameNumThreads = atoi(value);
     OPT("pmode") p->bDistributeModeAnalysis = atobool(value);
@@ -1605,6 +1589,28 @@ double x265_atof(const char* str, bool& bError)
         bError = true;
     return v;
 }
+
+void x265_parse_fps(const char *v, uint32_t& num, uint32_t& denom, bool& bError)
+{
+    if (sscanf(v, "%u/%u", &num, &denom) == 2 && num > 0 && denom > 0);
+    else
+    {
+        float fps = (float)x265_atof(v, bError);
+        if (fps > 0 && fps <= INT_MAX / 1000)
+        {
+            num = (int)(fps * 1000 + .5);
+            denom = 1000;
+        }
+        else
+        {
+            num = x265_atoi(v, bError);
+            denom = 1;
+        }
+    }
+    if (!bError)
+        bError = (num == 0 || denom == 0);
+}
+
 
 /* cpu name can be:
  *   auto || true - x265::cpu_detect()
