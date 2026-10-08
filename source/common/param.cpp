@@ -1020,7 +1020,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
         else
         {
             float fps = (float)atof(value);
-            if (fps > 0 && fps <= INT_MAX / 1000)
+            if (fps > 0 && fps <= INT_MAX / 1000 && ceilf(fps) != floorf(fps))
             {
                 p->fpsNum = (int)(fps * 1000 + .5);
                 p->fpsDenom = 1000;

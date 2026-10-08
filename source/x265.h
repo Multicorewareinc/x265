@@ -1698,17 +1698,17 @@ typedef struct x265_param
      * Default is 0, which is recommended */
     int       crQpOffset;
 
-	/* Specifies the preferred transfer characteristics syntax element in the
-	 * alternative transfer characteristics SEI message (see. D.2.38 and D.3.38 of
-	 * JCTVC-W1005 http://phenix.it-sudparis.eu/jct/doc_end_user/documents/23_San%20Diego/wg11/JCTVC-W1005-v4.zip
-	 * */
-	int       preferredTransferCharacteristics;
-	
-	/*
-	 * Specifies the value for the pic_struc syntax element of the picture timing SEI message (See D2.3 and D3.3)
-	 * of the HEVC spec. for a detailed explanation
-	 * */
-	int       pictureStructure;	
+    /* Specifies the preferred transfer characteristics syntax element in the
+     * alternative transfer characteristics SEI message (see. D.2.38 and D.3.38 of
+     * JCTVC-W1005 http://phenix.it-sudparis.eu/jct/doc_end_user/documents/23_San%20Diego/wg11/JCTVC-W1005-v4.zip
+     * */
+    int       preferredTransferCharacteristics;
+
+    /*
+     * Specifies the value for the pic_struc syntax element of the picture timing SEI message (See D2.3 and D3.3)
+     * of the HEVC spec. for a detailed explanation
+     * */
+    int       pictureStructure;
 
     struct
     {
@@ -2199,8 +2199,8 @@ typedef struct x265_param
 
     /*
     * Signals picture structure SEI timing message for every frame
-    * picture structure 7 is signalled for frame doubling
-    * picture structure 8 is signalled for frame tripling
+    * picture structure 7 is signalled for frame doubling (PIC_STRUCT_DOUBLING)
+    * picture structure 8 is signalled for frame tripling (PIC_STRUCT_TRIPLING)
     * */
     int       bEnableFrameDuplication;
 
@@ -2811,6 +2811,27 @@ static const char * const x265_api_query_errnames[] = {
     "unable to bind a libx265 with requested bit depth",
     "unable to bind x265_api_query from libx265",
     "libx265 has an invalid bitdepth"
+};
+
+/* Picture Structure conveyed in Pic Timing SEI.
+ * The enumeration is defined in H.265 Table D.2 */
+enum PicStruct
+{
+    PIC_STRUCT_PROGRESSIVE_FRAME = 0,
+    PIC_STRUCT_FIELD_TOP    = 1,
+    PIC_STRUCT_FIELD_BOTTOM = 2,
+    PIC_STRUCT_TOP_BOTTOM   = 3,
+    PIC_STRUCT_BOTTOM_TOP   = 4,
+    PIC_STRUCT_TOP_BOTTOM_TOP    = 5,
+    PIC_STRUCT_BOTTOM_TOP_BOTTOM = 6,
+    PIC_STRUCT_DOUBLING    = 7,
+    PIC_STRUCT_TRIPLING    = 8,
+    PIC_STRUCT_TOP_PREVBOTTOM = 9,
+    PIC_STRUCT_BOTTOM_PREVTOP = 10,
+    PIC_STRUCT_TOP_NEXTBOTTOM = 11,
+    PIC_STRUCT_BOTTOM_NEXTTOP = 12,
+    PIC_STRUCT_COUNT,
+    PIC_STRUCT_AUTO = PIC_STRUCT_PROGRESSIVE_FRAME,
 };
 
 #ifdef __cplusplus
