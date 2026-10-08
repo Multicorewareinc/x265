@@ -216,6 +216,86 @@ uint32_t weightCost(pixel *         fenc,
 
     return cost;
 }
+
+
+void blockSatd(uint32_t* out, Lowres& fenc, pixel* ref, const WeightParam* w, pixel* tmp, const Cache& cache)
+{
+    intptr_t stride = fenc.lumaStride;
+    int width = fenc.width, height = fenc.lines;
+    if (w && w->wtPresent)
+    {
+        int denom = w->log2WeightDenom;
+        int round = denom ? 1 << (denom - 1) : 0;
+        int correction = IF_INTERNAL_PREC - X265_DEPTH;
+        int pwidth = ((width + 31) >> 5) << 5;
+        primitives.weight_pp(ref, tmp, stride, pwidth, height, w->inputWeight,
+                             round << correction, denom + correction, w->inputOffset << (X265_DEPTH - 8));
+        ref = tmp;
+    }
+    for (int y = 0, cu = 0; y < height; y += 8)
+        for (int x = 0; x < width; x += 8, cu++)
+            out[cu] = primitives.pu[LUMA_8x8].satd(ref + y * stride + x, stride, fenc.lowresPlane[0] + y * stride + x, stride);
+    (void)cache;
+}
+
+/* Lowres luma cost of predicting fenc from the nearest L0/L1 pair: per 8x8
+ * block the cheapest of bi-average, uni-0, uni-1 and intra. r0/r1 are the
+ * (already motion compensated and, if applicable, weighted) references. */
+uint64_t biPairCost(Lowres& fenc, const pixel* r0, const pixel* r1, const Cache& cache)
+{
+    intptr_t stride = fenc.lumaStride;
+    uint64_t cost = 0;
+    ALIGN_VAR_16(pixel, avg[8 * 8]);
+    for (int y = 0, cu = 0; y < fenc.lines; y += 8)
+        for (int x = 0; x < fenc.width; x += 8, cu++)
+        {
+            intptr_t off = y * stride + x;
+            const pixel* f = fenc.lowresPlane[0] + off;
+            primitives.pu[LUMA_8x8].pixelavg_pp[NONALIGNED](avg, 8, r0 + off, stride, r1 + off, stride, 32);
+            uint32_t c = primitives.pu[LUMA_8x8].satd(avg, 8, f, stride);
+            c = X265_MIN(c, (uint32_t)primitives.pu[LUMA_8x8].satd(r0 + off, stride, f, stride));
+            c = X265_MIN(c, (uint32_t)primitives.pu[LUMA_8x8].satd(r1 + off, stride, f, stride));
+            cost += X265_MIN(c, (uint32_t)cache.intraCost[cu]);
+        }
+    return cost;
+}
+
+struct WPCand { int list, ref; bool bWeighted; uint32_t hdr; };
+
+
+uint64_t wpBlockChoiceCost(const bool* on, const WPCand* cand, int numCand, const uint32_t* satdU, const uint32_t* satdW,
+                           const uint32_t* bi, int i00, int i10, const int* intraCost, int numBlocks)
+{
+    uint64_t cost = 0;
+    for (int i = 0; i < numCand; i++)
+        if (on[i])
+            cost += cand[i].hdr;
+    int k = bi ? ((on[i00] ? 1 : 0) | (on[i10] ? 2 : 0)) : 0;
+    for (int cu = 0; cu < numBlocks; cu++)
+    {
+        uint32_t c = (uint32_t)intraCost[cu];
+        for (int i = 0; i < numCand; i++)
+            c = X265_MIN(c, on[i] ? satdW[(size_t)i * numBlocks + cu] : satdU[(size_t)i * numBlocks + cu]);
+        if (bi)
+            c = X265_MIN(c, bi[(size_t)k * numBlocks + cu]);
+        cost += c;
+    }
+    return cost;
+}
+
+/* Per 8x8 SATD of the average of two (already weighted) lowres references */
+void blockSatdBi(uint32_t* out, Lowres& fenc, const pixel* r0, const pixel* r1)
+{
+    intptr_t stride = fenc.lumaStride;
+    ALIGN_VAR_16(pixel, avg[8 * 8]);
+    for (int y = 0, cu = 0; y < fenc.lines; y += 8)
+        for (int x = 0; x < fenc.width; x += 8, cu++)
+        {
+            intptr_t off = y * stride + x;
+            primitives.pu[LUMA_8x8].pixelavg_pp[NONALIGNED](avg, 8, r0 + off, stride, r1 + off, stride, 32);
+            out[cu] = primitives.pu[LUMA_8x8].satd(avg, 8, fenc.lowresPlane[0] + off, stride);
+        }
+}
 }
 
 namespace X265_NS {
@@ -494,6 +574,156 @@ void weightAnalyse(Slice& slice, Frame& frame, x265_param& param)
                 chromaDenom = weights[1].log2WeightDenom;
             }
         }
+    }
+
+    {
+        int numBlocks = ((fenc.width + 7) >> 3) * ((fenc.lines + 7) >> 3);
+        WPCand cand[2 * MAX_NUM_REF];
+        int numCand = 0;
+        bool anyWeight = false;
+        for (int list = 0; list < cache.numPredDir; list++)
+            for (int ref = 0; ref < slice.m_numRefIdx[list]; ref++)
+            {
+                WPCand& c = cand[numCand++];
+                c.list = list; c.ref = ref;
+                c.bWeighted = !!wp[list][ref][0].wtPresent;
+                c.hdr = c.bWeighted ? (uint32_t)sliceHeaderCost(&wp[list][ref][0], lambda, 0) : 0;
+                anyWeight |= c.bWeighted;
+            }
+
+        size_t planeSize = (size_t)fenc.lumaStride * (fenc.lines + 8);
+
+        uint32_t* satd = anyWeight ? X265_MALLOC(uint32_t, (size_t)numBlocks * (2 * numCand + 4)) : NULL;
+        pixel* pbuf = anyWeight ? X265_MALLOC(pixel, 6 * planeSize) : NULL;
+        if (satd && pbuf)
+        {
+            memset(pbuf, 0, 6 * planeSize * sizeof(pixel));
+            uint32_t* satdU = satd;
+            uint32_t* satdW = satd + (size_t)numBlocks * numCand;
+            uint32_t* bi = satd + (size_t)numBlocks * 2 * numCand;
+            pixel* mc = pbuf;
+            pixel* wtmp = pbuf + planeSize;     /* weighted copy */
+
+            pixel* keep[2][2] = { { pbuf + 2 * planeSize, pbuf + 3 * planeSize }, { pbuf + 4 * planeSize, pbuf + 5 * planeSize } };
+            bool bBi = cache.numPredDir == 2 && slice.m_numRefIdx[0] && slice.m_numRefIdx[1];
+            pixel* ref0U[2] = { NULL, NULL };
+            pixel* ref0W[2] = { NULL, NULL };
+
+            for (int i = 0; i < numCand; i++)
+            {
+                Frame* rf = slice.m_refFrameList[cand[i].list][cand[i].ref];
+                int d = abs(curPoc - rf->m_poc);
+                MV* mvs = NULL;
+                if (d <= param.bframes + 1)
+                {
+                    mvs = fenc.lowresMvs[rf->m_poc > curPoc ? 1 : 0][d];
+                    if (mvs[0].x == 0x7FFF)
+                        mvs = NULL;
+                }
+                pixel* src = rf->m_lowres.lowresPlane[0];
+                bool bRef0 = bBi && cand[i].ref == 0;
+                pixel* dst = mc;
+                if (bRef0)
+                    dst = keep[cand[i].list][0];
+                if (mvs)
+                {
+                    mcLuma(dst, rf->m_lowres, mvs);
+                    src = dst;
+                }
+                blockSatd(satdU + (size_t)i * numBlocks, fenc, src, NULL, NULL, cache);
+                pixel* wdst = bRef0 ? keep[cand[i].list][1] : wtmp;
+                if (cand[i].bWeighted)
+                    blockSatd(satdW + (size_t)i * numBlocks, fenc, src, &wp[cand[i].list][cand[i].ref][0], wdst, cache);
+                if (bRef0)
+                {
+                    ref0U[cand[i].list] = src;
+                    ref0W[cand[i].list] = cand[i].bWeighted ? wdst : src;
+                }
+            }
+
+            if (bBi && ref0U[0] && ref0U[1])
+            {
+                for (int k = 0; k < 4; k++)
+                    blockSatdBi(bi + (size_t)k * numBlocks, fenc, (k & 1) ? ref0W[0] : ref0U[0], (k & 2) ? ref0W[1] : ref0U[1]);
+            }
+            else
+                bBi = false;
+
+            int i00 = -1, i10 = -1;
+            for (int i = 0; i < numCand; i++)
+            {
+                if (cand[i].list == 0 && cand[i].ref == 0) i00 = i;
+                if (cand[i].list == 1 && cand[i].ref == 0) i10 = i;
+            }
+
+            bool on[2 * MAX_NUM_REF];
+            for (int i = 0; i < numCand; i++)
+                on[i] = cand[i].bWeighted;
+
+            /* 1. B slices: the nearest L0/L1 pair must predict better with its
+             * weights than without (by 0.2%, the same margin as the per-reference
+             * test), otherwise every weight of the slice is dropped. This is what
+             * catches cross-dissolves: each weight looks good against its own
+             * reference, but the unweighted average already follows the blend. */
+            if (bBi && (on[i00] || on[i10]))
+            {
+                uint64_t costW = biPairCost(fenc, ref0W[0], ref0W[1], cache);
+                uint64_t costU = biPairCost(fenc, ref0U[0], ref0U[1], cache);
+                if (costW * 1000 > costU * 998)
+                {
+                    if (param.logLevel >= X265_LOG_FULL)
+                        x265_log(&param, X265_LOG_FULL, "poc: %d all weights dropped by bi-pair check (%llu vs %llu unweighted)\n",
+                                 slice.m_poc, (unsigned long long)costW, (unsigned long long)costU);
+                    for (int i = 0; i < numCand; i++)
+                        on[i] = false;
+                }
+            }
+
+            /* 2. greedy block-choice check for the remaining weights */
+
+            uint64_t best = wpBlockChoiceCost(on, cand, numCand, satdU, satdW, bBi ? bi : NULL, i00, i10, cache.intraCost, numBlocks);
+            bool changed = true;
+            while (changed)
+            {
+                changed = false;
+                int bestDrop = -1;
+                uint64_t bestCost = best;
+                for (int i = 0; i < numCand; i++)
+                {
+                    if (!on[i])
+                        continue;
+                    on[i] = false;
+                    uint64_t c = wpBlockChoiceCost(on, cand, numCand, satdU, satdW, bBi ? bi : NULL, i00, i10, cache.intraCost, numBlocks);
+                    on[i] = true;
+                    if (c <= bestCost)
+                    {
+                        bestCost = c;
+                        bestDrop = i;
+                    }
+                }
+                if (bestDrop >= 0)
+                {
+                    on[bestDrop] = false;
+                    best = bestCost;
+                    changed = true;
+                }
+            }
+
+            for (int i = 0; i < numCand; i++)
+            {
+                if (cand[i].bWeighted && !on[i])
+                {
+                    if (param.logLevel >= X265_LOG_FULL)
+                        x265_log(&param, X265_LOG_FULL, "poc: %d L%d:R%d weight dropped by block-choice check\n",
+                                 slice.m_poc, cand[i].list, cand[i].ref);
+                    SET_WEIGHT(wp[cand[i].list][cand[i].ref][0], false, 1 << lumaDenom, lumaDenom, 0);
+                    SET_WEIGHT(wp[cand[i].list][cand[i].ref][1], false, 1 << chromaDenom, chromaDenom, 0);
+                    SET_WEIGHT(wp[cand[i].list][cand[i].ref][2], false, 1 << chromaDenom, chromaDenom, 0);
+                }
+            }
+        }
+        X265_FREE(satd);
+        X265_FREE(pbuf);
     }
 
     X265_FREE(mcbuf);
