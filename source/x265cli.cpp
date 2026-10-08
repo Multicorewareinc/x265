@@ -379,6 +379,10 @@ namespace X265_NS {
         H0("   --[no-]eos                    Emit end of sequence nal unit at the end of every coded video sequence. Default %s\n", OPT(param->bEnableEndOfSequence));
         H1("   --hash <integer>              Decoded Picture Hash SEI 0: disabled, 1: MD5, 2: CRC, 3: Checksum. Default %d\n", param->decodedPictureHashSEI);
         H0("   --atc-sei <integer>           Emit the alternative transfer characteristics SEI message where the integer is the preferred transfer characteristic. Default disabled\n");
+        H0("   --frame-packing <integer>     Emit the frame packing arrangement SEI message for stereoscopic video. Default disabled\n");
+        H0("                                   - 3: side by side - left view on the left, right view on the right\n");
+        H0("                                   - 4: top and bottom - left view on top, right view on the bottom\n");
+        H0("                                   - 5: temporal interleaving - alternate pictures are the left and right views\n");
         H0("   --pic-struct <integer>        Set the picture structure and emit it in the picture timing SEI message. Values in the range 0..12. See D.3.3 of the HEVC spec. for a detailed explanation.\n");
         H0("   --log2-max-poc-lsb <integer>  Maximum of the picture order count\n");
         H0("   --[no-]vui-timing-info        Emit VUI timing information in the bitstream. Default %s\n", OPT(param->bEmitVUITimingInfo));

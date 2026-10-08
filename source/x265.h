@@ -2403,6 +2403,13 @@ typedef struct x265_param
      * When set, overrides foveaGazeX/foveaGazeY with per-frame values.
      * NULL = use static gaze from foveaGazeX/foveaGazeY. */
     char* foveaGazeFile;
+
+    /* Frame packing arrangement SEI message (H.265 D.2.16): the 3D layout of the
+     * source frames. 3 = side by side, 4 = top and bottom (frame 0 is the left view),
+     * 5 = temporal interleaving (alternate pictures are the left and right views).
+     * Types 3 and 4 write the message with each IRAP picture, type 5 with every
+     * picture. Default -1 (disabled). */
+    int      framePacking;
 } x265_param;
 
 /* x265_param_alloc:
