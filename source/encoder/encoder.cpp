@@ -122,6 +122,20 @@ static const char* defaultAnalysisFileName = "x265_analysis.dat";
 
 using namespace X265_NS;
 
+/* Returns true if any active reference index of the list has a weight on the
+ * selected component: luma when bChroma is false, chroma (U/V, always
+ * signalled together) when bChroma is true. */
+static bool anyRefWeighted(const Slice* slice, int list, bool bChroma)
+{
+    for (int ref = 0; ref < slice->m_numRefIdx[list]; ref++)
+    {
+        const WeightParam* w = slice->m_weightPredTable[list][ref];
+        if (bChroma ? (w[1].wtPresent || w[2].wtPresent) : !!w[0].wtPresent)
+            return true;
+    }
+    return false;
+}
+
 Encoder::Encoder()
 {
     m_aborted = false;
@@ -140,6 +154,7 @@ Encoder::Encoder()
     m_numChromaWPFrames = 0;
     m_numLumaWPBiFrames = 0;
     m_numChromaWPBiFrames = 0;
+    m_numWPNonZeroRefIdx = 0;
     m_lookahead = NULL;
     m_threadedME = NULL;
     m_rateControl = NULL;
@@ -2155,11 +2170,17 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                 }
                 if (m_param->analysisMultiPassRefine || m_param->analysisMultiPassDistortion)
                     x265_free_analysis_data(m_param, &outFrame->m_analysisData);
+                if (slice->m_sliceType == P_SLICE || slice->m_sliceType == B_SLICE)
+                {
+                    for (int l = 0; l < (slice->m_sliceType == B_SLICE ? 2 : 1); l++)
+                        for (int ref = 1; ref < slice->m_numRefIdx[l]; ref++)
+                            m_numWPNonZeroRefIdx += !!slice->m_weightPredTable[l][ref][0].wtPresent;
+                }
                 if (m_param->internalCsp == X265_CSP_I400)
                 {
                     if (slice->m_sliceType == P_SLICE)
                     {
-                        if (slice->m_weightPredTable[0][0][0].wtPresent)
+                        if (anyRefWeighted(slice, 0, false))
                             m_numLumaWPFrames++;
                     }
                     else if (slice->m_sliceType == B_SLICE)
@@ -2167,7 +2188,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                         bool bLuma = false;
                         for (int l = 0; l < 2; l++)
                         {
-                            if (slice->m_weightPredTable[l][0][0].wtPresent)
+                            if (anyRefWeighted(slice, l, false))
                                 bLuma = true;
                         }
                         if (bLuma)
@@ -2178,10 +2199,9 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                 {
                     if (slice->m_sliceType == P_SLICE)
                     {
-                        if (slice->m_weightPredTable[0][0][0].wtPresent)
+                        if (anyRefWeighted(slice, 0, false))
                             m_numLumaWPFrames++;
-                        if (slice->m_weightPredTable[0][0][1].wtPresent ||
-                            slice->m_weightPredTable[0][0][2].wtPresent)
+                        if (anyRefWeighted(slice, 0, true))
                             m_numChromaWPFrames++;
                     }
                     else if (slice->m_sliceType == B_SLICE)
@@ -2189,10 +2209,9 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                         bool bLuma = false, bChroma = false;
                         for (int l = 0; l < 2; l++)
                         {
-                            if (slice->m_weightPredTable[l][0][0].wtPresent)
+                            if (anyRefWeighted(slice, l, false))
                                 bLuma = true;
-                            if (slice->m_weightPredTable[l][0][1].wtPresent ||
-                                slice->m_weightPredTable[l][0][2].wtPresent)
+                            if (anyRefWeighted(slice, l, true))
                                 bChroma = true;
                         }
 
@@ -2913,6 +2932,8 @@ void Encoder::printSummary()
                 (float)100.0 * m_numLumaWPBiFrames / m_analyzeB[layer].m_numPics,
                 (float)100.0 * m_numChromaWPBiFrames / m_analyzeB[layer].m_numPics);
         }
+        if (m_param->bEnableWeightedPred || m_param->bEnableWeightedBiPred)
+            x265_log(m_param, X265_LOG_INFO, "Weighted references with refIdx > 0: %d\n", m_numWPNonZeroRefIdx);
 
         if (m_param->bLossless)
         {
