@@ -717,20 +717,26 @@ uint32_t Quant::rdoQuant(const CUData &cu, int16_t *dstCoeff, TextType ttype, ui
     uint32_t scanPos = 0;
     uint32_t c1 = 1;
 
-    /* Initialize the uncoded distortion for every coefficient. This lets the
-     * coefficient loop replace uncoded costs with coded costs as needed. */
+    /* Trailing zero groups have the same distortion in every candidate,
+     * including CBF=0, so omit that common additive cost. Coefficients remain
+     * in raster order; use the existing 4x4-group primitives. */
+    for (int cg = 0; cg <= cgLastScanPos; cg++)
+    {
+        const uint32_t group = scanCG[cg];
+        const uint32_t base = ((group >> log2TrSizeCG) * trSize +
+                               (group & (cgStride - 1))) * 4;
+        if (usePsyMask)
+            primitives.cu[log2TrSize - 2].psyRdoQuant(m_resiDctCoeff, sourceDct, costUncoded, &totalUncodedCost, &totalRdCost, &psyScale, base);
+        else
+            primitives.cu[log2TrSize - 2].nonPsyRdoQuant(m_resiDctCoeff, costUncoded, &totalUncodedCost, &totalRdCost, base);
+    }
     if (usePsyMask)
     {
-        primitives.cu[log2TrSize - 2].psyRdoQuantAll(m_resiDctCoeff, sourceDct, costUncoded, &totalUncodedCost, &totalRdCost, &psyScale);
-
-        /* DC distortion does not include the psy-RDOQ reconstruction bias. */
-        int64_t dcPsyCost = PSYVALUE(sourceDct[0] - m_resiDctCoeff[0]);
+        const int64_t dcPsyCost = PSYVALUE(sourceDct[0] - m_resiDctCoeff[0]);
         costUncoded[0] += dcPsyCost;
         totalUncodedCost += dcPsyCost;
         totalRdCost += dcPsyCost;
     }
-    else
-        primitives.cu[log2TrSize - 2].nonPsyRdoQuantAll(m_resiDctCoeff, costUncoded, &totalUncodedCost, &totalRdCost);
     /* iterate over coding groups in reverse scan order */
     for (int cgScanPos = cgLastScanPos; cgScanPos >= 0; cgScanPos--)
     {
