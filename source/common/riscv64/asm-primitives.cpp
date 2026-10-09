@@ -234,6 +234,9 @@ void setupRVVPrimitives(EncoderPrimitives &p)
     p.dst4x4                = PFX(dst4_v);
 
     ALL_LUMA_TU_S(dct, dct, v);
+#if defined(HAVE_RVV_OPT)
+    p.cu[BLOCK_32x32].dct = PFX(dct_32_v_opt);
+#endif
     ALL_LUMA_TU_S(idct, idct, v);
 
     ALL_LUMA_TU_L(nonPsyRdoQuant, nonPsyRdoQuant, v);
