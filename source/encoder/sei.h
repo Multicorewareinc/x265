@@ -38,7 +38,8 @@ class SEI : public SyntaxElementWriter
 public:
     /* SEI users call writeSEImessages() to marshal an SEI to a bitstream.
     * The writeSEImessages() method calls writeSEI() which encodes the header */
-    void writeSEImessages(Bitstream& bs, const SPS& sps, NalUnitType nalUnitType, NALList& list, int isNested, int layerId = 0);
+    void writeStreamHeaderSEI(Bitstream& bs, const SPS& sps, NALList& list, int isNested);
+    void writeAccessUnitSEI(Bitstream& bs, const SPS& sps, NalUnitType nalUnitType, NALList& list, int isNested, int layer = 0, uint8_t tIdPlus1 = 1);
     void setSize(uint32_t size);
     static char* base64Decode(char encodedString[], int base64EncodeLength, char* base64Decode);
     virtual ~SEI() {}
