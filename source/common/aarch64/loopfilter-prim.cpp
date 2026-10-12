@@ -8,26 +8,34 @@ using namespace X265_NS;
 
 #if !(HIGH_BIT_DEPTH) && defined(HAVE_NEON)
 #include<arm_neon.h>
+#include "sao-prim.h"
 
 namespace
 {
 
 
-static inline int8x8_t sign_diff_neon(const uint8x8_t in0, const uint8x8_t in1)
+static inline void sao_apply_eo16(pixel *rec, int8x16_t edgeType, int8x16_t tbl)
 {
-    uint8x8_t lt = vclt_u8(in0, in1);
-    uint8x8_t gt = vcgt_u8(in0, in1);
+    uint8x16_t in = vld1q_u8(rec);
+    int8x16_t off = vqtbl1q_s8(tbl, vreinterpretq_u8_s8(edgeType));
+    int16x8_t lo = vmovl_s8(vget_low_s8(off));
+    int16x8_t hi = vmovl_s8(vget_high_s8(off));
+    lo = vreinterpretq_s16_u16(vaddw_u8(vreinterpretq_u16_s16(lo), vget_low_u8(in)));
+    hi = vreinterpretq_s16_u16(vaddw_u8(vreinterpretq_u16_s16(hi), vget_high_u8(in)));
+    vst1q_u8(rec, vcombine_u8(vqmovun_s16(lo), vqmovun_s16(hi)));
+}
 
-    return vreinterpret_s8_u8(vsub_u8(lt, gt));
+static inline int8x16_t sao_eo_tbl(const int8_t *offsetEo)
+{
+    return vcombine_s8(vld1_s8(offsetEo), vdup_n_s8(0));
 }
 
 static void calSign_neon(int8_t *dst, const pixel *src1, const pixel *src2, const int endX)
 {
     int x = 0;
-    for (; (x + 8) <= endX; x += 8)
+    for (; (x + 16) <= endX; x += 16)
     {
-        int8x8_t sign = sign_diff_neon(vld1_u8(src1 + x), vld1_u8(src2 + x));
-        vst1_s8(dst + x, sign);
+        vst1q_s8(dst + x, signOf_neon(src1 + x, src2 + x));
     }
 
     for (; x < endX; x++)
@@ -43,13 +51,28 @@ static void processSaoCUE0_neon(pixel *rec, int8_t *offsetEo, int width, int8_t 
     int y;
     int8_t signRight, signLeft0;
     int8_t edgeType;
+    const int8x16_t tbl = sao_eo_tbl(offsetEo);
+    const int8x16_t c2 = vdupq_n_s8(2);
 
     for (y = 0; y < 2; y++)
     {
         signLeft0 = signLeft[y];
         int x = 0;
 
-        if (width >= 8)
+        if (width >= 16)
+        {
+            int8x16_t neg_sign_left = vdupq_n_s8((int8_t)(-signLeft0));
+            for (; (x + 16) <= width; x += 16)
+            {
+                int8x16_t sign_right = signOf_neon(rec + x, rec + x + 1);
+                neg_sign_left = vextq_s8(neg_sign_left, sign_right, 15);
+                int8x16_t edgeType = vaddq_s8(vsubq_s8(sign_right, neg_sign_left), c2);
+                neg_sign_left = sign_right;
+                sao_apply_eo16(rec + x, edgeType, tbl);
+            }
+            signLeft0 = -vgetq_lane_s8(neg_sign_left, 15);
+        }
+        else if (width >= 8)
         {
             int8x8_t vsignRight;
             int8x8x2_t shifter;
@@ -59,7 +82,8 @@ static void processSaoCUE0_neon(pixel *rec, int8_t *offsetEo, int width, int8_t 
             for (; (x + 8) <= width; x += 8)
             {
                 uint8x8_t in = vld1_u8(rec + x);
-                vsignRight = sign_diff_neon(in, vld1_u8(rec + x + 1));
+                int16x8_t diff = vreinterpretq_s16_u16(vsubl_u8(in, vld1_u8(rec + x + 1)));
+                vsignRight = vmovn_s16(vmaxq_s16(vminq_s16(diff, vdupq_n_s16(1)), vdupq_n_s16(-1)));
                 shifter.val[0] = vneg_s8(vsignRight);
                 int8x8_t tmp = shifter.val[0];
                 int8x8_t edge = vtbl2_s8(shifter, index);
@@ -91,21 +115,16 @@ static void processSaoCUE1_neon(pixel *rec, int8_t *upBuff1, int8_t *offsetEo, i
 
     if (width >= 8)
     {
-        int8x8_t tbl = vld1_s8(offsetEo);
-        const int8x8_t c = vdup_n_s8(2);
+        const int8x16_t tbl = sao_eo_tbl(offsetEo);
+        const int8x16_t c = vdupq_n_s8(2);
 
-        for (; (x + 8) <= width; x += 8)
+        for (; (x + 16) <= width; x += 16)
         {
-            uint8x8_t in0 = vld1_u8(rec + x);
-            uint8x8_t in1 = vld1_u8(rec + x + stride);
-            int8x8_t vsignDown = sign_diff_neon(in0, in1);
-            int8x8_t vsignUp = vld1_s8(upBuff1 + x);
-            int8x8_t vedgeType = vadd_s8(vadd_s8(vsignDown, vsignUp), c);
-            vst1_s8(upBuff1 + x, vneg_s8(vsignDown));
-            int16x8_t t1 = vmovl_s8(vtbl1_s8(tbl, vedgeType));
-            t1 = vreinterpretq_s16_u16(vaddw_u8(vreinterpretq_u16_s16(t1),
-                                                in0));
-            vst1_u8(rec + x, vqmovun_s16(t1));
+            int8x16_t vsignDown = signOf_neon(rec + x, rec + x + stride);
+            int8x16_t vsignUp = vld1q_s8(upBuff1 + x);
+            int8x16_t vedgeType = vaddq_s8(vaddq_s8(vsignDown, vsignUp), c);
+            vst1q_s8(upBuff1 + x, vnegq_s8(vsignDown));
+            sao_apply_eo16(rec + x, vedgeType, tbl);
         }
     }
     for (; x < width; x++)
@@ -128,21 +147,16 @@ static void processSaoCUE1_2Rows_neon(pixel *rec, int8_t *upBuff1, int8_t *offse
         int x = 0;
         if (width >= 8)
         {
-            int8x8_t tbl = vld1_s8(offsetEo);
-            const int8x8_t c = vdup_n_s8(2);
+            const int8x16_t tbl = sao_eo_tbl(offsetEo);
+            const int8x16_t c = vdupq_n_s8(2);
 
-            for (; (x + 8) <= width; x += 8)
+            for (; (x + 16) <= width; x += 16)
             {
-                uint8x8_t in0 = vld1_u8(rec + x);
-                uint8x8_t in1 = vld1_u8(rec + x + stride);
-                int8x8_t vsignDown = sign_diff_neon(in0, in1);
-                int8x8_t vsignUp = vld1_s8(upBuff1 + x);
-                int8x8_t vedgeType = vadd_s8(vadd_s8(vsignDown, vsignUp), c);
-                vst1_s8(upBuff1 + x, vneg_s8(vsignDown));
-                int16x8_t t1 = vmovl_s8(vtbl1_s8(tbl, vedgeType));
-                t1 = vreinterpretq_s16_u16(vaddw_u8(vreinterpretq_u16_s16(t1),
-                                                    in0));
-                vst1_u8(rec + x, vqmovun_s16(t1));
+                int8x16_t vsignDown = signOf_neon(rec + x, rec + x + stride);
+                int8x16_t vsignUp = vld1q_s8(upBuff1 + x);
+                int8x16_t vedgeType = vaddq_s8(vaddq_s8(vsignDown, vsignUp), c);
+                vst1q_s8(upBuff1 + x, vnegq_s8(vsignDown));
+                sao_apply_eo16(rec + x, vedgeType, tbl);
             }
         }
         for (; x < width; x++)
@@ -160,7 +174,11 @@ static void processSaoCUE2_neon(pixel *rec, int8_t *bufft, int8_t *buff1, int8_t
 {
     int x;
 
-    if (abs(static_cast<int>(buff1 - bufft)) < 16)
+    const uintptr_t buff1Addr = reinterpret_cast<uintptr_t>(buff1);
+    const uintptr_t bufftAddr = reinterpret_cast<uintptr_t>(bufft);
+    const uintptr_t buffDistance = buff1Addr >= bufftAddr ?
+        buff1Addr - bufftAddr : bufftAddr - buff1Addr;
+    if (buffDistance < 32)
     {
         for (x = 0; x < width; x++)
         {
@@ -172,22 +190,17 @@ static void processSaoCUE2_neon(pixel *rec, int8_t *bufft, int8_t *buff1, int8_t
     }
     else
     {
-        int8x8_t tbl = vld1_s8(offsetEo);
-        const int8x8_t c = vdup_n_s8(2);
+        const int8x16_t tbl = sao_eo_tbl(offsetEo);
+        const int8x16_t c = vdupq_n_s8(2);
 
         x = 0;
-        for (; (x + 8) <= width; x += 8)
+        for (; (x + 16) <= width; x += 16)
         {
-            uint8x8_t in0 = vld1_u8(rec + x);
-            uint8x8_t in1 = vld1_u8(rec + x + stride + 1);
-            int8x8_t vsignDown = sign_diff_neon(in0, in1);
-            int8x8_t vsignUp = vld1_s8(buff1 + x);
-            int8x8_t vedgeType = vadd_s8(vadd_s8(vsignDown, vsignUp), c);
-            vst1_s8(bufft + x + 1, vneg_s8(vsignDown));
-            int16x8_t t1 = vmovl_s8(vtbl1_s8(tbl, vedgeType));
-            t1 = vreinterpretq_s16_u16(vaddw_u8(vreinterpretq_u16_s16(t1),
-                                                in0));
-            vst1_u8(rec + x, vqmovun_s16(t1));
+            int8x16_t vsignDown = signOf_neon(rec + x, rec + x + stride + 1);
+            int8x16_t vsignUp = vld1q_s8(buff1 + x);
+            int8x16_t vedgeType = vaddq_s8(vaddq_s8(vsignDown, vsignUp), c);
+            vst1q_s8(bufft + x + 1, vnegq_s8(vsignDown));
+            sao_apply_eo16(rec + x, vedgeType, tbl);
         }
         for (; x < width; x++)
         {
@@ -201,25 +214,78 @@ static void processSaoCUE2_neon(pixel *rec, int8_t *bufft, int8_t *buff1, int8_t
 }
 
 
+static inline int8x16_t signOf_saoE3_neon(const pixel *a, const pixel *b)
+{
+    uint8x16_t s0 = vld1q_u8(a);
+    uint8x16_t s1 = vld1q_u8(b);
+    uint8x16_t lt = vcltq_u8(s0, s1);
+    uint8x16_t gt = vcgtq_u8(s0, s1);
+    return vreinterpretq_s8_u8(vsubq_u8(lt, gt));
+}
+
+// XOR maps unsigned pixels to [-128,127], so signed saturation implements clip8.
+static inline uint8x16_t saoE3_addOffset_neon(uint8x16_t in, int8x16_t offset)
+{
+    const uint8x16_t bias = vdupq_n_u8(128);
+    int8x16_t biased = vreinterpretq_s8_u8(veorq_u8(in, bias));
+    return veorq_u8(vreinterpretq_u8_s8(vqaddq_s8(biased, offset)), bias);
+}
+
 static void processSaoCUE3_neon(pixel *rec, int8_t *upBuff1, int8_t *offsetEo, intptr_t stride, int startX, int endX)
 {
     int8_t signDown;
     int8_t edgeType;
-    int8x8_t tbl = vld1_s8(offsetEo);
-    const int8x8_t c = vdup_n_s8(2);
+    const int8x16_t tbl = sao_eo_tbl(offsetEo);
+    const int8x16_t c2 = vdupq_n_s8(2);
 
     int x = startX + 1;
+    for (; (x + 16) <= endX; x += 16)
+    {
+        uint8x16_t in = vld1q_u8(rec + x);
+        int8x16_t vsignDown = signOf_saoE3_neon(rec + x, rec + x + stride);
+        int8x16_t vsignUp = vld1q_s8(upBuff1 + x);
+        int8x16_t vedgeType = vaddq_s8(vaddq_s8(vsignDown, vsignUp), c2);
+        int8x16_t offset = vqtbl1q_s8(tbl, vreinterpretq_u8_s8(vedgeType));
+        uint8x16_t out = saoE3_addOffset_neon(in, offset);
+        vst1q_s8(upBuff1 + x - 1, vnegq_s8(vsignDown));
+        vst1q_u8(rec + x, out);
+    }
+    if (endX - x == 15)
+    {
+        // Include the preceding pixel, but preserve it and discard its sign.
+        // The two overlapping 8-byte sign stores cover exactly x-1..endX-2.
+        const int tailX = x - 1;
+        uint8x16_t in = vld1q_u8(rec + tailX);
+        int8x16_t vsignDown = signOf_saoE3_neon(rec + tailX, rec + tailX + stride);
+        int8x16_t vsignUp = vld1q_s8(upBuff1 + tailX);
+        int8x16_t vedgeType = vaddq_s8(vaddq_s8(vsignDown, vsignUp), c2);
+        int8x16_t offset = vqtbl1q_s8(tbl, vreinterpretq_u8_s8(vedgeType));
+        uint8x16_t out = saoE3_addOffset_neon(in, offset);
+        const uint8_t firstPixel = vgetq_lane_u8(in, 0);
+        out = vsetq_lane_u8(firstPixel, out, 0);
+        int8x16_t signs = vnegq_s8(vsignDown);
+        int8x16_t shiftedSigns = vextq_s8(signs, signs, 1);
+        vst1_s8(upBuff1 + tailX, vget_low_s8(shiftedSigns));
+        vst1_s8(upBuff1 + tailX + 7, vget_high_s8(signs));
+        vst1q_u8(rec + tailX, out);
+        return;
+    }
+
+    const int8x8_t tbl8 = vget_low_s8(tbl);
+    const int8x8_t c28 = vdup_n_s8(2);
+    const uint8x8_t bias8 = vdup_n_u8(128);
     for (; (x + 8) <= endX; x += 8)
     {
         uint8x8_t in0 = vld1_u8(rec + x);
         uint8x8_t in1 = vld1_u8(rec + x + stride);
-        int8x8_t vsignDown = sign_diff_neon(in0, in1);
+        int8x8_t vsignDown = vreinterpret_s8_u8(vsub_u8(vclt_u8(in0, in1), vcgt_u8(in0, in1)));
         int8x8_t vsignUp = vld1_s8(upBuff1 + x);
-        int8x8_t vedgeType = vadd_s8(vadd_s8(vsignDown, vsignUp), c);
+        int8x8_t vedgeType = vadd_s8(vadd_s8(vsignDown, vsignUp), c28);
+        int8x8_t offset = vtbl1_s8(tbl8, vedgeType);
+        int8x8_t biased = vreinterpret_s8_u8(veor_u8(in0, bias8));
+        uint8x8_t out = veor_u8(vreinterpret_u8_s8(vqadd_s8(biased, offset)), bias8);
         vst1_s8(upBuff1 + x - 1, vneg_s8(vsignDown));
-        int16x8_t t1 = vmovl_s8(vtbl1_s8(tbl, vedgeType));
-        t1 = vreinterpretq_s16_u16(vaddw_u8(vreinterpretq_u16_s16(t1), in0));
-        vst1_u8(rec + x, vqmovun_s16(t1));
+        vst1_u8(rec + x, out);
     }
     for (; x < endX; x++)
     {
@@ -235,19 +301,49 @@ static void processSaoCUB0_neon(pixel *rec, const int8_t *offset, int ctuWidth, 
 #define SAO_BO_BITS 5
     const int boShift = X265_DEPTH - SAO_BO_BITS;
     int x, y;
-    int8x8x4_t table = vld1_s8_x4(offset);
+    int8x16x2_t table;
+    table.val[0] = vld1q_s8(offset);
+    table.val[1] = vld1q_s8(offset + 16);
 
-    for (y = 0; y < ctuHeight; y++)
+    for (y = 0; y + 2 <= ctuHeight; y += 2)
     {
-
-        for (x = 0; (x + 8) <= ctuWidth; x += 8)
+        pixel *row0 = rec;
+        pixel *row1 = rec + stride;
+        for (x = 0; x + 16 <= ctuWidth; x += 16)
         {
-            uint8x8_t in = vld1_u8(rec + x);
-            int8x8_t tbl_idx = vreinterpret_s8_u8(vshr_n_u8(in, boShift));
-            int8x8_t offsets = vtbl4_s8(table, tbl_idx);
-            int16x8_t t = vmovl_s8(offsets);
-            t = vreinterpretq_s16_u16(vaddw_u8(vreinterpretq_u16_s16(t), in));
-            vst1_u8(rec + x, vqmovun_s16(t));
+            uint8x16_t in0 = vld1q_u8(row0 + x);
+            uint8x16_t in1 = vld1q_u8(row1 + x);
+            int8x16_t o0 = vqtbl2q_s8(table, vshrq_n_u8(in0, boShift));
+            int8x16_t o1 = vqtbl2q_s8(table, vshrq_n_u8(in1, boShift));
+            int16x8_t lo0 = vmovl_s8(vget_low_s8(o0));
+            int16x8_t hi0 = vmovl_s8(vget_high_s8(o0));
+            int16x8_t lo1 = vmovl_s8(vget_low_s8(o1));
+            int16x8_t hi1 = vmovl_s8(vget_high_s8(o1));
+            lo0 = vreinterpretq_s16_u16(vaddw_u8(vreinterpretq_u16_s16(lo0), vget_low_u8(in0)));
+            hi0 = vreinterpretq_s16_u16(vaddw_u8(vreinterpretq_u16_s16(hi0), vget_high_u8(in0)));
+            lo1 = vreinterpretq_s16_u16(vaddw_u8(vreinterpretq_u16_s16(lo1), vget_low_u8(in1)));
+            hi1 = vreinterpretq_s16_u16(vaddw_u8(vreinterpretq_u16_s16(hi1), vget_high_u8(in1)));
+            vst1q_u8(row0 + x, vcombine_u8(vqmovun_s16(lo0), vqmovun_s16(hi0)));
+            vst1q_u8(row1 + x, vcombine_u8(vqmovun_s16(lo1), vqmovun_s16(hi1)));
+        }
+        for (; x < ctuWidth; x++)
+        {
+            row0[x] = x265_clip(row0[x] + offset[row0[x] >> boShift]);
+            row1[x] = x265_clip(row1[x] + offset[row1[x] >> boShift]);
+        }
+        rec += 2 * stride;
+    }
+    for (; y < ctuHeight; y++)
+    {
+        for (x = 0; (x + 16) <= ctuWidth; x += 16)
+        {
+            uint8x16_t in = vld1q_u8(rec + x);
+            int8x16_t offsets = vqtbl2q_s8(table, vshrq_n_u8(in, boShift));
+            int16x8_t lo = vmovl_s8(vget_low_s8(offsets));
+            int16x8_t hi = vmovl_s8(vget_high_s8(offsets));
+            lo = vreinterpretq_s16_u16(vaddw_u8(vreinterpretq_u16_s16(lo), vget_low_u8(in)));
+            hi = vreinterpretq_s16_u16(vaddw_u8(vreinterpretq_u16_s16(hi), vget_high_u8(in)));
+            vst1q_u8(rec + x, vcombine_u8(vqmovun_s16(lo), vqmovun_s16(hi)));
         }
         for (; x < ctuWidth; x++)
         {
