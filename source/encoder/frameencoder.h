@@ -314,7 +314,7 @@ protected:
     void threadMain();
     int  collectCTUStatistics(const CUData& ctu, FrameStats* frameLog);
     void noiseReductionUpdate();
-    void writeTrailingSEIMessages(int layer);
+    void writeTrailingSEIMessages(int layer, uint8_t sliceTempIdPlus1);
     bool writeToneMapInfo(x265_sei_payload *payload);
 
     /* Called by WaveFront::findJob() */
