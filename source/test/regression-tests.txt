@@ -192,6 +192,9 @@ ducks_take_off_420_720p50.y4m,--preset slow --temporal-layers 3 --b-adapt 0
 parkrun_ter_720p50.y4m,--preset medium --temporal-layers 4 --b-adapt 0
 BasketballDrive_1920x1080_50.y4m, --preset medium --no-open-gop --keyint 50 --min-keyint 50 --temporal-layers 5 --b-adapt 0
 
+#Temporal layers with HRD. Use a single frame thread for VBV determinism
+ducks_take_off_420_720p50.y4m,--preset ultrafast --temporal-layers 4 --hrd --bitrate 6500 --vbv-bufsize 8000 --b-adapt 0 --vbv-maxrate 10000
+
 #MCSTF tests
 BasketballDrive_1920x1080_50.y4m, --crf 24 --mcstf --preset slower --bframes 5 --frame-threads 1 --no-cutree
 crowd_run_1080p50.y4m, --crf 26 --mcstf --preset medium --bframes 5 --frame-threads 1 --tskip-fast --constrained-intra
