@@ -16,6 +16,27 @@
 set(_multilib_root "${CMAKE_CURRENT_BINARY_DIR}/multilib")
 set(_multilib_source "${CMAKE_CURRENT_SOURCE_DIR}")
 
+# The nested builds are driven with `cmake -S/-B`, which needs CMake 3.13;
+# plain x265 builds keep supporting older CMake versions
+if(CMAKE_VERSION VERSION_LESS 3.13)
+    message(FATAL_ERROR "ENABLE_MULTILIB requires CMake 3.13 or later. "
+        "Use build/linux/multilib.sh or the build/vc*-x86_64/multilib.bat "
+        "scripts to build the multi-bit-depth library with older CMake.")
+endif()
+
+# Append "-D<var>=<value>" to the argument list, escaping the list separator.
+# Semicolons cannot be stored in list elements, so a value containing a list
+# (e.g. CMAKE_OSX_ARCHITECTURES=arm64;x86_64 or ANDROID_ABI with several ABIs)
+# is escaped to "\;" here and arrives at the nested configure as a single
+# argument with the semicolons restored.
+function(x265_multilib_append_d list_var var)
+    if(DEFINED ${var} AND NOT "${${var}}" STREQUAL "")
+        string(REPLACE ";" "\\;" _value "${${var}}")
+        list(APPEND ${list_var} "-D${var}=${_value}")
+        set(${list_var} "${${list_var}}" PARENT_SCOPE)
+    endif()
+endfunction()
+
 # Inherit the generator, toolchain and platform settings from this build
 set(_multilib_common_args
     "-DCMAKE_GENERATOR=${CMAKE_GENERATOR}"
@@ -60,14 +81,29 @@ if(CMAKE_CROSSCOMPILING AND DEFINED CMAKE_SYSTEM_NAME)
     # cross-compiling mode
     list(APPEND _multilib_common_args "-DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}")
 endif()
-# Inherit this project's build options
+# Inherit this project's build options (STATIC_LINK_CRT matters: mixing /MT
+# and /MD objects fails with LNK2038 on MSVC)
 foreach(_option IN ITEMS ENABLE_ASSEMBLY ENABLE_PIC ENABLE_LIBNUMA
-                           ENABLE_HDR10_PLUS ENABLE_SVT_HEVC ENABLE_LIBVMAF
-                           ENABLE_ALPHA ENABLE_MULTIVIEW ENABLE_SCC_EXT)
+                           STATIC_LINK_CRT ENABLE_HDR10_PLUS ENABLE_SVT_HEVC
+                           ENABLE_LIBVMAF ENABLE_ALPHA ENABLE_MULTIVIEW
+                           ENABLE_SCC_EXT)
     if(DEFINED ${_option})
         list(APPEND _multilib_common_args "-D${_option}=${${_option}}")
     endif()
 endforeach()
+# Inherit user-provided compiler flags so the sub-builds are compiled with
+# the same settings as the parent
+x265_multilib_append_d(_multilib_common_args CMAKE_C_FLAGS)
+x265_multilib_append_d(_multilib_common_args CMAKE_CXX_FLAGS)
+# The MSVC runtime selection must match the parent's (LNK2038 otherwise)
+if(MSVC)
+    x265_multilib_append_d(_multilib_common_args CMAKE_MSVC_RUNTIME_LIBRARY)
+endif()
+# Universal macOS builds (e.g. -DCMAKE_OSX_ARCHITECTURES=arm64;x86_64) must
+# produce universal sub-libraries as well
+if(APPLE)
+    x265_multilib_append_d(_multilib_common_args CMAKE_OSX_ARCHITECTURES)
+endif()
 if(DEFINED CMAKE_DISABLE_FIND_PACKAGE_VLD)
     list(APPEND _multilib_common_args "-DCMAKE_DISABLE_FIND_PACKAGE_VLD=${CMAKE_DISABLE_FIND_PACKAGE_VLD}")
 endif()
@@ -81,14 +117,14 @@ if(DEFINED NASM_EXECUTABLE)
 endif()
 # Toolchain target selection (e.g. the Android NDK ABI) is passed on the
 # command line and lives in plain cache variables, not in the toolchain file;
-# forward the common ones so the nested builds target the same ABI.
+# forward the common ones so the nested builds target the same ABI. The
+# values may themselves be lists (several ANDROID_ABI entries,
+# ANDROID_CPP_FEATURES=rtti;exceptions), hence the escaped append.
 foreach(_var IN ITEMS ANDROID_ABI ANDROID_ARM_NEON ANDROID_ARM_MODE
                        ANDROID_PLATFORM ANDROID_STL ANDROID_NDK
                        ANDROID_TOOLCHAIN ANDROID_CPP_FEATURES
                        OHOS_ARCH CMAKE_PLATFORM_NO_VERSIONED_SONAME)
-    if(DEFINED ${_var})
-        list(APPEND _multilib_common_args "-D${_var}=${${_var}}")
-    endif()
+    x265_multilib_append_d(_multilib_common_args ${_var})
 endforeach()
 # Packager hook: extra CMake arguments for the nested builds (e.g. the
 # toolchain's target selection such as ANDROID_ABI)
@@ -99,21 +135,36 @@ endif()
 # Forward the parallelism of the parent build so the nested builds do not fall
 # back to -j1. Prefer CMAKE_BUILD_PARALLEL_LEVEL and otherwise fall back to the
 # machine's processor count; the two bit-depth sub-builds are chained
-# sequentially, so each may safely use all cores.
+# sequentially, so each may safely use all cores. The level is passed as a
+# separate argument: `cmake --build` rejects the combined "-jN" form before
+# CMake 3.14.
 set(_multilib_parallel_args "")
 if(DEFINED ENV{CMAKE_BUILD_PARALLEL_LEVEL} AND NOT "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}" STREQUAL "")
-    set(_multilib_parallel_args "-j$ENV{CMAKE_BUILD_PARALLEL_LEVEL}")
+    set(_multilib_parallel_args -j "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}")
 else()
     include(ProcessorCount)
     ProcessorCount(_multilib_ncpu)
     if(_multilib_ncpu GREATER 0)
-        set(_multilib_parallel_args "-j${_multilib_ncpu}")
+        set(_multilib_parallel_args -j "${_multilib_ncpu}")
     endif()
 endif()
 
 # Track the x265 sources so that the nested builds re-run when they change;
-# without this the produced archive would be considered up to date forever
+# without this the produced archive would be considered up to date forever.
+# The build tree is excluded from the tracking: it can be located inside
+# source/ (CLion and VS Code do this when they open source/ as the project
+# root), and its generated files would make the sub-builds depend on their
+# own outputs (circular dependency).
 file(GLOB_RECURSE _multilib_depends CONFIGURE_DEPENDS "${_multilib_source}/*")
+set(_multilib_build_prefix "${CMAKE_CURRENT_BINARY_DIR}/")
+set(_multilib_sources "")
+foreach(_dep IN LISTS _multilib_depends)
+    string(FIND "${_dep}" "${_multilib_build_prefix}" _multilib_dep_pos)
+    if(NOT _multilib_dep_pos EQUAL 0)
+        list(APPEND _multilib_sources "${_dep}")
+    endif()
+endforeach()
+set(_multilib_depends "${_multilib_sources}")
 
 # The nested builds produce the static archive of the x265-static target
 # (libx265.a on non-MSVC, x265-static.lib on MSVC)
@@ -123,14 +174,18 @@ else()
     set(_multilib_archive_name "libx265.a")
 endif()
 
-# Archiver used by the static merge. When cross-compiling, x265-merge.cmake
-# would auto-detect a host tool (in `cmake -P` mode WIN32 reflects the host),
-# which cannot process target objects; pass the target toolchain's archiver
-# instead. Native builds keep the script's platform default (libtool on macOS,
-# lib.exe/llvm-lib on MSVC, ar elsewhere).
+# Archiver used by the static merge. x265-merge.cmake runs in `cmake -P`
+# script mode, where WIN32/APPLE/MINGW describe the *host* rather than the
+# target, so it cannot be left to auto-detect the tool whenever host and
+# target can differ; pass the target toolchain's archiver instead (llvm-ar
+# for the Android NDK, GNU ar for MinGW, ...). Apple targets (macOS and
+# iOS/tvOS cross-builds) keep the script default: libtool merges Mach-O
+# archives for every Apple platform, while Apple's ar does not support the
+# MRI scripts used for ELF/COFF archives. Native MSVC and Linux builds also
+# keep the default (lib.exe / ar).
 if(MULTILIB_ARCHIVER)
     set(_multilib_archiver "${MULTILIB_ARCHIVER}")
-elseif(CMAKE_CROSSCOMPILING AND CMAKE_AR)
+elseif(MINGW OR (CMAKE_CROSSCOMPILING AND NOT APPLE))
     set(_multilib_archiver "${CMAKE_AR}")
 else()
     set(_multilib_archiver "")
@@ -159,7 +214,11 @@ function(x265_define_multilib_variant name dir archive)
         COMMAND "${CMAKE_COMMAND}" -S "${_multilib_source}" -B "${dir}"
                 ${_multilib_common_args} ${ARGN}
                 ${_archive_dir_args}
-        COMMAND "${CMAKE_COMMAND}" --build "${dir}" --config "$<CONFIG>"
+        # Run the nested build with an empty MAKEFLAGS so the nested make does
+        # not try to join the parent's jobserver ("resetting jobserver mode"
+        # warnings); the explicit -j above gives it its own parallelism
+        COMMAND "${CMAKE_COMMAND}" -E env MAKEFLAGS= "${CMAKE_COMMAND}"
+                --build "${dir}" --config "$<CONFIG>"
                 ${_multilib_parallel_args}
         DEPENDS ${_multilib_depends}
         COMMENT "Building the ${name} x265 sub-library"
@@ -184,6 +243,16 @@ set(_multilib_extra_lib
     "${_multilib_root}/10bit/${_multilib_archive_name};${_multilib_root}/12bit/${_multilib_archive_name}")
 if(EXTRA_LIB AND NOT "${EXTRA_LIB}" STREQUAL "${_multilib_extra_lib}")
     message(WARNING "ENABLE_MULTILIB is enabled but EXTRA_LIB is already set; the multilib archives will not be linked automatically")
+    if(X265_MULTILIB_CACHE_OWNED)
+        # A previous ENABLE_MULTILIB configuration force-set these entries;
+        # the user's own EXTRA_LIB takes over now, so restore the LINKED_*
+        # defaults (they referred to the multilib archives, which are no
+        # longer linked) and release the ownership so that turning
+        # ENABLE_MULTILIB back OFF will not delete the user's value
+        unset(LINKED_10BIT CACHE)
+        unset(LINKED_12BIT CACHE)
+        unset(X265_MULTILIB_CACHE_OWNED CACHE)
+    endif()
 else()
     set(EXTRA_LIB "${_multilib_extra_lib}"
         CACHE STRING "Extra libraries to link against" FORCE)

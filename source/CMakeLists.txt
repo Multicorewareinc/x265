@@ -1112,9 +1112,12 @@ endif()
 if(EXTRA_LIB)
     target_link_libraries(x265-static ${EXTRA_LIB})
 endif()
-if(ENABLE_MULTILIB AND NOT ENABLE_SHARED)
+if(ENABLE_MULTILIB)
     # Statically merge the 10/12-bit archives into the 8-bit API archive so
-    # that consumers only need to link against a single library
+    # that consumers only need to link against a single library. This runs
+    # for shared builds as well: the static library is built and installed
+    # either way, and without the merge it would lack the 10/12-bit objects
+    # (multilib.sh merges them in this case too)
     add_custom_command(TARGET x265-static POST_BUILD
         COMMAND "${CMAKE_COMMAND}"
             "-DOUTPUT=$<TARGET_FILE:x265-static>"
@@ -1129,6 +1132,15 @@ if(ENABLE_MULTILIB)
     # Make sure the 10/12-bit sub-builds are done before this library is
     # archived and merged
     add_dependencies(x265-static x265-multilib-10bit x265-multilib-12bit)
+    # Run the sub-builds after the 8-bit objects have been compiled (the
+    # bit-depth libraries are also built one after another), like
+    # multilib.sh does: a parallel parent build would otherwise interleave
+    # the nested build logs with the main compile output
+    foreach(_multilib_objects IN ITEMS encoder common dynamicHDR10 x265-asm)
+        if(TARGET ${_multilib_objects})
+            add_dependencies(x265-multilib-10bit ${_multilib_objects})
+        endif()
+    endforeach()
 endif()
 if(ENABLE_LIBVMAF)
     target_link_libraries(x265-static ${VMAF})

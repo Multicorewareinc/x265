@@ -40,9 +40,13 @@ if(DEFINED ARCHIVER AND ARCHIVER)
     get_filename_component(_ar_name "${ARCHIVER}" NAME)
     if(_ar_name MATCHES "^(lib|llvm-lib)(\\.exe)?$")
         set(_mode "msvc")
+    elseif(_ar_name MATCHES "^(libtool|llvm-libtool)(\\.exe)?$")
+        set(_mode "libtool")
     elseif(_ar_name MATCHES "^(ar|llvm-ar)(\\.exe)?$")
         set(_mode "mri")
     else()
+        # Prefixed cross archivers such as x86_64-w64-mingw32-ar or
+        # aarch64-linux-android-ar speak the GNU ar MRI syntax
         set(_mode "mri")
     endif()
     set(_archiver "${ARCHIVER}")
