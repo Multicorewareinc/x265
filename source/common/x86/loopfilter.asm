@@ -1100,11 +1100,19 @@ cglobal saoCuOrgE2_32, 6,6,8
     pmaxsw          m7, m0
     pminsw          m1, [pw_pixel_max]
     pminsw          m7, [pw_pixel_max]
+    psubb           m0, m2
+    cmp             r4d, 16
+    jle             .tail16
     movu            [r0], m1
     movu            [r0 + 32], m7
-
-    psubb           m0, m2
     movu            [r1], m0
+    jmp             .next
+
+.tail16:
+    movu            [r0], m1
+    movu            [r1], xm0
+
+.next:
 
     add             r0, 64
     add             r1, 32
@@ -1143,7 +1151,15 @@ cglobal saoCuOrgE2_32, 5, 6, 8, rec, bufft, buff1, offsetEo, lcuWidth
     pshufb          m4,    m5,    m3
 
     psubb           m3,    m0,    m2
+    cmp             r4d,   16
+    jle             .tailSign
     movu            [r1],  m3
+    jmp             .signDone
+
+.tailSign:
+    movu            [r1],  xm3
+
+.signDone:
 
     pmovzxbw        m2,    xm1
     vextracti128    xm1,   m1,    1
@@ -1156,7 +1172,15 @@ cglobal saoCuOrgE2_32, 5, 6, 8, rec, bufft, buff1, offsetEo, lcuWidth
     paddw           m1,    m4
     packuswb        m2,    m1
     vpermq          m2,    m2,    11011000b
+    cmp             r4d,   16
+    jle             .tailPixels
     movu            [r0],  m2
+    jmp             .pixelsDone
+
+.tailPixels:
+    movu            [r0],  xm2
+
+.pixelsDone:
 
     add             r0,    32
     add             r1,    32
@@ -1475,11 +1499,19 @@ cglobal saoCuOrgE3_32, 3,6,8
     pmaxsw          m7, m0
     pminsw          m1, [pw_pixel_max]
     pminsw          m7, [pw_pixel_max]
+    psubb           m0, m2
+    cmp             r5d, 16
+    jle             .tail16
     movu            [r0], m1
     movu            [r0 + 32], m7
-
-    psubb           m0, m2
     movu            [r1 - 1], m0
+    jmp             .next
+
+.tail16:
+    movu            [r0], m1
+    movu            [r1 - 1], xm0
+
+.next:
 
     add             r0, 64
     add             r1, 32
@@ -1531,7 +1563,15 @@ cglobal saoCuOrgE3_32, 3, 6, 8
     pshufb          m4,   m5,   m3
 
     psubb           m3,   m0,   m2
+    cmp             r5d,  16
+    jle             .tailSign
     movu            [r1 - 1],   m3
+    jmp             .signDone
+
+.tailSign:
+    movu            [r1 - 1], xm3
+
+.signDone:
 
     pmovzxbw        m2,   xm1
     vextracti128    xm1,  m1,   1
@@ -1544,7 +1584,15 @@ cglobal saoCuOrgE3_32, 3, 6, 8
     paddw           m1,   m4
     packuswb        m2,   m1
     vpermq          m2,   m2,   11011000b
+    cmp             r5d,  16
+    jle             .tailPixels
     movu            [r0], m2
+    jmp             .pixelsDone
+
+.tailPixels:
+    movu            [r0], xm2
+
+.pixelsDone:
 
     add             r0,   32
     add             r1,   32

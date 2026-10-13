@@ -1231,6 +1231,8 @@ bool PixelHarness::check_saoCuOrgE2_t(saoCuOrgE2_t ref[2], saoCuOrgE2_t opt[2])
             for (int i = 0; i < ITERS; i++)
             {
                 int width = 16 * (1 << (id * (rand() % 2 + 1))) - (rand() % 2);
+                if (id && i % 3 == 0)
+                    width = 48 - (i / 3) % 3;
                 int stride = width + 1;
 
                 ref[width > 16](ref_dest, psbuf1 + j, psbuf2 + j, psbuf3 + j, width, stride);
@@ -1502,7 +1504,14 @@ bool PixelHarness::check_saoCuOrgE3_32_t(saoCuOrgE3_t ref, saoCuOrgE3_t opt)
     {
         int stride = 32 * (rand() % 2 + 1);
         int start = rand() % 2;
-        int end = (32 * (rand() % 2 + 1)) - rand() % 2;
+        int end = 32 * (rand() % 2 + 1) - rand() % 2;
+        if (i % 3 == 0)
+        {
+            end = 48 - (i / 3) % 2;
+            start = (i / 6) % 2;
+        }
+        if (end > stride)
+            stride = 64;
 
         ref(ref_dest, psbuf2 + j, psbuf1 + j, stride, start, end);
         checked(opt, opt_dest, psbuf5 + j, psbuf1 + j, stride, start, end);
