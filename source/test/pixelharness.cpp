@@ -1200,6 +1200,12 @@ bool PixelHarness::check_saoCuOrgE1_t(saoCuOrgE1_t ref, saoCuOrgE1_t opt)
     for (int i = 0; i < ITERS; i++)
     {
         int width = 16 * (rand() % 4 + 1);
+        if (i % 4 == 0)
+            width = 8;
+        else if (i % 4 == 1)
+            width = 24;
+        else if (i % 4 == 2)
+            width = 44;
         int stride = width + 1;
 
         ref(ref_dest, psbuf2 + j, psbuf1 + j, stride, width);
@@ -1231,6 +1237,11 @@ bool PixelHarness::check_saoCuOrgE2_t(saoCuOrgE2_t ref[2], saoCuOrgE2_t opt[2])
             for (int i = 0; i < ITERS; i++)
             {
                 int width = 16 * (1 << (id * (rand() % 2 + 1))) - (rand() % 2);
+                if (id && i % 3 == 0)
+                {
+                    const int widths[] = { 22, 23, 24, 38, 39, 40, 46, 47, 48, 54, 55, 56 };
+                    width = widths[(i / 3) % 12];
+                }
                 int stride = width + 1;
 
                 ref[width > 16](ref_dest, psbuf1 + j, psbuf2 + j, psbuf3 + j, width, stride);
@@ -1502,7 +1513,15 @@ bool PixelHarness::check_saoCuOrgE3_32_t(saoCuOrgE3_t ref, saoCuOrgE3_t opt)
     {
         int stride = 32 * (rand() % 2 + 1);
         int start = rand() % 2;
-        int end = (32 * (rand() % 2 + 1)) - rand() % 2;
+        int end = 32 * (rand() % 2 + 1) - rand() % 2;
+        if (i % 3 == 0)
+        {
+            const int ends[] = { 23, 24, 39, 40, 47, 48, 55, 56 };
+            end = ends[(i / 3) % 8];
+            start = (i / 6) % 2;
+        }
+        if (end > stride)
+            stride = 64;
 
         ref(ref_dest, psbuf2 + j, psbuf1 + j, stride, start, end);
         checked(opt, opt_dest, psbuf5 + j, psbuf1 + j, stride, start, end);
@@ -1752,6 +1771,11 @@ bool PixelHarness::check_saoCuOrgB0_t(saoCuOrgB0_t ref, saoCuOrgB0_t opt)
     {
         int width = 16 * (rand() % 4 + 1);
         int height = rand() % 63 + 2;
+        if (i % 3 == 0)
+        {
+            width = 8 * ((i / 3) % 3 + 1);
+            height = 1;
+        }
         int stride = width;
 
         ref(ref_dest, psbuf1 + j, width, height, stride);

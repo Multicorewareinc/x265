@@ -369,9 +369,333 @@ cglobal saoCuOrgE0, 5, 5, 7, rec, offsetEo, lcuWidth, signLeft, stride
 ;==================================================================================================
 ; void saoCuOrgE1(pixel *pRec, int8_t *m_iUpBuff1, int8_t *m_iOffsetEo, Int iStride, Int iLcuWidth)
 ;==================================================================================================
+%macro SAO_E_SCALAR_ROW 1
+%%loop:
+%if HIGH_BIT_DEPTH
+    movzx       r0d, word [r4]
+%if %1 == 2
+    cmp         r0w, word [r4 + r3 + 2]
+%else
+    cmp         r0w, word [r4 + r3]
+%endif
+%else
+    movzx       r0d, byte [r4]
+%if %1 == 2
+    cmp         r0b, byte [r4 + r3 + 1]
+%else
+    cmp         r0b, byte [r4 + r3]
+%endif
+%endif
+    seta        r0b
+    setb        r1b
+    movzx       r0d, r0b
+    movzx       r1d, r1b
+    sub         r0d, r1d
+%if %1 == 2
+    mov         r1d, r0d
+    neg         r1d
+    mov         [r5 + 1], r1b
+    movsx       r1d, byte [r2]
+%else
+    movsx       r1d, byte [r5]
+%endif
+    add         r1d, r0d
+    add         r1d, 2
+%if %1 == 3
+    movsx       r1d, byte [r2 + r1]
+%else
+    movsx       r1d, byte [r6 + r1]
+%endif
+%if %1 != 2
+    neg         r0d
+%if %1 == 3
+    mov         [r5 - 1], r0b
+%else
+    mov         [r5], r0b
+%endif
+%endif
+%if HIGH_BIT_DEPTH
+    movzx       r0d, word [r4]
+%else
+    movzx       r0d, byte [r4]
+%endif
+    add         r0d, r1d
+    test        r0d, r0d
+    jns         %%nonnegative
+    xor         r0d, r0d
+%%nonnegative:
+    cmp         r0d, (1 << BIT_DEPTH) - 1
+    jle         %%store
+    mov         r0d, (1 << BIT_DEPTH) - 1
+%%store:
+%if HIGH_BIT_DEPTH
+    mov         [r4], r0w
+    add         r4, 2
+%else
+    mov         [r4], r0b
+    inc         r4
+%endif
+    inc         r5
+%if %1 == 2
+    inc         r2
+%endif
+    dec         dword [rsp]
+    jnz         %%loop
+%endmacro
+
+%macro SAO_E1_DISPATCH 1
+%if WIN64
+    cmp         r3, 0
+    jl          %1
+    cmp         dword [rsp + 40], 16
+    jl          %1
+    test        dword [rsp + 40], 15
+%elif ARCH_X86_64
+    test        r3, r3
+    js          %1
+    cmp         r4d, 16
+    jl          %1
+    test        r4d, 15
+%else
+    cmp         dword [esp + 16], 0
+    jl          %1
+    cmp         dword [esp + 20], 16
+    jl          %1
+    test        dword [esp + 20], 15
+%endif
+    jnz         %1
+%endmacro
+
+%macro SAO_E2_DISPATCH 1
+%if WIN64
+    cmp         qword [rsp + 48], 0
+    jl          %1
+    cmp         dword [rsp + 40], 16
+    jle         %1
+    cmp         dword [rsp + 40], 32
+    jg          %%large
+    cmp         dword [rsp + 40], 30
+    jl          %1
+    jmp         %%fast
+%%large:
+    cmp         dword [rsp + 40], 46
+    jl          %1
+    cmp         dword [rsp + 40], 48
+    jle         %%fast
+    cmp         dword [rsp + 40], 62
+    jl          %1
+    cmp         dword [rsp + 40], 64
+    jg          %1
+%elif ARCH_X86_64
+    test        r5, r5
+    js          %1
+    cmp         r4d, 16
+    jle         %1
+    cmp         r4d, 32
+    jg          %%large
+    cmp         r4d, 30
+    jl          %1
+    jmp         %%fast
+%%large:
+    cmp         r4d, 46
+    jl          %1
+    cmp         r4d, 48
+    jle         %%fast
+    cmp         r4d, 62
+    jl          %1
+    cmp         r4d, 64
+    jg          %1
+%else
+    cmp         dword [esp + 24], 0
+    jl          %1
+    cmp         dword [esp + 20], 16
+    jle         %1
+    cmp         dword [esp + 20], 32
+    jg          %%large
+    cmp         dword [esp + 20], 30
+    jl          %1
+    jmp         %%fast
+%%large:
+    cmp         dword [esp + 20], 46
+    jl          %1
+    cmp         dword [esp + 20], 48
+    jle         %%fast
+    cmp         dword [esp + 20], 62
+    jl          %1
+    cmp         dword [esp + 20], 64
+    jg          %1
+%endif
+%%fast:
+%endmacro
+
+%macro SAO_E3_DISPATCH 1
+%if WIN64
+    cmp         r3, 0
+    jl          %1
+    cmp         dword [rsp + 48], 16
+    jle         %1
+    cmp         dword [rsp + 48], 32
+    jg          %%large
+    cmp         dword [rsp + 48], 31
+    jl          %1
+    jmp         %%fast
+%%large:
+    cmp         dword [rsp + 48], 47
+    jl          %1
+    cmp         dword [rsp + 48], 48
+    jle         %%fast
+    cmp         dword [rsp + 48], 63
+    jl          %1
+    cmp         dword [rsp + 48], 64
+    jg          %1
+%elif ARCH_X86_64
+    test        r3, r3
+    js          %1
+    cmp         r5d, 16
+    jle         %1
+    cmp         r5d, 32
+    jg          %%large
+    cmp         r5d, 31
+    jl          %1
+    jmp         %%fast
+%%large:
+    cmp         r5d, 47
+    jl          %1
+    cmp         r5d, 48
+    jle         %%fast
+    cmp         r5d, 63
+    jl          %1
+    cmp         r5d, 64
+    jg          %1
+%else
+    cmp         dword [esp + 16], 0
+    jl          %1
+    cmp         dword [esp + 24], 16
+    jle         %1
+    cmp         dword [esp + 24], 32
+    jg          %%large
+    cmp         dword [esp + 24], 31
+    jl          %1
+    jmp         %%fast
+%%large:
+    cmp         dword [esp + 24], 47
+    jl          %1
+    cmp         dword [esp + 24], 48
+    jle         %%fast
+    cmp         dword [esp + 24], 63
+    jl          %1
+    cmp         dword [esp + 24], 64
+    jg          %1
+%endif
+%%fast:
+%endmacro
+
+INIT_XMM
+%if HIGH_BIT_DEPTH
+cglobal saoCuOrgE1_scalar, 5,7,0,-32
+    test        r4d, r4d
+    jle         .done
+    add         r3, r3
+    mov         dword [rsp], r4d
+    mov         r4, r0
+    mov         r5, r1
+    mov         r6, r2
+    SAO_E_SCALAR_ROW 1
+.done:
+    RET
+
+cglobal saoCuOrgE1_2Rows_scalar, 5,7,0,-32
+    test        r4d, r4d
+    jle         .done
+    add         r3, r3
+    mov         dword [rsp + 4], r4d
+    mov         [rsp + 8], r0
+    mov         [rsp + 16], r1
+    mov         dword [rsp + 24], 2
+    mov         r6, r2
+.row:
+    mov         r4, [rsp + 8]
+    mov         r5, [rsp + 16]
+    mov         r0d, dword [rsp + 4]
+    mov         dword [rsp], r0d
+    SAO_E_SCALAR_ROW 1
+    add         [rsp + 8], r3
+    dec         dword [rsp + 24]
+    jnz         .row
+.done:
+    RET
+%else
+cglobal saoCuOrgE1_scalar, 5,7,0,-32
+    test        r4d, r4d
+    jle         .done
+    mov         dword [rsp], r4d
+    mov         r4, r0
+    mov         r5, r1
+    mov         r6, r2
+    SAO_E_SCALAR_ROW 1
+.done:
+    RET
+
+cglobal saoCuOrgE1_2Rows_scalar, 5,7,0,-32
+    test        r4d, r4d
+    jle         .done
+    mov         dword [rsp + 4], r4d
+    mov         [rsp + 8], r0
+    mov         [rsp + 16], r1
+    mov         dword [rsp + 24], 2
+    mov         r6, r2
+.row:
+    mov         r4, [rsp + 8]
+    mov         r5, [rsp + 16]
+    mov         r0d, dword [rsp + 4]
+    mov         dword [rsp], r0d
+    SAO_E_SCALAR_ROW 1
+    add         [rsp + 8], r3
+    dec         dword [rsp + 24]
+    jnz         .row
+.done:
+    RET
+%endif
+
+cglobal saoCuOrgE2_scalar, 6,7,0,-32
+    test        r4d, r4d
+    jle         .done
+    mov         dword [rsp], r4d
+    mov         r6, r3
+    mov         r3, r5
+%if HIGH_BIT_DEPTH
+    add         r3, r3
+%endif
+    mov         r4, r0
+    mov         r5, r1
+    SAO_E_SCALAR_ROW 2
+.done:
+    RET
+
+cglobal saoCuOrgE3_scalar, 6,7,0,-32
+    inc         r4d
+    sub         r5d, r4d
+    test        r5d, r5d
+    jle         .done
+    mov         dword [rsp], r5d
+%if HIGH_BIT_DEPTH
+    lea         r0, [r0 + r4 * 2]
+    add         r3, r3
+%else
+    add         r0, r4
+%endif
+    add         r1, r4
+    mov         r4, r0
+    mov         r5, r1
+    SAO_E_SCALAR_ROW 3
+.done:
+    RET
+
 INIT_XMM sse4
 %if HIGH_BIT_DEPTH
-cglobal saoCuOrgE1, 4,5,8
+cglobal saoCuOrgE1
+    SAO_E1_DISPATCH saoCuOrgE1_scalar
+    PROLOGUE 4,5,8
     add         r3d, r3d
     mov         r4d, r4m
     pxor        m0, m0                      ; m0 = 0
@@ -426,7 +750,9 @@ cglobal saoCuOrgE1, 4,5,8
     jnz         .loop
     RET
 %else ; HIGH_BIT_DEPTH
-cglobal saoCuOrgE1, 3, 5, 8, pRec, m_iUpBuff1, m_iOffsetEo, iStride, iLcuWidth
+cglobal saoCuOrgE1
+    SAO_E1_DISPATCH saoCuOrgE1_scalar
+    PROLOGUE 3, 5, 8, pRec, m_iUpBuff1, m_iOffsetEo, iStride, iLcuWidth
     mov         r3d, r3m
     mov         r4d, r4m
     pxor        m0,    m0                      ; m0 = 0
@@ -475,7 +801,9 @@ cglobal saoCuOrgE1, 3, 5, 8, pRec, m_iUpBuff1, m_iOffsetEo, iStride, iLcuWidth
 
 INIT_YMM avx2
 %if HIGH_BIT_DEPTH
-cglobal saoCuOrgE1, 4,5,6
+cglobal saoCuOrgE1
+    SAO_E1_DISPATCH saoCuOrgE1_scalar
+    PROLOGUE 4,5,6
     add         r3d, r3d
     mov         r4d, r4m
     mova        m4, [pb_2]
@@ -519,7 +847,9 @@ cglobal saoCuOrgE1, 4,5,6
     jnz         .loop
     RET
 %else ; HIGH_BIT_DEPTH
-cglobal saoCuOrgE1, 3, 5, 8, pRec, m_iUpBuff1, m_iOffsetEo, iStride, iLcuWidth
+cglobal saoCuOrgE1
+    SAO_E1_DISPATCH saoCuOrgE1_scalar
+    PROLOGUE 3, 5, 8, pRec, m_iUpBuff1, m_iOffsetEo, iStride, iLcuWidth
     mov           r3d,    r3m
     mov           r4d,    r4m
     movu          xm0,    [r2]                    ; xm0 = m_iOffsetEo
@@ -567,7 +897,9 @@ cglobal saoCuOrgE1, 3, 5, 8, pRec, m_iUpBuff1, m_iOffsetEo, iStride, iLcuWidth
 ;========================================================================================================
 INIT_XMM sse4
 %if HIGH_BIT_DEPTH
-cglobal saoCuOrgE1_2Rows, 4,7,8
+cglobal saoCuOrgE1_2Rows
+    SAO_E1_DISPATCH saoCuOrgE1_2Rows_scalar
+    PROLOGUE 4,7,8
     add         r3d, r3d
     mov         r4d, r4m
     pxor        m0, m0                      ; m0 = 0
@@ -671,7 +1003,9 @@ cglobal saoCuOrgE1_2Rows, 4,7,8
     jnz         .loopH
     RET
 %else ; HIGH_BIT_DEPTH
-cglobal saoCuOrgE1_2Rows, 3, 5, 8, pRec, m_iUpBuff1, m_iOffsetEo, iStride, iLcuWidth
+cglobal saoCuOrgE1_2Rows
+    SAO_E1_DISPATCH saoCuOrgE1_2Rows_scalar
+    PROLOGUE 3, 5, 8, pRec, m_iUpBuff1, m_iOffsetEo, iStride, iLcuWidth
     mov         r3d,        r3m
     mov         r4d,        r4m
     pxor        m0,         m0                      ; m0 = 0
@@ -745,7 +1079,9 @@ cglobal saoCuOrgE1_2Rows, 3, 5, 8, pRec, m_iUpBuff1, m_iOffsetEo, iStride, iLcuW
 
 INIT_YMM avx2
 %if HIGH_BIT_DEPTH
-cglobal saoCuOrgE1_2Rows, 4,5,8
+cglobal saoCuOrgE1_2Rows
+    SAO_E1_DISPATCH saoCuOrgE1_2Rows_scalar
+    PROLOGUE 4,5,8
     add             r3d, r3d
     mov             r4d, r4m
     mova            m4, [pw_pixel_max]
@@ -800,7 +1136,9 @@ cglobal saoCuOrgE1_2Rows, 4,5,8
     jnz             .loop
     RET
 %else ; HIGH_BIT_DEPTH
-cglobal saoCuOrgE1_2Rows, 3, 5, 7, pRec, m_iUpBuff1, m_iOffsetEo, iStride, iLcuWidth
+cglobal saoCuOrgE1_2Rows
+    SAO_E1_DISPATCH saoCuOrgE1_2Rows_scalar
+    PROLOGUE 3, 5, 7, pRec, m_iUpBuff1, m_iOffsetEo, iStride, iLcuWidth
     mov             r3d,        r3m
     mov             r4d,        r4m
     pxor            m0,         m0                           ; m0 = 0
@@ -854,7 +1192,9 @@ cglobal saoCuOrgE1_2Rows, 3, 5, 7, pRec, m_iUpBuff1, m_iOffsetEo, iStride, iLcuW
 ;======================================================================================================================================================
 INIT_XMM sse4
 %if HIGH_BIT_DEPTH
-cglobal saoCuOrgE2, 6,6,8
+cglobal saoCuOrgE2
+    SAO_E2_DISPATCH saoCuOrgE2_scalar
+    PROLOGUE 6,6,8
     mov         r4d, r4m
     add         r5d, r5d
     pxor        m0, m0
@@ -911,7 +1251,9 @@ cglobal saoCuOrgE2, 6,6,8
     movhps      [r1 + r4], m6
     RET
 %else ; HIGH_BIT_DEPTH
-cglobal saoCuOrgE2, 5, 6, 8, rec, bufft, buff1, offsetEo, lcuWidth
+cglobal saoCuOrgE2
+    SAO_E2_DISPATCH saoCuOrgE2_scalar
+    PROLOGUE 5, 6, 8, rec, bufft, buff1, offsetEo, lcuWidth
     mov         r4d,   r4m
     mov         r5d,   r5m
     pxor        m0,    m0                      ; m0 = 0
@@ -965,7 +1307,9 @@ cglobal saoCuOrgE2, 5, 6, 8, rec, bufft, buff1, offsetEo, lcuWidth
 
 INIT_YMM avx2
 %if HIGH_BIT_DEPTH
-cglobal saoCuOrgE2, 6,6,7
+cglobal saoCuOrgE2
+    SAO_E2_DISPATCH saoCuOrgE2_scalar
+    PROLOGUE 6,6,7
     mov             r4d, r4m
     add             r5d, r5d
     inc             r1
@@ -1013,7 +1357,9 @@ cglobal saoCuOrgE2, 6,6,7
     movhps          [r1 + r4], xm4
     RET
 %else ; HIGH_BIT_DEPTH
-cglobal saoCuOrgE2, 5, 6, 7, rec, bufft, buff1, offsetEo, lcuWidth
+cglobal saoCuOrgE2
+    SAO_E2_DISPATCH saoCuOrgE2_scalar
+    PROLOGUE 5, 6, 7, rec, bufft, buff1, offsetEo, lcuWidth
     mov            r4d,   r4m
     mov            r5d,   r5m
     pxor           xm0,   xm0                     ; xm0 = 0
@@ -1056,7 +1402,9 @@ cglobal saoCuOrgE2, 5, 6, 7, rec, bufft, buff1, offsetEo, lcuWidth
 
 INIT_YMM avx2
 %if HIGH_BIT_DEPTH
-cglobal saoCuOrgE2_32, 6,6,8
+cglobal saoCuOrgE2_32
+    SAO_E2_DISPATCH saoCuOrgE2_scalar
+    PROLOGUE 6,6,8
     mov             r4d, r4m
     add             r5d, r5d
     inc             r1
@@ -1100,11 +1448,19 @@ cglobal saoCuOrgE2_32, 6,6,8
     pmaxsw          m7, m0
     pminsw          m1, [pw_pixel_max]
     pminsw          m7, [pw_pixel_max]
+    psubb           m0, m2
+    cmp             r4d, 16
+    jle             .tail16
     movu            [r0], m1
     movu            [r0 + 32], m7
-
-    psubb           m0, m2
     movu            [r1], m0
+    jmp             .next
+
+.tail16:
+    movu            [r0], m1
+    movu            [r1], xm0
+
+.next:
 
     add             r0, 64
     add             r1, 32
@@ -1116,7 +1472,9 @@ cglobal saoCuOrgE2_32, 6,6,8
     movhps          [r1 + r4], xm4
     RET
 %else ; HIGH_BIT_DEPTH
-cglobal saoCuOrgE2_32, 5, 6, 8, rec, bufft, buff1, offsetEo, lcuWidth
+cglobal saoCuOrgE2_32
+    SAO_E2_DISPATCH saoCuOrgE2_scalar
+    PROLOGUE 5, 6, 8, rec, bufft, buff1, offsetEo, lcuWidth
     mov             r4d,   r4m
     mov             r5d,   r5m
     pxor            m0,    m0                      ; m0 = 0
@@ -1143,7 +1501,15 @@ cglobal saoCuOrgE2_32, 5, 6, 8, rec, bufft, buff1, offsetEo, lcuWidth
     pshufb          m4,    m5,    m3
 
     psubb           m3,    m0,    m2
+    cmp             r4d,   16
+    jle             .tailSign
     movu            [r1],  m3
+    jmp             .signDone
+
+.tailSign:
+    movu            [r1],  xm3
+
+.signDone:
 
     pmovzxbw        m2,    xm1
     vextracti128    xm1,   m1,    1
@@ -1156,7 +1522,15 @@ cglobal saoCuOrgE2_32, 5, 6, 8, rec, bufft, buff1, offsetEo, lcuWidth
     paddw           m1,    m4
     packuswb        m2,    m1
     vpermq          m2,    m2,    11011000b
+    cmp             r4d,   16
+    jle             .tailPixels
     movu            [r0],  m2
+    jmp             .pixelsDone
+
+.tailPixels:
+    movu            [r0],  xm2
+
+.pixelsDone:
 
     add             r0,    32
     add             r1,    32
@@ -1174,7 +1548,9 @@ cglobal saoCuOrgE2_32, 5, 6, 8, rec, bufft, buff1, offsetEo, lcuWidth
 ;=======================================================================================================
 INIT_XMM sse4
 %if HIGH_BIT_DEPTH
-cglobal saoCuOrgE3, 4,6,8
+cglobal saoCuOrgE3
+    SAO_E3_DISPATCH saoCuOrgE3_scalar
+    PROLOGUE 4,6,8
     add             r3d, r3d
     mov             r4d, r4m
     mov             r5d, r5m
@@ -1240,7 +1616,9 @@ cglobal saoCuOrgE3, 4,6,8
     movhps          [r1 + r5 - 1], m6
     RET
 %else ; HIGH_BIT_DEPTH
-cglobal saoCuOrgE3, 3,6,8
+cglobal saoCuOrgE3
+    SAO_E3_DISPATCH saoCuOrgE3_scalar
+    PROLOGUE 3,6,8
     mov             r3d, r3m
     mov             r4d, r4m
     mov             r5d, r5m
@@ -1307,7 +1685,9 @@ cglobal saoCuOrgE3, 3,6,8
 
 INIT_YMM avx2
 %if HIGH_BIT_DEPTH
-cglobal saoCuOrgE3, 4,6,6
+cglobal saoCuOrgE3
+    SAO_E3_DISPATCH saoCuOrgE3_scalar
+    PROLOGUE 4,6,6
     add             r3d, r3d
     mov             r4d, r4m
     mov             r5d, r5m
@@ -1361,7 +1741,9 @@ cglobal saoCuOrgE3, 4,6,6
     movhps          [r1 + r5 - 1], xm5
     RET
 %else ; HIGH_BIT_DEPTH
-cglobal saoCuOrgE3, 3, 6, 8
+cglobal saoCuOrgE3
+    SAO_E3_DISPATCH saoCuOrgE3_scalar
+    PROLOGUE 3, 6, 8
     mov             r3d,  r3m
     mov             r4d,  r4m
     mov             r5d,  r5m
@@ -1425,7 +1807,9 @@ cglobal saoCuOrgE3, 3, 6, 8
 
 INIT_YMM avx2
 %if HIGH_BIT_DEPTH
-cglobal saoCuOrgE3_32, 3,6,8
+cglobal saoCuOrgE3_32
+    SAO_E3_DISPATCH saoCuOrgE3_scalar
+    PROLOGUE 4,6,8
     add             r3d, r3d
     mov             r4d, r4m
     mov             r5d, r5m
@@ -1475,11 +1859,19 @@ cglobal saoCuOrgE3_32, 3,6,8
     pmaxsw          m7, m0
     pminsw          m1, [pw_pixel_max]
     pminsw          m7, [pw_pixel_max]
+    psubb           m0, m2
+    cmp             r5d, 16
+    jle             .tail16
     movu            [r0], m1
     movu            [r0 + 32], m7
-
-    psubb           m0, m2
     movu            [r1 - 1], m0
+    jmp             .next
+
+.tail16:
+    movu            [r0], m1
+    movu            [r1 - 1], xm0
+
+.next:
 
     add             r0, 64
     add             r1, 32
@@ -1491,7 +1883,9 @@ cglobal saoCuOrgE3_32, 3,6,8
     movhps          [r1 + r5 - 1], xm5
     RET
 %else ; HIGH_BIT_DEPTH
-cglobal saoCuOrgE3_32, 3, 6, 8
+cglobal saoCuOrgE3_32
+    SAO_E3_DISPATCH saoCuOrgE3_scalar
+    PROLOGUE 3, 6, 8
     mov             r3d,  r3m
     mov             r4d,  r4m
     mov             r5d,  r5m
@@ -1531,7 +1925,15 @@ cglobal saoCuOrgE3_32, 3, 6, 8
     pshufb          m4,   m5,   m3
 
     psubb           m3,   m0,   m2
+    cmp             r5d,  16
+    jle             .tailSign
     movu            [r1 - 1],   m3
+    jmp             .signDone
+
+.tailSign:
+    movu            [r1 - 1], xm3
+
+.signDone:
 
     pmovzxbw        m2,   xm1
     vextracti128    xm1,  m1,   1
@@ -1544,7 +1946,15 @@ cglobal saoCuOrgE3_32, 3, 6, 8
     paddw           m1,   m4
     packuswb        m2,   m1
     vpermq          m2,   m2,   11011000b
+    cmp             r5d,  16
+    jle             .tailPixels
     movu            [r0], m2
+    jmp             .pixelsDone
+
+.tailPixels:
+    movu            [r0], xm2
+
+.pixelsDone:
 
     add             r0,   32
     add             r1,   32
@@ -1560,9 +1970,104 @@ cglobal saoCuOrgE3_32, 3, 6, 8
 ;=====================================================================================
 ; void saoCuOrgB0(pixel* rec, const pixel* offset, int lcuWidth, int lcuHeight, int stride)
 ;=====================================================================================
+%macro SAO_B0_DISPATCH 1
+%if WIN64
+    test        r2d, 15
+    jnz         %1
+    cmp         r3d, 1
+    jle         %1
+    cmp         qword [rsp + 40], 0
+    jl          %1
+%elif ARCH_X86_64
+    test        r2d, 15
+    jnz         %1
+    cmp         r3d, 1
+    jle         %1
+    test        r4, r4
+    js          %1
+%else
+    test        dword [esp + 12], 15
+    jnz         %1
+    cmp         dword [esp + 16], 1
+    jle         %1
+    cmp         dword [esp + 20], 0
+    jl          %1
+%endif
+%endmacro
+
+INIT_XMM
+%if HIGH_BIT_DEPTH
+cglobal saoCuOrgB0_scalar, 5,7,0,-32
+    test        r2d, r2d
+    jle         .done
+    test        r3d, r3d
+    jle         .done
+    mov         dword [rsp], r2d
+    add         r4, r4
+.row:
+    xor         r6d, r6d
+.pixel:
+    movzx       r2d, word [r0 + r6 * 2]
+    mov         r5d, r2d
+    shr         r5d, BIT_DEPTH - 5
+    movsx       r5d, byte [r1 + r5]
+    add         r2d, r5d
+    test        r2d, r2d
+    jns         .nonnegative
+    xor         r2d, r2d
+.nonnegative:
+    cmp         r2d, (1 << BIT_DEPTH) - 1
+    jle         .store
+    mov         r2d, (1 << BIT_DEPTH) - 1
+.store:
+    mov         [r0 + r6 * 2], r2w
+    inc         r6d
+    cmp         r6d, dword [rsp]
+    jl          .pixel
+    add         r0, r4
+    dec         r3d
+    jnz         .row
+.done:
+    RET
+%else
+cglobal saoCuOrgB0_scalar, 5,7,0,-32
+    test        r2d, r2d
+    jle         .done
+    test        r3d, r3d
+    jle         .done
+    mov         dword [rsp], r2d
+.row:
+    xor         r6d, r6d
+.pixel:
+    movzx       r2d, byte [r0 + r6]
+    mov         r5d, r2d
+    shr         r5d, BIT_DEPTH - 5
+    movsx       r5d, byte [r1 + r5]
+    add         r2d, r5d
+    test        r2d, r2d
+    jns         .nonnegative
+    xor         r2d, r2d
+.nonnegative:
+    cmp         r2d, (1 << BIT_DEPTH) - 1
+    jle         .store
+    mov         r2d, (1 << BIT_DEPTH) - 1
+.store:
+    mov         [r0 + r6], r2b
+    inc         r6d
+    cmp         r6d, dword [rsp]
+    jl          .pixel
+    add         r0, r4
+    dec         r3d
+    jnz         .row
+.done:
+    RET
+%endif
+
 INIT_XMM sse4
 %if HIGH_BIT_DEPTH
-cglobal saoCuOrgB0, 5,7,8
+cglobal saoCuOrgB0
+    SAO_B0_DISPATCH saoCuOrgB0_scalar
+    PROLOGUE 5,7,8
     add         r4d, r4d
 
     shr         r2d, 4
@@ -1611,7 +2116,9 @@ cglobal saoCuOrgB0, 5,7,8
     jnz         .loopH
     RET
 %else ; HIGH_BIT_DEPTH
-cglobal saoCuOrgB0, 4, 7, 8
+cglobal saoCuOrgB0
+    SAO_B0_DISPATCH saoCuOrgB0_scalar
+    PROLOGUE 4, 7, 8
 
     mov         r3d, r3m
     mov         r4d, r4m
@@ -1661,7 +2168,9 @@ cglobal saoCuOrgB0, 4, 7, 8
 %if ARCH_X86_64
 INIT_YMM avx2
 %if HIGH_BIT_DEPTH
-cglobal saoCuOrgB0, 5,7,8
+cglobal saoCuOrgB0
+    SAO_B0_DISPATCH saoCuOrgB0_scalar
+    PROLOGUE 5,7,8
     vbroadcasti128  m3, [r1]
     vbroadcasti128  m4, [r1 + 16]
     add             r4d, r4d
@@ -1743,7 +2252,9 @@ cglobal saoCuOrgB0, 5,7,8
 .end:
     RET
 %else ; HIGH_BIT_DEPTH
-cglobal saoCuOrgB0, 4, 7, 8
+cglobal saoCuOrgB0
+    SAO_B0_DISPATCH saoCuOrgB0_scalar
+    PROLOGUE 4, 7, 8
 
     mov             r3d,        r3m
     mov             r4d,        r4m
