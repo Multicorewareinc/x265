@@ -16,10 +16,11 @@
 set(_multilib_root "${CMAKE_CURRENT_BINARY_DIR}/multilib")
 set(_multilib_source "${CMAKE_CURRENT_SOURCE_DIR}")
 
-# The nested builds are driven with `cmake -S/-B`, which needs CMake 3.13;
-# plain x265 builds keep supporting older CMake versions
-if(CMAKE_VERSION VERSION_LESS 3.13)
-    message(FATAL_ERROR "ENABLE_MULTILIB requires CMake 3.13 or later. "
+# The nested builds need `file(GLOB_RECURSE ... CONFIGURE_DEPENDS)` and the
+# -j option of `cmake --build`, both introduced in CMake 3.12; plain x265
+# builds keep supporting older CMake versions
+if(CMAKE_VERSION VERSION_LESS 3.12)
+    message(FATAL_ERROR "ENABLE_MULTILIB requires CMake 3.12 or later. "
         "Use build/linux/multilib.sh or the build/vc*-x86_64/multilib.bat "
         "scripts to build the multi-bit-depth library with older CMake.")
 endif()
@@ -211,9 +212,16 @@ function(x265_define_multilib_variant name dir archive)
     endif()
     add_custom_command(
         OUTPUT "${archive}"
-        COMMAND "${CMAKE_COMMAND}" -S "${_multilib_source}" -B "${dir}"
+        # The nested configure is driven through the documented `cmake -E
+        # make_directory`/`-E chdir` tools with the source given as a
+        # positional argument instead of `cmake -S/-B`, which needs CMake 3.13;
+        # `cmake -E chdir` does not create the build directory, hence the
+        # explicit make_directory
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${dir}"
+        COMMAND "${CMAKE_COMMAND}" -E chdir "${dir}" "${CMAKE_COMMAND}"
                 ${_multilib_common_args} ${ARGN}
                 ${_archive_dir_args}
+                "${_multilib_source}"
         # Run the nested build with an empty MAKEFLAGS so the nested make does
         # not try to join the parent's jobserver ("resetting jobserver mode"
         # warnings); the explicit -j above gives it its own parallelism
