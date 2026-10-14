@@ -81,6 +81,7 @@ Frame::Frame()
     m_valid = 0;
     m_nextSubDPB = NULL;
     m_prevSubDPB = NULL;
+    m_MLCTUPred = NULL;
 
     m_targetBitrate = 0;
     m_targetCrf = 0;
@@ -189,6 +190,17 @@ bool Frame::create(x265_param *param, float* quantOffsets)
                                                         m_lowres.maxBlocksInRow * m_lowres.maxBlocksInCol;
             m_quantOffsets = new float[cuCount];
         }
+#ifdef ENABLE_MLCTUPRED
+        if (param->bEnableMLCTUPred && (param->maxCUSize == 64 || param->maxCUSize == 32))
+        {
+            /* see m_MLCTUPred in frame.h for the layout */
+            const int mlPredCount = m_numRows * m_numCols * (param->maxCUSize == 64 ? 21 : 1);
+            m_MLCTUPred = X265_MALLOC(float, mlPredCount);
+            if (!m_MLCTUPred)
+                return false;
+            memset(m_MLCTUPred, 0, mlPredCount * sizeof(float));
+        }
+#endif
         return true;
     }
     return false;
@@ -302,6 +314,11 @@ void Frame::destroy()
         delete m_fencPic;
         m_fencPic = NULL;
     }
+
+#ifdef ENABLE_MLCTUPRED
+    X265_FREE(m_MLCTUPred);
+    m_MLCTUPred = NULL;
+#endif
 
     if (m_param->bEnableTemporalFilter)
     {

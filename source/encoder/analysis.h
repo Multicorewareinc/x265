@@ -149,6 +149,11 @@ public:
     void computeMVForPUs(CUData& ctu, const CUGeom& cuGeom, int qp, Frame& frame);
 
 protected:
+#ifdef ENABLE_MLCTUPRED
+    /* this CTU's entry in Frame::m_MLCTUPred */
+    const float*               m_MLCTUPred;
+#endif
+
     /* Analysis data for save/load mode, writes/reads data based on absPartIdx */
     x265_analysis_inter_data*  m_reuseInterDataCTU;
     int32_t*                   m_reuseRef;
