@@ -58,7 +58,7 @@ Frame::Frame()
     m_addOnPrevChange = NULL;
     m_classifyFrame = false;
     m_fieldNum = 0;
-    m_picStruct = 0;
+    m_picStruct = PIC_STRUCT_AUTO;
     m_edgePic = NULL;
     m_gaussianPic = NULL;
     m_thetaPic = NULL;
@@ -85,6 +85,12 @@ Frame::Frame()
     m_targetBitrate = 0;
     m_targetCrf = 0;
     m_targetQp = 0;
+
+    /* HRD */
+    m_duration = m_cpbDuration = 0;
+    m_cpbDelay = m_dpbDelay = 0;
+    m_displayPicCount = m_codedPicCount = 0;
+    m_timebase = 0.;
 }
 
 bool Frame::create(x265_param *param, float* quantOffsets)
