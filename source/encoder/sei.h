@@ -902,5 +902,47 @@ public:
     }
 };
 
+class SEIFramePacking : public SEI
+{
+public:
+    int  m_arrangementType;
+    bool m_currentFrameIsFrame0;
+    bool m_persistence;
+    SEIFramePacking()
+    {
+        m_payloadType = FRAME_PACKING;
+        m_payloadSize = 0;
+        m_arrangementType = -1;
+        m_currentFrameIsFrame0 = false;
+        m_persistence = false;
+    }
+
+    // cppcheck-suppress missingOverride
+    void writeSEI(const SPS&)
+    {
+        WRITE_UVLC(0, "frame_packing_arrangement_id");
+        WRITE_FLAG(0, "frame_packing_arrangement_cancel_flag");
+        WRITE_CODE(m_arrangementType, 7, "frame_packing_arrangement_type");
+        WRITE_FLAG(0, "quincunx_sampling_flag");
+        WRITE_CODE(1, 6, "content_interpretation_type"); /* frame 0 is the left view */
+        WRITE_FLAG(0, "spatial_flipping_flag");
+        WRITE_FLAG(0, "frame0_flipped_flag");
+        WRITE_FLAG(0, "field_views_flag");
+        WRITE_FLAG(m_currentFrameIsFrame0, "current_frame_is_frame0_flag");
+        WRITE_FLAG(0, "frame0_self_contained_flag");
+        WRITE_FLAG(0, "frame1_self_contained_flag");
+        if (m_arrangementType != 5)
+        {
+            WRITE_CODE(0, 4, "frame0_grid_position_x");
+            WRITE_CODE(0, 4, "frame0_grid_position_y");
+            WRITE_CODE(0, 4, "frame1_grid_position_x");
+            WRITE_CODE(0, 4, "frame1_grid_position_y");
+        }
+        WRITE_CODE(0, 8, "frame_packing_arrangement_reserved_byte");
+        WRITE_FLAG(m_persistence, "frame_packing_arrangement_persistence_flag");
+        WRITE_FLAG(0, "upsampled_aspect_ratio_flag");
+    }
+};
+
 }
 #endif // ifndef X265_SEI_H

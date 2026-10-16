@@ -345,6 +345,7 @@ static const struct option long_options[] =
     { "single-sei", no_argument, NULL, 0 },
     { "no-single-sei", no_argument, NULL, 0 },
     { "atc-sei", required_argument, NULL, 0 },
+    { "frame-packing", required_argument, NULL, 0 },
     { "pic-struct", required_argument, NULL, 0 },
     { "nalu-file", required_argument, NULL, 0 },
     { "dolby-vision-rpu", required_argument, NULL, 0 },
