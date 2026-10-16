@@ -809,21 +809,20 @@ void FrameEncoder::compressFrame(int layer)
         {
             if (m_param->interlaceMode > 0)
             {
-                // field_seq_flag is 1, so each picture is a single field: 1 = top field, 2 = bottom field
-                if( m_param->interlaceMode == 2 )
-                {
-                    if (m_param->bField)
-                        sei->m_picStruct = (slice->m_fieldNum == 1) ? 2 /* bottom */ : 1 /* top */;
-                    else
-                        sei->m_picStruct = (poc & 1) ? 1 /* top */ : 2 /* bottom */;
-                }     
-                else if (m_param->interlaceMode == 1)
-                {
-                    if (m_param->bField)
-                        sei->m_picStruct = (slice->m_fieldNum == 1) ? 1 /* top */ : 2 /* bottom */;
-                    else
-                        sei->m_picStruct = (poc & 1) ? 2 /* bottom */ : 1 /* top */;
-                }
+                /* field_seq_flag is 1, so each picture is a single field. Signal
+                 * the field pair with pic_struct 9-12 (H.265 Table D.2, pairing in
+                 * output order): 11 = top field paired with the next bottom field,
+                 * 10 = bottom field paired with the previous top field (tff frame),
+                 * 12 = bottom field paired with the next top field, 9 = top field
+                 * paired with the previous bottom field (bff frame). With --field,
+                 * fieldNum 1 is the first field of the frame; with field input the
+                 * even POC is. */
+                if (m_param->interlaceMode == 2)   // bff: first field is the bottom field
+                    sei->m_picStruct = m_param->bField ? ((slice->m_fieldNum == 1) ? 12 : 9)
+                                                       : ((poc & 1) ? 9 : 12);
+                else                               // tff: first field is the top field
+                    sei->m_picStruct = m_param->bField ? ((slice->m_fieldNum == 1) ? 11 : 10)
+                                                       : ((poc & 1) ? 10 : 11);
             }
             else if (m_param->bEnableFrameDuplication)
                 sei->m_picStruct = m_frame[layer]->m_picStruct;

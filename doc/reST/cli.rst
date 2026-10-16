@@ -558,6 +558,18 @@ frame counts) are only applicable to the CLI application.
 	second. The decoder must re-combine the fields in their correct
 	orientation for display.
 
+	The stream is signalled as a field sequence: field_seq_flag is set in
+	the VUI, the profile_tier_level marks the source as interlaced, and
+	every picture carries a picture timing SEI with source_scan_type 0
+	(interlaced) and a pic_struct that gives the parity of the field and
+	the frame it belongs to (H.265 Table D.2): 11 for the top and 10 for
+	the bottom field of a top-field-first frame, 12 for the bottom and 9
+	for the top field of a bottom-field-first frame. With :option:`--field`
+	the frame is the input frame; with field input, pictures 2n and 2n+1
+	are taken as the two fields of one frame. This describes interlaced
+	content, not a progressive frame carried as two fields (PsF), which
+	would need source_scan_type 1.
+
 .. option:: --frame-dup, --no-frame-dup
 
 	Enable Adaptive Frame duplication. Replaces 2-3 near-identical frames with one 
