@@ -535,6 +535,11 @@ int main() {
             message(STATUS "Found RVV")
             add_definitions(-DHAVE_RVV=1)
 
+            option(RVV_DCT32_OPT "Enable optimized RVV DCT32" ON)
+            if(RVV_DCT32_OPT)
+                add_definitions(-DHAVE_RVV_OPT=1)
+            endif()
+
             set(RVV_INTRINSIC_TEST [[
 #include <riscv_vector.h>
 #include <stdint.h>
