@@ -26,7 +26,124 @@
 #include "primitives.h"
 #include "entropy.h"
 
+#if X265_ARCH_X86
+#if defined(_WIN32)
+#include <windows.h>
+#else
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
+#endif
+
 using namespace X265_NS;
+
+#if X265_ARCH_X86
+namespace {
+class SaoGuardedBuffer
+{
+public:
+    uint8_t* data;
+    size_t pageSize;
+
+    SaoGuardedBuffer() : data(NULL), pageSize(0)
+    {
+#if defined(_WIN32)
+        SYSTEM_INFO info;
+        GetSystemInfo(&info);
+        pageSize = info.dwPageSize;
+        data = static_cast<uint8_t*>(VirtualAlloc(NULL, 2 * pageSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+        if (data)
+        {
+            DWORD previous;
+            if (!VirtualProtect(data + pageSize, pageSize, PAGE_READONLY, &previous))
+            {
+                VirtualFree(data, 0, MEM_RELEASE);
+                data = NULL;
+            }
+        }
+#else
+        long size = sysconf(_SC_PAGESIZE);
+        if (size <= 0)
+            return;
+        pageSize = (size_t)size;
+        void* mem = mmap(NULL, 2 * pageSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (mem != MAP_FAILED)
+        {
+            data = static_cast<uint8_t*>(mem);
+            if (mprotect(data + pageSize, pageSize, PROT_READ))
+            {
+                munmap(data, 2 * pageSize);
+                data = NULL;
+            }
+        }
+#endif
+    }
+
+    ~SaoGuardedBuffer()
+    {
+        if (data)
+        {
+#if defined(_WIN32)
+            VirtualFree(data, 0, MEM_RELEASE);
+#else
+            munmap(data, 2 * pageSize);
+#endif
+        }
+    }
+
+private:
+    SaoGuardedBuffer(const SaoGuardedBuffer&);
+    SaoGuardedBuffer& operator=(const SaoGuardedBuffer&);
+};
+
+static bool checkSaoBounds(saoCuOrgE2_t refE2, saoCuOrgE2_t optE2,
+                           saoCuOrgE3_t refE3, saoCuOrgE3_t optE3, int ctuWidth)
+{
+    SaoGuardedBuffer refPixels, optPixels, refSigns, optSigns;
+    if (!refPixels.data || !optPixels.data || !refSigns.data || !optSigns.data)
+        return false;
+
+    ALIGN_VAR_16(int8_t, offsets[16]) = { 3, 1, 0, -1, -3 };
+    ALIGN_VAR_16(int8_t, inputSigns[128]);
+    for (int i = 0; i < 128; i++)
+        inputSigns[i] = (int8_t)(i % 3 - 1);
+    for (int i = 0; i < 5; i++)
+        offsets[i] *= 1 << X265_MAX(0, X265_DEPTH - 10);
+
+    for (int trim = 0; trim <= (optE2 ? 2 : 1); trim++)
+    {
+        int end = ctuWidth - trim;
+        for (int start = 0; start <= (optE2 ? 0 : 1); start++)
+        {
+            for (size_t i = 0; i < refPixels.pageSize / sizeof(pixel); i++)
+                reinterpret_cast<pixel*>(refPixels.data)[i] = reinterpret_cast<pixel*>(optPixels.data)[i] = (pixel)((i * 71 + 3) & PIXEL_MAX);
+            for (size_t i = 0; i < refSigns.pageSize; i++)
+                reinterpret_cast<int8_t*>(refSigns.data)[i] = reinterpret_cast<int8_t*>(optSigns.data)[i] = (int8_t)(i % 3) - 1;
+
+            pixel* refRec = reinterpret_cast<pixel*>(refPixels.data + refPixels.pageSize) - end;
+            pixel* optRec = reinterpret_cast<pixel*>(optPixels.data + optPixels.pageSize) - end;
+            int signCount = optE2 ? end + 1 : end - 1;
+            int8_t* refSign = reinterpret_cast<int8_t*>(refSigns.data + refSigns.pageSize) - signCount;
+            int8_t* optSign = reinterpret_cast<int8_t*>(optSigns.data + optSigns.pageSize) - signCount;
+            if (optE2)
+            {
+                refE2(refRec, refSign, inputSigns, offsets, end, 128);
+                optE2(optRec, optSign, inputSigns, offsets, end, 128);
+            }
+            else
+            {
+                refE3(refRec, refSign, offsets, 127, start, end);
+                optE3(optRec, optSign, offsets, 127, start, end);
+            }
+            if (memcmp(refPixels.data, optPixels.data, refPixels.pageSize) ||
+                memcmp(refSigns.data, optSigns.data, refSigns.pageSize))
+                return false;
+        }
+    }
+    return true;
+}
+}
+#endif
 
 /* At HIGH_BIT_DEPTH some cu[] slots are aliases: setupAliasPrimitives() installs
  * the same trampoline in both tables, so ref == opt and the check can never fail.
@@ -1231,12 +1348,14 @@ bool PixelHarness::check_saoCuOrgE2_t(saoCuOrgE2_t ref[2], saoCuOrgE2_t opt[2])
             for (int i = 0; i < ITERS; i++)
             {
                 int width = 16 * (1 << (id * (rand() % 2 + 1))) - (rand() % 2);
+                if (id && i % 3 == 0)
+                    width = 48 - (i / 3) % 3;
                 int stride = width + 1;
 
                 ref[width > 16](ref_dest, psbuf1 + j, psbuf2 + j, psbuf3 + j, width, stride);
                 checked(opt[width > 16], opt_dest, psbuf4 + j, psbuf2 + j, psbuf3 + j, width, stride);
 
-                if (memcmp(psbuf1 + j, psbuf4 + j, width * sizeof(int8_t)))
+                if (memcmp(psbuf1, psbuf4, BUFFSIZE))
                     return false;
 
                 if (memcmp(ref_dest, opt_dest, 64 * 64 * sizeof(pixel)))
@@ -1248,6 +1367,11 @@ bool PixelHarness::check_saoCuOrgE2_t(saoCuOrgE2_t ref[2], saoCuOrgE2_t opt[2])
         }
     }
 
+#if X265_ARCH_X86
+    for (int width = 16; width <= 64; width += 16)
+        if (opt[width > 16] && !checkSaoBounds(ref[width > 16], opt[width > 16], NULL, NULL, width))
+            return false;
+#endif
     return true;
 }
 
@@ -1277,6 +1401,10 @@ bool PixelHarness::check_saoCuOrgE3_t(saoCuOrgE3_t ref, saoCuOrgE3_t opt)
         j += INCR;
     }
 
+#if X265_ARCH_X86
+    if (!checkSaoBounds(NULL, NULL, ref, opt, 16))
+        return false;
+#endif
     return true;
 }
 
@@ -1502,7 +1630,14 @@ bool PixelHarness::check_saoCuOrgE3_32_t(saoCuOrgE3_t ref, saoCuOrgE3_t opt)
     {
         int stride = 32 * (rand() % 2 + 1);
         int start = rand() % 2;
-        int end = (32 * (rand() % 2 + 1)) - rand() % 2;
+        int end = 32 * (rand() % 2 + 1) - rand() % 2;
+        if (i % 3 == 0)
+        {
+            end = 48 - (i / 3) % 2;
+            start = (i / 6) % 2;
+        }
+        if (end > stride)
+            stride = 64;
 
         ref(ref_dest, psbuf2 + j, psbuf1 + j, stride, start, end);
         checked(opt, opt_dest, psbuf5 + j, psbuf1 + j, stride, start, end);
@@ -1514,6 +1649,11 @@ bool PixelHarness::check_saoCuOrgE3_32_t(saoCuOrgE3_t ref, saoCuOrgE3_t opt)
         j += INCR;
     }
 
+#if X265_ARCH_X86
+    for (int width = 32; width <= 64; width += 16)
+        if (!checkSaoBounds(NULL, NULL, ref, opt, width))
+            return false;
+#endif
     return true;
 }
 
