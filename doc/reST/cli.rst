@@ -558,6 +558,11 @@ frame counts) are only applicable to the CLI application.
 	second. The decoder must re-combine the fields in their correct
 	orientation for display.
 
+	If the source pictures are interlaced frames, with both fields woven
+	into each picture (the usual layout of interlaced YUV and Y4M files),
+	also use :option:`--field`. In that case the source dimensions and FPS
+	are those of the frames, not the fields.
+
 .. option:: --frame-dup, --no-frame-dup
 
 	Enable Adaptive Frame duplication. Replaces 2-3 near-identical frames with one 
@@ -622,7 +627,19 @@ frame counts) are only applicable to the CLI application.
 
 .. option:: --field, --no-field
 
-	Enable or disable field coding. Default disabled.
+	Treat each input picture as an interlaced frame and split it into its
+	two fields before encoding. Requires :option:`--interlace`, which sets
+	the field order: the first field is the top field for tff and the
+	bottom field for bff. The source dimensions and FPS are those of the
+	frames; the encoder codes twice as many pictures at half the height.
+
+	Without :option:`--field`, the input must already be fields, as
+	described for :option:`--interlace`.
+
+	The split into fields is done by the x265 CLI. Applications using the
+	library must pass fields and set ``fieldNum`` in each
+	:c:type:`x265_picture` (1 for the first field, 2 for the second).
+	Default disabled.
 	
 Profile, Level, Tier
 ====================

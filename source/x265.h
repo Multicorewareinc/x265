@@ -498,6 +498,8 @@ typedef struct x265_picture
     //Dolby Vision RPU metadata
     x265_dolby_vision_rpu rpu;
 
+    /* Field number when bField and interlaceMode are set: 1 for the first field
+     * of a frame, 2 for the second */
     int fieldNum;
 
     //SEI picture structure message
@@ -2191,7 +2193,11 @@ typedef struct x265_param
        Re-init RC history at that point in ABR mode. Default is disabled. */
     int       bEnableFades;
 
-    /* Enable field coding */
+    /* Enable field coding of interlaced input. With the x265 CLI, each input
+     * picture is an interlaced frame that the CLI splits into its two fields.
+     * Applications using the library must pass fields and set fieldNum in each
+     * x265_picture; pic_struct is then derived from fieldNum instead of the
+     * POC. Requires interlaceMode. Default disabled */
     int bField;
 
     /*Emit content light level info SEI*/

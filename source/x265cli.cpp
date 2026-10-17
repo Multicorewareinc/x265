@@ -84,8 +84,8 @@ namespace X265_NS {
         H0("   --nalu-file <filename>        Text file containing SEI messages in the following format : <POC><space><PREFIX><space><NAL UNIT TYPE>/<SEI TYPE><space><SEI Payload>\n");
         H0("-f/--frames <integer>            Maximum number of frames to encode. Default all\n");
         H0("   --seek <integer>              First frame to encode\n");
-        H1("   --[no-]interlace <bff|tff>    Indicate input pictures are interlace fields in temporal order. Default progressive\n");
-        H0("   --[no-]field                  Enable or disable field coding. Default %s\n", OPT(param->bField));
+        H1("   --[no-]interlace <bff|tff>    Input pictures are interlaced fields in temporal order (use --field for interlaced frames). Default progressive\n");
+        H0("   --[no-]field                  Input pictures are interlaced frames. Split each into two fields (use with --interlace). Default %s\n", OPT(param->bField));
         H1("   --dither                      Enable dither if downscaling to 8 bit pixels. Default disabled\n");
         H0("   --[no-]copy-pic               Copy buffers of input picture in the frame. Default %s\n", OPT(param->bCopyPicToFrame));
         H0("\nQuality reporting metrics:\n");

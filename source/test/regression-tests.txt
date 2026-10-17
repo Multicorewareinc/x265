@@ -164,6 +164,12 @@ crowd_run_1920x1080_50.yuv, --preset ultrafast --eob --eos
 CrowdRun_1920x1080_50_10bit_422.yuv,--preset faster --interlace tff
 CrowdRun_1920x1080_50_10bit_422.yuv,--preset fast --interlace bff
 
+# field coding test, interlaced frames are split into fields by the CLI
+washdc_422_ntsc.y4m,--preset medium --interlace bff --field
+vtc1nw_422_ntsc.y4m,--preset ultrafast --interlace bff --field
+cut_fox_1920x1080_30.yuv,--preset slow --interlace tff --field
+cut_fox_1920x1080_30.yuv,--preset fast --interlace tff --field --bframes 0
+
 #SEA Implementation Test
 silent_cif_420.y4m,--preset veryslow --me sea
 big_buck_bunny_360p24.y4m,--preset superfast --me sea
