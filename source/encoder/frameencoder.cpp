@@ -1060,7 +1060,9 @@ void FrameEncoder::compressFrame(int layer)
         }
     }
 #if ENABLE_LIBVMAF
-    vmafFrameLevelScore();
+    if (m_param->tune)
+        if (!strcmp(m_param->tune, "vmaf"))
+            vmafFrameLevelScore();
 #endif
 
     m_tmeDepLock.acquire();
