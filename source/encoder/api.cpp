@@ -318,7 +318,7 @@ int x265_encoder_reconfig(x265_encoder* enc, x265_param* param_in)
          encoder->m_param->csvfpt = param_in->csvfpt;
     if (encoder->m_latestParam->forceFlush != param_in->forceFlush)
         return encoder->reconfigureParam(encoder->m_latestParam, param_in);
-    bool isReconfigureRc = encoder->isReconfigureRc(encoder->m_latestParam, param_in);
+    bool isReconfigureRc = encoder->isReconfigureRc(encoder->m_latestParam, param_in) && !param_in->rc.zonefileCount;
     if ((encoder->m_reconfigure && !isReconfigureRc) || (encoder->m_reconfigureRc && isReconfigureRc)) /* Reconfigure in progress */
         return 1;
     if (encoder->m_latestParam->rc.zoneCount || encoder->m_latestParam->rc.zonefileCount)
@@ -337,7 +337,14 @@ int x265_encoder_reconfig(x265_encoder* enc, x265_param* param_in)
     }
     else
     {
+        /* configure() makes the parameters it is given the encoder's own. The encoder
+         * keeps its set until the frame that takes the new one copies it in (Encoder::encode);
+         * repointed here, that copy is of the set onto itself and the rate control, which
+         * reads the encoder's original set, never sees a reconfigured rate, buffer or
+         * rate factor. */
+        x265_param *active = encoder->m_param;
         encoder->configure(encoder->m_latestParam);
+        encoder->m_param = active;
         if (strlen(encoder->m_latestParam->scalingLists) && strcmp(encoder->m_latestParam->scalingLists, encoder->m_param->scalingLists))
         {
             if (encoder->m_param->bRepeatHeaders)
