@@ -5001,6 +5001,11 @@ void Search::getBlkBits(PartSize cuMode, bool bPSlice, int partIdx, uint32_t las
 /* Check if using an alternative MVP would result in a smaller MVD + signal bits */
 const MV& Search::checkBestMVP(const MV* amvpCand, const MV& mv, int& mvpIdx, uint32_t& outBits, uint32_t& outCost) const
 {
+    /* A zero MVD is already minimal; identical predictors cannot improve it either.
+     * Keep the current predictor on ties, as in the bit-cost comparison below. */
+    if (mv == amvpCand[mvpIdx] || amvpCand[0] == amvpCand[1])
+        return amvpCand[mvpIdx];
+
     int diffBits = m_me.bitcost(mv, amvpCand[!mvpIdx]) - m_me.bitcost(mv, amvpCand[mvpIdx]);
     if (diffBits < 0)
     {
