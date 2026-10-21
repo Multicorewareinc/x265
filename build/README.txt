@@ -64,6 +64,26 @@ Note: When the SVE/SVE2 instruction set of Arm AArch64 architecture is to be use
    If VisualLeakDetector is not installed, cmake will complain a bit, but
    it is completely harmless.
 
+3. ML CTU partition prediction (--ml-ctu-pred)
+
+   Requires ONNX Runtime 1.17 or later (1.20.1 recommended) and CMake 3.10
+   or later. Download a release archive from
+   https://github.com/microsoft/onnxruntime/releases, then:
+
+   cmake ../source -DENABLE_MLCTUPRED=ON -DONNXRUNTIME_DIR=<onnxruntime dir>
+
+   cmake should print:
+
+   -- ML CTU Pred: ONNX Runtime found
+
+   The ONNX Runtime 1.20.1 Linux archive needs glibc 2.27 or later.
+
+   OpenMP is optional and speeds up preprocessing. Apple clang needs libomp
+   (brew install libomp) and the matching OpenMP_* CMake hints.
+
+   The models are installed to <prefix>/share/x265/models (CMake option
+   ML_MODEL_INSTALL_DIR). See --ml-model-dir for how x265 finds them.
+
 
 = Build Instructions Linux =
 

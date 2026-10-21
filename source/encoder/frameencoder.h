@@ -44,6 +44,9 @@
 #include "threadedme.h"
 #include "threading.h"
 #include <queue>
+#ifdef ENABLE_MLCTUPRED
+#include "mlctu.h"
+#endif
 
 namespace X265_NS {
 // private x265 namespace
@@ -272,6 +275,12 @@ public:
     NALList                  m_nalList;
 
     int                      m_sLayerId;
+
+#ifdef ENABLE_MLCTUPRED
+    MLCTUBuffers             m_mlBuffers;   /* ML model inputs */
+    MLPredictionRequest      m_mlRequest;   /* reused for each I-frame */
+    ThreadSafeInteger        m_mlRowsReady; /* CTU rows with ML predictions ready */
+#endif
 
     std::queue<CTUTask>      m_tmeTasks;
     Lock                     m_tmeTasksLock;
