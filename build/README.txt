@@ -1,13 +1,12 @@
 = Mandatory Prerequisites =
 
-* GCC, MSVC (9, 10, 11, 12), Xcode or Intel C/C++
-* CMake 2.8.8 or later http://www.cmake.org
-* On linux, ccmake is helpful, usually a package named cmake-curses-gui 
+* GCC 9 or later, Clang 5 or later (Clang 10 or later on glibc 2.31+),
+  Apple Clang 10 (Xcode 10) or later, or MSVC 19.14 (Visual Studio 2017 15.7) or later
+* CMake 3.10 or later http://www.cmake.org
+* On linux, ccmake is helpful, usually a package named cmake-curses-gui
 
-Note: MSVC12 requires cmake 2.8.11 or later
-
-Note: When the SVE/SVE2 instruction set of Arm AArch64 architecture is to be used, the GCC10.x and onwards must
-      be installed in order to compile x265.
+Note: For Arm AArch64, the Neon I8MM and SVE instruction sets need GCC 10 or later,
+      and SVE2 needs GCC 12 or later.
 
 
 = Optional Prerequisites =

@@ -11,7 +11,7 @@ if(POLICY CMP0042)
     cmake_policy(SET CMP0042 NEW) # MACOSX_RPATH
 endif()
 
-cmake_minimum_required (VERSION 2.8.8...3.10) # OBJECT libraries require 2.8.8
+cmake_minimum_required (VERSION 3.10)
 
 if (POLICY CMP0075)
     cmake_policy(SET CMP0075 NEW) # CMAKE_REQUIRED_LIBRARIES warning
@@ -19,6 +19,12 @@ endif()
 
 
 project (x265)
+
+# x265 is built as C++17 (CMake adds -std=c++17 / /std:c++17 for each compiler)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 include(CheckIncludeFiles)
 include(CheckFunctionExists)
 include(CheckSymbolExists)
@@ -249,6 +255,10 @@ if(MSVC)
     # disable Microsofts suggestions for proprietary secure APIs
     add_definitions(/D_CRT_SECURE_NO_WARNINGS)
 
+    if(MSVC_VERSION LESS 1914)
+        message(FATAL_ERROR "Visual Studio 2017 15.7 (MSVC 19.14) or newer is required to build x265 with C++17")
+    endif()
+
     check_include_files(stdint.h HAVE_STDINT_H)
     if(NOT HAVE_STDINT_H)
         include_directories(compat/msvc)
@@ -280,27 +290,11 @@ if(CC STREQUAL "xlc")
 endif()
 # this option is to enable the inclusion of dynamic HDR10 library to the libx265 compilation
 option(ENABLE_HDR10_PLUS "Enable dynamic HDR10 compilation" OFF)
-if(MSVC AND (MSVC_VERSION LESS 1800) AND ENABLE_HDR10_PLUS)
-    message(FATAL_ERROR "MSVC version 12.0 or above required to support hdr10plus")
-endif()
-if(WIN32 AND (MSVC_VERSION GREATER 1800))
-    if(CMAKE_VERSION VERSION_LESS 3.7)
-        message(FATAL_ERROR "cmake version not compatible for VS 2017. Update the cmake to versions 3.7 or above")
-    endif()
-endif()
 if(GCC)
     add_definitions(-Wall -Wextra -Wshadow)
     add_definitions(-D__STDC_LIMIT_MACROS=1)
     if(NOT INTEL_CXX AND NOT CLANG AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 8.0)
         add_definitions(-Wno-class-memaccess)
-    endif()
-    if(ENABLE_HDR10_PLUS)
-        if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "4.8")
-            message(FATAL_ERROR "gcc version above 4.8 required to support hdr10plus")
-        endif()
-        add_definitions(-std=gnu++11)
-    else()
-        add_definitions(-std=gnu++98)
     endif()
     if(ENABLE_PIC)
          add_definitions(-fPIC)
