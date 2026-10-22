@@ -2408,7 +2408,9 @@ typedef struct x265_param
      * source frames. 3 = side by side, 4 = top and bottom (frame 0 is the left view),
      * 5 = temporal interleaving (alternate frames are the left and right views).
      * The first encoded picture is the left view, so an odd --seek swaps the views.
-     * With interlaceMode both fields of a frame belong to the same view.
+     * With interlaceMode both fields of a frame belong to the same view. With
+     * bEnableFrameDuplication the view follows the input picture, so a dropped
+     * duplicate does not swap the views of the pictures after it.
      * Other values are an error.
      * Types 3 and 4 write the message with each IRAP picture, type 5 with every
      * picture. It is written on the base layer only and cannot be combined with

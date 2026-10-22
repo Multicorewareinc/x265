@@ -128,6 +128,7 @@ Encoder::Encoder()
     m_reconfigureRc = false;
     m_encodedFrameNum = 0;
     m_pocLast = -1;
+    m_sourcePocNext = 0;
     m_firstPts = 0;
     m_bframeDelayTime = 0;
     m_prevReorderedPts[0] = m_prevReorderedPts[1] = 0;
@@ -1734,6 +1735,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
             inFrame[layer]->m_fencPic->copyFromPicture(*inputPic[!m_param->format ? (m_param->numScalableLayers > 1) ? 0 : layer : 0], *m_param, m_sps.conformanceWindow.rightOffset, m_sps.conformanceWindow.bottomOffset, !layer);
 
             inFrame[layer]->m_poc = (!layer) ? (++m_pocLast) : m_pocLast;
+            inFrame[layer]->m_sourcePoc = m_sourcePocNext;
             inFrame[layer]->m_userData = inputPic[0]->userData;
             inFrame[layer]->m_pts = inputPic[0]->pts;
             inFrame[layer]-> vbvEndFlag = inputPic[0]->vbvEndFlag;
@@ -1772,6 +1774,15 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
 
             /* Encoder holds a reference count until stats collection is finished */
             ATOMIC_INC(&inFrame[layer]->m_countRefEncoders);
+        }
+        m_sourcePocNext++;
+        if (m_param->bEnableFrameDuplication)
+        {
+            /* A doubled or tripled picture also stands for the duplicates dropped after it */
+            if (inputPic[0]->picStruct == doubling)
+                m_sourcePocNext++;
+            else if (inputPic[0]->picStruct == tripling)
+                m_sourcePocNext += 2;
         }
         copyUserSEIMessages(inFrame[0], inputPic[0]);
 

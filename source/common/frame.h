@@ -92,6 +92,7 @@ public:
     PicList                refPicSetInterLayer1;
 
     int                    m_poc;
+    int                    m_sourcePoc;          // first input picture the frame stands for, m_poc unless frame duplication dropped pictures
     int                    m_encodeOrder;
     int                    m_gopOffset;
     int64_t                m_pts;                // user provided presentation time stamp

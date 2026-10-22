@@ -58,6 +58,7 @@ Frame::Frame()
     m_addOnPrevChange = NULL;
     m_classifyFrame = false;
     m_fieldNum = 0;
+    m_sourcePoc = 0;
     m_picStruct = 0;
     m_edgePic = NULL;
     m_gaussianPic = NULL;

@@ -384,6 +384,7 @@ namespace X265_NS {
         H0("                                   - 4: top and bottom - left view on top, right view on the bottom\n");
         H0("                                   - 5: temporal interleaving - alternate frames are the left and right views. The first encoded picture is the left view\n");
         H0("                                   An odd --seek swaps the views. With --interlace both fields of a frame belong to the same view\n");
+        H0("                                   With --frame-dup the view follows the input picture, so a dropped duplicate does not swap the views\n");
         H0("   --pic-struct <integer>        Set the picture structure and emit it in the picture timing SEI message. Values in the range 0..12. See D.3.3 of the HEVC spec. for a detailed explanation.\n");
         H0("   --log2-max-poc-lsb <integer>  Maximum of the picture order count\n");
         H0("   --[no-]vui-timing-info        Emit VUI timing information in the bitstream. Default %s\n", OPT(param->bEmitVUITimingInfo));

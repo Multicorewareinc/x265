@@ -861,8 +861,9 @@ void FrameEncoder::compressFrame(int layer)
     {
         /* Type 5 alternates the views frame by frame, so every picture carries its own message. The
          * other types persist until the next IRAP, which repeats the message. With --interlace the
-         * pictures are fields and both fields of a frame belong to the same view. */
-        int frameIdx = m_param->interlaceMode ? m_frame[layer]->m_poc >> 1 : m_frame[layer]->m_poc;
+         * pictures are fields and both fields of a frame belong to the same view. The view follows
+         * the input picture, not the encoded one: --frame-dup drops duplicates before encoding. */
+        int frameIdx = m_param->interlaceMode ? m_frame[layer]->m_sourcePoc >> 1 : m_frame[layer]->m_sourcePoc;
         SEIFramePacking m_seiFramePacking;
         m_seiFramePacking.m_arrangementType = m_param->framePacking;
         m_seiFramePacking.m_currentFrameIsFrame0 = m_param->framePacking == 5 && !(frameIdx & 1);

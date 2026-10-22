@@ -188,6 +188,7 @@ public:
     int64_t            m_encodeStartTime;
 
     int                m_pocLast;         // time index (POC)
+    int                m_sourcePocNext;   // input pictures consumed so far, dropped duplicates included
     int                m_encodedFrameNum;
     int                m_outputCount;
     int                m_bframeDelay;

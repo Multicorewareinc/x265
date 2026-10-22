@@ -2785,7 +2785,9 @@ Bitstream options
 	picture is the left view, so an odd :option:`--seek` swaps the views.
 	With :option:`--interlace` both fields of a frame belong to the same view,
 	whether the input pictures are already fields or :option:`--field` splits
-	each input frame into fields.
+	each input frame into fields. With :option:`--frame-dup` the view follows
+	the input picture, so a dropped duplicate does not swap the views of the
+	pictures after it.
 
 	The message is written on the base layer only, so with :option:`--alpha` the
 	alpha layer does not carry it. It cannot be combined with
