@@ -856,11 +856,13 @@ void FrameEncoder::compressFrame(int layer)
     }
 
     /* The message describes the packed pictures of the base layer: an alpha layer is not a view. */
-    bool writeFramePacking = m_param->framePacking > -1 && !layer && (slice->isIRAP() || m_param->framePacking == 5);
+    bool writeFramePacking = m_param->framePacking > -1 && !layer && (slice->isIRAP() || m_param->framePacking == 5 ||
+                             (m_param->bIntraRefresh && m_frame[layer]->m_lowres.bKeyframe));
     if (writeFramePacking)
     {
         /* Type 5 alternates the views frame by frame, so every picture carries its own message. The
-         * other types persist until the next IRAP, which repeats the message. With --interlace the
+         * other types persist until the next IRAP, which repeats the message, or with intra refresh
+         * until the next refresh cycle, which starts a keyframe that is not an IRAP. With --interlace the
          * pictures are fields and both fields of a frame belong to the same view. The view follows
          * the input picture, not the encoded one: --frame-dup drops duplicates before encoding. */
         int frameIdx = m_param->interlaceMode ? m_frame[layer]->m_sourcePoc >> 1 : m_frame[layer]->m_sourcePoc;

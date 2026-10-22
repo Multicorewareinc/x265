@@ -2779,8 +2779,10 @@ Bitstream options
 	5. Temporal interleaving: alternate frames in output order are the left
 	   and right views.
 
-	Types 3 and 4 write the message with each IRAP picture, and it persists until
-	the next one or the end of the coded video sequence. Type 5 writes it with every picture, because
+	Types 3 and 4 write the message with each IRAP picture, and with
+	:option:`--intra-refresh` also with the first picture of each refresh cycle,
+	as x264 does. It persists until the next one or the end of the coded video
+	sequence. Type 5 writes it with every picture, because
 	current_frame_is_frame0_flag alternates with the frame. The first encoded
 	picture is the left view, so an odd :option:`--seek` swaps the views.
 	With :option:`--interlace` both fields of a frame belong to the same view,

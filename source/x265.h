@@ -2412,8 +2412,9 @@ typedef struct x265_param
      * bEnableFrameDuplication the view follows the input picture, so a dropped
      * duplicate does not swap the views of the pictures after it.
      * Other values are an error.
-     * Types 3 and 4 write the message with each IRAP picture, type 5 with every
-     * picture. It is written on the base layer only and cannot be combined with
+     * Types 3 and 4 write the message with each IRAP picture and, with
+     * bIntraRefresh, with the first picture of each refresh cycle; type 5 with
+     * every picture. It is written on the base layer only and cannot be combined with
      * numViews > 1. Default -1 (disabled). */
     int      framePacking;
 } x265_param;
