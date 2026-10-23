@@ -3472,7 +3472,7 @@ void Encoder::getStreamHeaders(NALList& list, Entropy& sbacCoder, Bitstream& bs)
     {
         SEIAlphaChannelInfo m_alpha;
         m_alpha.alpha_channel_cancel_flag = !m_param->numScalableLayers;
-        m_alpha.writeSEImessages(bs, m_sps, NAL_UNIT_PREFIX_SEI, list, m_param->bSingleSeiNal);
+        m_alpha.writeStreamHeaderSEI(bs, m_sps, list, m_param->bSingleSeiNal);
     }
 #endif
 
@@ -3481,16 +3481,16 @@ void Encoder::getStreamHeaders(NALList& list, Entropy& sbacCoder, Bitstream& bs)
     if (m_param->numViews > 1)
     {
         SEIThreeDimensionalReferenceDisplaysInfo m_multiview_1;
-        m_multiview_1.writeSEImessages(bs, m_sps, NAL_UNIT_PREFIX_SEI, list, m_param->bSingleSeiNal, 0);
+        m_multiview_1.writeStreamHeaderSEI(bs, m_sps, list, m_param->bSingleSeiNal);
 
         SEIMultiviewSceneInfo m_multiview_2;
-        m_multiview_2.writeSEImessages(bs, m_sps, NAL_UNIT_PREFIX_SEI, list, m_param->bSingleSeiNal, 0);
+        m_multiview_2.writeStreamHeaderSEI(bs, m_sps, list, m_param->bSingleSeiNal);
 
         SEIMultiviewAcquisitionInfo m_multiview_3;
-        m_multiview_3.writeSEImessages(bs, m_sps, NAL_UNIT_PREFIX_SEI, list, m_param->bSingleSeiNal, 0);
+        m_multiview_3.writeStreamHeaderSEI(bs, m_sps, list, m_param->bSingleSeiNal);
 
         SEIMultiviewViewPosition m_multiview_4;
-        m_multiview_4.writeSEImessages(bs, m_sps, NAL_UNIT_PREFIX_SEI, list, m_param->bSingleSeiNal, 0);
+        m_multiview_4.writeStreamHeaderSEI(bs, m_sps, list, m_param->bSingleSeiNal);
     }
 #endif
 
@@ -3504,14 +3504,14 @@ void Encoder::getStreamHeaders(NALList& list, Entropy& sbacCoder, Bitstream& bs)
             SEIContentLightLevel cllsei;
             cllsei.max_content_light_level = m_param->maxCLL;
             cllsei.max_pic_average_light_level = m_param->maxFALL;
-            cllsei.writeSEImessages(bs, m_sps, NAL_UNIT_PREFIX_SEI, list, m_param->bSingleSeiNal);
+            cllsei.writeStreamHeaderSEI(bs, m_sps, list, m_param->bSingleSeiNal);
         }
 
         if (strlen(m_param->masteringDisplayColorVolume))
         {
             SEIMasteringDisplayColorVolume mdsei;
             if (mdsei.parse(m_param->masteringDisplayColorVolume))
-                mdsei.writeSEImessages(bs, m_sps, NAL_UNIT_PREFIX_SEI, list, m_param->bSingleSeiNal);
+                mdsei.writeStreamHeaderSEI(bs, m_sps, list, m_param->bSingleSeiNal);
             else
                 x265_log(m_param, X265_LOG_WARNING, "unable to parse mastering display color volume info\n");
         }
@@ -3535,7 +3535,7 @@ void Encoder::getStreamHeaders(NALList& list, Entropy& sbacCoder, Bitstream& bs)
                 SEIuserDataUnregistered idsei;
                 idsei.m_userData = (uint8_t*)buffer;
                 idsei.setSize((uint32_t)strlen(buffer));
-                idsei.writeSEImessages(bs, m_sps, NAL_UNIT_PREFIX_SEI, list, m_param->bSingleSeiNal);
+                idsei.writeStreamHeaderSEI(bs, m_sps, list, m_param->bSingleSeiNal);
 
                 X265_FREE(buffer);
             }
@@ -3550,7 +3550,7 @@ void Encoder::getStreamHeaders(NALList& list, Entropy& sbacCoder, Bitstream& bs)
         SEIActiveParameterSets sei;
         sei.m_selfContainedCvsFlag = true;
         sei.m_noParamSetUpdateFlag = true;
-        sei.writeSEImessages(bs, m_sps, NAL_UNIT_PREFIX_SEI, list, m_param->bSingleSeiNal);
+        sei.writeStreamHeaderSEI(bs, m_sps, list, m_param->bSingleSeiNal);
     }
 }
 

@@ -114,6 +114,7 @@ void NALList::serialize(NalUnitType nalUnitType, const Bitstream& bs, int layerI
      * nal_unit_type            6-bits
      * nuh_reserved_zero_6bits  6-bits
      * nuh_temporal_id_plus1    3-bits */
+    X265_CHECK(temporalID > 0, "zero nuh_temporal_id_plus1\n");
     out[bytes++] = (uint8_t)nalUnitType << 1;
     out[bytes++] = (uint8_t)((layerId << 3) | (temporalID));
 

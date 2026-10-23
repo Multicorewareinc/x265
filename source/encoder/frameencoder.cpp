@@ -411,7 +411,7 @@ bool FrameEncoder::writeToneMapInfo(x265_sei_payload *payload)
     return (payloadChange || isIDR);
 }
 
-void FrameEncoder::writeTrailingSEIMessages(int layer)
+void FrameEncoder::writeTrailingSEIMessages(int layer, uint8_t sliceTempIdPlus1)
 {
     Slice* slice = m_frame[layer]->m_encData->m_slice;
     int planes = (m_param->internalCsp != X265_CSP_I400) ? 3 : 1;
@@ -440,7 +440,7 @@ void FrameEncoder::writeTrailingSEIMessages(int layer)
     }
 
     m_seiReconPictureDigest.setSize(payloadSize);
-    m_seiReconPictureDigest.writeSEImessages(m_bs, *slice->m_sps, NAL_UNIT_SUFFIX_SEI, m_nalList, false, layer);
+    m_seiReconPictureDigest.writeAccessUnitSEI(m_bs, *slice->m_sps, NAL_UNIT_SUFFIX_SEI, m_nalList, false, layer, sliceTempIdPlus1);
 }
 
 void FrameEncoder::compressFrame(int layer)
@@ -486,11 +486,13 @@ void FrameEncoder::compressFrame(int layer)
      * not repeating headers (since AUD is supposed to be the first NAL in the access
      * unit) */
     Slice* slice = m_frame[layer]->m_encData->m_slice;
+    const uint8_t sliceTempIdPlus1 = (!!m_param->bEnableTemporalSubLayers ? m_frame[layer]->m_tempLayer + 1 : (1 + (slice->m_nalUnitType == NAL_UNIT_CODED_SLICE_TSA_N)));
 
     if (m_param->bEnableEndOfSequence && m_frame[layer]->m_lowres.sliceType == X265_TYPE_IDR && m_frame[layer]->m_poc)
     {
         m_bs.resetBits();
-        m_nalList.serialize(NAL_UNIT_EOS, m_bs);
+        /* EOS nut enforces temporalId = 0: pass 1 (temporalIdPlus1) */
+        m_nalList.serialize(NAL_UNIT_EOS, m_bs, layer, 1);
     }
 
     if (m_param->bEnableAccessUnitDelimiters && (m_frame[layer]->m_poc || m_param->bRepeatHeaders))
@@ -499,7 +501,7 @@ void FrameEncoder::compressFrame(int layer)
         m_entropyCoder.setBitstream(&m_bs);
         m_entropyCoder.codeAUD(*slice);
         m_bs.writeByteAlignment();
-        m_nalList.serialize(NAL_UNIT_ACCESS_UNIT_DELIMITER, m_bs);
+        m_nalList.serialize(NAL_UNIT_ACCESS_UNIT_DELIMITER, m_bs, layer, sliceTempIdPlus1);
         if (m_param->bSingleSeiNal)
             m_bs.resetBits();
     }
@@ -782,8 +784,7 @@ void FrameEncoder::compressFrame(int layer)
 
             // hrdFullness() calculates the initial CPB removal delay and offset
             m_top->m_rateControl->hrdFullness(bpSei);
-            bpSei->writeSEImessages(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer);
-
+            bpSei->writeAccessUnitSEI(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
             m_top->m_lastBPSEI = m_rce.encodeOrder;
         }
 
@@ -794,7 +795,7 @@ void FrameEncoder::compressFrame(int layer)
             sei.m_recoveryPocCnt = 0;
             sei.m_exactMatchingFlag = true;
             sei.m_brokenLinkFlag = false;
-            sei.writeSEImessages(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer);
+            sei.writeAccessUnitSEI(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
         }
     }
 
@@ -845,14 +846,14 @@ void FrameEncoder::compressFrame(int layer)
             sei->m_picDpbOutputDelay = slice->m_sps->numReorderPics[m_frame[layer]->m_tempLayer] + poc - m_rce.encodeOrder;
         }
 
-        sei->writeSEImessages(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer);
+        sei->writeAccessUnitSEI(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
     }
 
     if (m_param->preferredTransferCharacteristics > -1 && slice->isIRAP())
     {
         SEIAlternativeTC m_seiAlternativeTC;
         m_seiAlternativeTC.m_preferredTransferCharacteristics = m_param->preferredTransferCharacteristics;
-        m_seiAlternativeTC.writeSEImessages(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer);
+        m_seiAlternativeTC.writeAccessUnitSEI(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
     }
 
     /* The message describes the packed pictures of the base layer: an alpha layer is not a view. */
@@ -878,7 +879,7 @@ void FrameEncoder::compressFrame(int layer)
         FilmGrainCharacteristics m_filmGrain;
         /* Read the Film grain model file */
         readModel(&m_filmGrain, this->m_top->m_filmGrainIn);
-        m_filmGrain.writeSEImessages(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer);
+        m_filmGrain.writeAccessUnitSEI(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
     }
     /* Write Aom film grain characteristics if present */
     if (this->m_top->m_aomFilmGrainIn)
@@ -886,7 +887,7 @@ void FrameEncoder::compressFrame(int layer)
         AomFilmGrainCharacteristics m_aomFilmGrain;
         /* Read the Film grain model file */
         readAomModel(&m_aomFilmGrain, this->m_top->m_aomFilmGrainIn);
-        m_aomFilmGrain.writeSEImessages(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal);
+        m_aomFilmGrain.writeAccessUnitSEI(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
     }
     /* Write user SEI */
     for (int i = 0; i < m_frame[layer]->m_userSEI.numPayloads; i++)
@@ -897,7 +898,7 @@ void FrameEncoder::compressFrame(int layer)
             SEIuserDataUnregistered sei;
             sei.m_userData = payload->payload;
             sei.setSize(payload->payloadSize);
-            sei.writeSEImessages(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer);
+            sei.writeAccessUnitSEI(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
         }
         else if (payload->payloadType == USER_DATA_REGISTERED_ITU_T_T35)
         {
@@ -907,7 +908,7 @@ void FrameEncoder::compressFrame(int layer)
                 SEIuserDataRegistered sei;
                 sei.m_userData = payload->payload;
                 sei.setSize(payload->payloadSize);
-                sei.writeSEImessages(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer);
+                sei.writeAccessUnitSEI(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
             }
         }
         else
@@ -922,7 +923,7 @@ void FrameEncoder::compressFrame(int layer)
     if (isSei && m_param->bSingleSeiNal)
     {
         m_bs.writeByteAlignment();
-        m_nalList.serialize(NAL_UNIT_PREFIX_SEI, m_bs);
+        m_nalList.serialize(NAL_UNIT_PREFIX_SEI, m_bs, layer, sliceTempIdPlus1);
     }
     /* CQP and CRF (without capped VBV) doesn't use mid-frame statistics to 
      * tune RateControl parameters for other frames.
@@ -1219,10 +1220,10 @@ void FrameEncoder::compressFrame(int layer)
             m_entropyCoder.setBitstream(&m_bs);
             if (slice->m_pps->bEntropyCodingSyncEnabled)
                 m_entropyCoder.codeSliceHeaderWPPEntryPoints(&m_substreamSizes[prevSliceRow], (nextSliceRow - prevSliceRow - 1), maxStreamSize);
-            
+
             m_bs.writeByteAlignment();
 
-            m_nalList.serialize(slice->m_nalUnitType, m_bs, layer, (!!m_param->bEnableTemporalSubLayers ? m_frame[layer]->m_tempLayer + 1 : (1 + (slice->m_nalUnitType == NAL_UNIT_CODED_SLICE_TSA_N))));
+            m_nalList.serialize(slice->m_nalUnitType, m_bs, layer, sliceTempIdPlus1);
         }
     }
     else
@@ -1243,11 +1244,11 @@ void FrameEncoder::compressFrame(int layer)
             m_entropyCoder.codeSliceHeaderWPPEntryPoints(m_substreamSizes, (slice->m_sps->numCuInHeight - 1), maxStreamSize);
         m_bs.writeByteAlignment();
 
-        m_nalList.serialize(slice->m_nalUnitType, m_bs, layer, (!!m_param->bEnableTemporalSubLayers ? m_frame[layer]->m_tempLayer + 1 : (1 + (slice->m_nalUnitType == NAL_UNIT_CODED_SLICE_TSA_N))));
+        m_nalList.serialize(slice->m_nalUnitType, m_bs, layer, sliceTempIdPlus1);
     }
 
     if (m_param->decodedPictureHashSEI)
-        writeTrailingSEIMessages(layer);
+        writeTrailingSEIMessages(layer, sliceTempIdPlus1);
 
     uint64_t bytes = 0;
     for (uint32_t i = 0; i < m_nalList.m_numNal; i++)
@@ -1295,7 +1296,8 @@ void FrameEncoder::compressFrame(int layer)
             filler--;
         }
         m_bs.writeByteAlignment();
-        m_nalList.serialize(NAL_UNIT_FILLER_DATA, m_bs);
+        /* FD unit must carry the same temporalId as the associated frame */
+        m_nalList.serialize(NAL_UNIT_FILLER_DATA, m_bs, layer, sliceTempIdPlus1);
         bytes += m_nalList.m_nal[m_nalList.m_numNal - 1].sizeBytes;
         bytes -= 3; //exclude start code prefix
         m_accessUnitBits[layer] = bytes << 3;
