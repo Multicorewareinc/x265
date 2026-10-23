@@ -91,6 +91,7 @@ namespace X265_NS {
         CLIOptions m_cliopt;
         InputFile* m_input[MAX_VIEWS];
         const char* m_reconPlayCmd;
+        FILE*    m_psfile;
         FILE*    m_qpfile;
         FILE*    m_zoneFile;
         FILE*    m_dolbyVisionRpu;/* File containing Dolby Vision BL RPU metadata */

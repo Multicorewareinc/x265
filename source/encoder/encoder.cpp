@@ -50,6 +50,7 @@
 
 namespace X265_NS {
 const char g_sliceTypeToChar[] = {'B', 'P', 'I'};
+const uint8_t g_deltaToDivisor[PIC_STRUCT_COUNT] = {1, 1, 1, 2, 2, 3, 3, 2, 3, 1, 1, 1, 1};
 
 /* Dolby Vision profile specific settings */
 typedef struct
@@ -130,6 +131,8 @@ Encoder::Encoder()
     m_pocLast = -1;
     m_sourcePocNext = 0;
     m_firstPts = 0;
+    m_clockTickCount = 0;
+    m_lastPirCpbDelay = 0;
     m_bframeDelayTime = 0;
     m_prevReorderedPts[0] = m_prevReorderedPts[1] = 0;
     m_curEncoder = 0;
@@ -217,9 +220,6 @@ void Encoder::create()
             int stride = (p->sourceWidth >> x265_cli_csps[p->internalCsp].width[i]) * pixelbytes;
             framesize += (stride * (p->sourceHeight >> x265_cli_csps[p->internalCsp].height[i]));
         }
-
-        //Sets the picture structure and emits it in the picture timing SEI message
-        m_param->pictureStructure = 0; 
 
         for (uint32_t i = 0; i < DUP_BUFFER; i++)
         {
@@ -374,7 +374,7 @@ void Encoder::create()
     }
     else
         lookAheadThreadPool = m_threadPool ? &m_threadPool[m_numTmePools] : NULL;
-    m_lookahead = new Lookahead(m_param, lookAheadThreadPool);
+    m_lookahead = new Lookahead(m_param, lookAheadThreadPool, &m_sps);
     m_lookahead->m_numPools = lookaheadPools;
     if (lookaheadPools)
     {
@@ -428,7 +428,7 @@ void Encoder::create()
     initVPS(&m_vps);
     initSPS(&m_sps);
     initPPS(&m_pps);
-   
+
     if (m_param->rc.vbvBufferSize)
     {
         m_offsetEmergency = (uint16_t(*)[MAX_NUM_TR_CATEGORIES][MAX_NUM_TR_COEFFS])X265_MALLOC(uint16_t, MAX_NUM_TR_CATEGORIES * MAX_NUM_TR_COEFFS * (QP_MAX_MAX - QP_MAX_SPEC));
@@ -1064,7 +1064,7 @@ void Encoder::updateVbvPlan(RateControl* rc)
             int64_t bits = m_param->rc.bEnableConstVbv ? (int64_t)frameSizePlan : (int64_t)X265_MAX(frameSizeEst, frameSizePlan);
             rc->m_bufferFill -= bits;
             rc->m_bufferFill = X265_MAX(rc->m_bufferFill, 0);
-            rc->m_bufferFill += encoder->m_rce.bufferRate;
+            rc->m_bufferFill += encoder->m_rce.bufferRate * encoder->m_rce.cpbDuration;
             rc->m_bufferFill = X265_MIN(rc->m_bufferFill, rc->m_bufferSize);
             if (rc->m_2pass)
                 rc->m_predictedBits += bits;
@@ -1077,9 +1077,13 @@ void Encoder::calcRefreshInterval(Frame* frameEnc)
     Slice* slice = frameEnc->m_encData->m_slice;
     uint32_t numBlocksInRow = slice->m_sps->numCuInWidth;
     FrameData::PeriodicIR* pir = &frameEnc->m_encData->m_pir;
+
+    const uint32_t lastCpbDelay = frameEnc->m_cpbDelay;
+    frameEnc->m_cpbDelay -= m_lastPirCpbDelay;
+
     if (slice->m_sliceType == I_SLICE)
     {
-        pir->framesSinceLastPir = 0;
+        pir->ticksSinceLastPir = 0;
         m_bQueuedIntraRefresh = 0;
         /* PIR is currently only supported with ref == 1, so any intra frame effectively refreshes
          * the whole frame and counts as an intra refresh. */
@@ -1088,16 +1092,16 @@ void Encoder::calcRefreshInterval(Frame* frameEnc)
     else if (slice->m_sliceType == P_SLICE)
     {
         Frame* ref = frameEnc->m_encData->m_slice->m_refFrameList[0][0];
-        int pocdiff = frameEnc->m_poc - ref->m_poc;
-        int numPFramesInGOP = m_param->keyframeMax / pocdiff;
-        int increment = (numBlocksInRow + numPFramesInGOP - 1) / numPFramesInGOP;
+        int ticksdiff = (int)(frameEnc->m_displayPicCount - ref->m_displayPicCount);
+        int numPFramesTicksInGOP = m_param->keyframeMax / ticksdiff;
+        int increment = (numBlocksInRow + numPFramesTicksInGOP - 1) / numPFramesTicksInGOP;
         pir->pirEndCol = ref->m_encData->m_pir.pirEndCol;
-        pir->framesSinceLastPir = ref->m_encData->m_pir.framesSinceLastPir + pocdiff;
-        if (pir->framesSinceLastPir >= m_param->keyframeMax ||
+        pir->ticksSinceLastPir = ref->m_encData->m_pir.ticksSinceLastPir + ticksdiff;
+        if (pir->ticksSinceLastPir >= m_param->keyframeMax ||
             (m_bQueuedIntraRefresh && pir->pirEndCol >= numBlocksInRow))
         {
             pir->pirEndCol = 0;
-            pir->framesSinceLastPir = 0;
+            pir->ticksSinceLastPir = 0;
             m_bQueuedIntraRefresh = 0;
             frameEnc->m_lowres.bKeyframe = 1;
         }
@@ -1108,6 +1112,10 @@ void Encoder::calcRefreshInterval(Frame* frameEnc)
         {
             pir->pirEndCol = numBlocksInRow;
         }
+    }
+    if (frameEnc->m_lowres.bKeyframe)
+    {
+        m_lastPirCpbDelay = lastCpbDelay;
     }
 }
 
@@ -1566,13 +1574,13 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                 {
                     if (m_dupBuffer[0]->bDup)
                     {
-                        m_dupBuffer[0]->dupPic->picStruct = tripling;
+                        m_dupBuffer[0]->dupPic->picStruct = PIC_STRUCT_TRIPLING;
                         m_dupBuffer[0]->bDup = false;
                         read++;
                     }
                     else
                     {
-                        m_dupBuffer[0]->dupPic->picStruct = doubling;
+                        m_dupBuffer[0]->dupPic->picStruct = PIC_STRUCT_DOUBLING;
                         m_dupBuffer[0]->bDup = true;
                         m_dupBuffer[1]->bOccupied = false;
                         read++;
@@ -1759,7 +1767,26 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
 
             inFrame[layer]->m_forceqp = inputPic[0]->forceqp;
             inFrame[layer]->m_param = (m_reconfigure || m_reconfigureRc || m_param->bConfigRCFrame) ? m_latestParam : m_param;
-            inFrame[layer]->m_picStruct = inputPic[0]->picStruct;
+
+            if (inFrame[layer]->m_param->pictureStructure >= PIC_STRUCT_AUTO)
+                inFrame[layer]->m_picStruct = inFrame[layer]->m_param->pictureStructure;
+            else
+               inFrame[layer]->m_picStruct = inputPic[0]->picStruct;
+
+            if (inFrame[layer]->m_picStruct >= PIC_STRUCT_COUNT)
+                inFrame[layer]->m_picStruct = PIC_STRUCT_PROGRESSIVE_FRAME;
+
+            /* Set up frame timing info for slicetype and ratecontrol and the frame timebase (could change across cvs, if no HRD) */
+            if (inFrame[layer]->m_param->bEmitVUITimingInfo)
+                inFrame[layer]->m_timebase = ((double)m_sps.vuiParameters.timingInfo.numUnitsInTick / (double)m_sps.vuiParameters.timingInfo.timeScale);
+            else
+                inFrame[layer]->m_timebase = ((double)inFrame[layer]->m_param->fpsDenom / (double)inFrame[layer]->m_param->fpsNum);
+
+            inFrame[layer]->m_duration = g_deltaToDivisor[inFrame[layer]->m_picStruct];
+            inFrame[layer]->m_displayPicCount = m_clockTickCount;
+
+            /* update presentation tick count */
+            m_clockTickCount += inFrame[layer]->m_duration;
 
             /*Copy reconfigured RC parameters to frame*/
             if (m_param->rc.rateControlMode == X265_RC_ABR)
@@ -1779,9 +1806,9 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
         if (m_param->bEnableFrameDuplication)
         {
             /* A doubled or tripled picture also stands for the duplicates dropped after it */
-            if (inputPic[0]->picStruct == doubling)
+            if (inputPic[0]->picStruct == PIC_STRUCT_DOUBLING)
                 m_sourcePocNext++;
-            else if (inputPic[0]->picStruct == tripling)
+            else if (inputPic[0]->picStruct == PIC_STRUCT_TRIPLING)
                 m_sourcePocNext += 2;
         }
         copyUserSEIMessages(inFrame[0], inputPic[0]);
@@ -1903,9 +1930,9 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
             m_param->bUseRcStats = 0;
         }
 
-        if (m_param->bEnableFrameDuplication && ((read < written) || (m_dupBuffer[0]->dupPic->picStruct == tripling && (read <= written))))
+        if (m_param->bEnableFrameDuplication && ((read < written) || (m_dupBuffer[0]->dupPic->picStruct == PIC_STRUCT_TRIPLING && (read <= written))))
         {
-            if (m_dupBuffer[0]->dupPic->picStruct == tripling)
+            if (m_dupBuffer[0]->dupPic->picStruct == PIC_STRUCT_TRIPLING)
                 m_dupBuffer[0]->bOccupied = m_dupBuffer[1]->bOccupied = false;
             else
             {
@@ -1980,7 +2007,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
 
             //TODO: Add subsampling here if required
             inFrame[0]->m_mcstffencPic->copyFromFrame(inFrame[0]->m_fencPic);
-            m_lookahead->m_origPicBuf->addPicture(inFrame[0]);;
+            m_lookahead->m_origPicBuf->addPicture(inFrame[0]);
         }
 
         m_lookahead->addPicture(*inFrame[0], sliceType);
@@ -2826,10 +2853,15 @@ void EncStats::addQP(double aveQp)
     m_totalQp += aveQp;
 }
 
+void EncStats::addDuration(unsigned int durationInVuiTB)
+{
+    m_totDuration += durationInVuiTB;
+}
+
 char* Encoder::statsString(EncStats& stat, char* buffer, size_t bufferSize)
 {
     double fps = (double)m_param->fpsNum / m_param->fpsDenom;
-    double scale = fps / 1000 / (double)stat.m_numPics;
+    double scale = (fps / 1000.) / double(stat.m_totDuration);
 
     int len = snprintf(buffer, bufferSize, "%6u, ", stat.m_numPics);
 
@@ -2899,7 +2931,8 @@ void Encoder::printSummary()
         {
             int p = 0;
             double elapsedEncodeTime = (double)(x265_mdate() - m_encodeStartTime) / 1000000;
-            double elapsedVideoTime = (double)m_analyzeAll[layer].m_numPics * m_param->fpsDenom / m_param->fpsNum;
+            /* with temporal layering totDuration and numPics of each layers are equal. Else they can differ (VFR or pulldown) */
+            double elapsedVideoTime = double(m_analyzeAll[layer].m_totDuration) * double(m_param->fpsDenom) / double(m_param->fpsNum);
             double bitrate = (0.001f * m_analyzeAll[layer].m_accBits) / elapsedVideoTime;
 
             p += snprintf(buffer + p, sizeof(buffer) - p,"\nencoded %d frames in %.2fs (%.2f fps), %.2f kb/s, Avg QP:%2.2lf", m_analyzeAll[layer].m_numPics,
@@ -3186,6 +3219,8 @@ void Encoder::finishFrameStats(Frame* curFrame, FrameEncoder *curEncoder, x265_f
     m_analyzeAll[layer].addBits(bits);
     m_analyzeAll[layer].addQP(curEncData.m_avgQpAq);
 
+    m_analyzeAll[layer].addDuration(curFrame->m_duration);
+
     if (m_param->bEnablePsnr)
         m_analyzeAll[layer].addPsnr(psnrY, psnrU, psnrV);
 
@@ -3199,6 +3234,7 @@ void Encoder::finishFrameStats(Frame* curFrame, FrameEncoder *curEncoder, x265_f
     {
         m_analyzeI[layer].addBits(bits);
         m_analyzeI[layer].addQP(curEncData.m_avgQpAq);
+        m_analyzeI[layer].addDuration(curFrame->m_duration);
         if (m_param->bEnablePsnr)
             m_analyzeI[layer].addPsnr(psnrY, psnrU, psnrV);
         if (m_param->bEnableSsim)
@@ -3208,6 +3244,7 @@ void Encoder::finishFrameStats(Frame* curFrame, FrameEncoder *curEncoder, x265_f
     {
         m_analyzeP[layer].addBits(bits);
         m_analyzeP[layer].addQP(curEncData.m_avgQpAq);
+        m_analyzeP[layer].addDuration(curFrame->m_duration);
         if (m_param->bEnablePsnr)
             m_analyzeP[layer].addPsnr(psnrY, psnrU, psnrV);
         if (m_param->bEnableSsim)
@@ -3217,6 +3254,7 @@ void Encoder::finishFrameStats(Frame* curFrame, FrameEncoder *curEncoder, x265_f
     {
         m_analyzeB[layer].addBits(bits);
         m_analyzeB[layer].addQP(curEncData.m_avgQpAq);
+        m_analyzeB[layer].addDuration(curFrame->m_duration);
         if (m_param->bEnablePsnr)
             m_analyzeB[layer].addPsnr(psnrY, psnrU, psnrV);
         if (m_param->bEnableSsim)
@@ -3440,7 +3478,7 @@ void Encoder::getStreamHeaders(NALList& list, Entropy& sbacCoder, Bitstream& bs)
         bs.write(0x10, 8);
         list.serialize(NAL_UNIT_ACCESS_UNIT_DELIMITER, bs);
     }
-    
+
     /* headers for start of bitstream */
     bs.resetBits();
 #if ENABLE_ALPHA || ENABLE_MULTIVIEW
@@ -3746,7 +3784,7 @@ void Encoder::initSPS(SPS *sps)
     vui.defaultDisplayWindow.bottomOffset = m_param->vui.defDispWinBottomOffset;
     vui.defaultDisplayWindow.leftOffset = m_param->vui.defDispWinLeftOffset;
 
-    vui.frameFieldInfoPresentFlag = !!m_param->interlaceMode || (m_param->pictureStructure >= 0);
+    vui.frameFieldInfoPresentFlag = !!m_param->interlaceMode || m_param->bEmitHRDSEI;
     vui.fieldSeqFlag = !!m_param->interlaceMode;
 
     vui.hrdParametersPresentFlag = m_param->bEmitHRDSEI;
@@ -4526,6 +4564,46 @@ void Encoder::configure(x265_param *p)
         x265_log(p, X265_LOG_WARNING, "Dynamic-rd disabled, requires RD <= 4, VBV and aq-mode enabled\n");
     }
 
+    /* Cannot use temporal layers with a picture structure whose DeltaToDivisor is not 1: we would have to drop access units in higher layers
+     * and enforce that structures in higher layers do not hide a frame in the lower layers: it's easier to just forbid it. */
+    if (p->bEnableTemporalSubLayers)
+    {
+        // PF, TB and BT have a DeltaToDivisor = 1 and convey a full frame (or pair of fields)
+        if (p->pictureStructure > PIC_STRUCT_PROGRESSIVE_FRAME && p->pictureStructure != PIC_STRUCT_TOP_BOTTOM && p->pictureStructure != PIC_STRUCT_BOTTOM_TOP)
+        {
+            x265_log(p, X265_LOG_WARNING, "Specified picture structure is not compatible with temporal sub layers. Ignoring the provided pic struct.\n");
+            p->pictureStructure = -1;
+        }
+        if (p->bEnableFrameDuplication)
+        {
+            x265_log(p, X265_LOG_WARNING, "Frame-duplication is not compatible with temporal sub layers. Disabling Frame Duplication.\n");
+            p->bEnableFrameDuplication = 0;
+            p->dupThreshold = 0; // prevent it from being enabled below
+        }
+    }
+
+    if (p->pictureStructure >= 0)
+    {
+        unsigned int bitPicStruct = (1u << p->pictureStructure);
+        /* reject any configuration that leads to orphaned fields (1, 2, 5, 6, 9, 10, 11, 12) */
+        if (p->pictureStructure >= PIC_STRUCT_COUNT || (bitPicStruct & 0b1111001100110))
+        {
+            x265_log(p, X265_LOG_WARNING, "Invalid or illegal picture structure, ignoring the user picstruct.\n");
+            p->pictureStructure = -1;
+        }
+        else if (p->interlaceMode > 0 && (bitPicStruct & 0b110000000))
+        {
+            x265_log(p, X265_LOG_WARNING, "Cannot use structure %u with field sequences, ignoring the user picstruct.\n", p->pictureStructure);
+            p->pictureStructure = -1;
+        }
+
+        if (!m_param->bEmitHRDSEI)
+        {
+            x265_log(p, X265_LOG_WARNING, "Pic struct requires HRD Timing information. Disabling picture structure.\n");
+            p->pictureStructure = -1;
+        }
+    }
+
     if (!p->bEnableFrameDuplication && p->dupThreshold && p->dupThreshold != 70)
     {
         x265_log(p, X265_LOG_WARNING, "Frame-duplication threshold works only with frame-duplication enabled. Enabling frame-duplication.\n");
@@ -4538,10 +4616,10 @@ void Encoder::configure(x265_param *p)
         p->bEnableFrameDuplication = 0;
     }
 
-    if (p->bEnableFrameDuplication && p->pictureStructure != 0 && p->pictureStructure != -1)
+    if (p->bEnableFrameDuplication && p->pictureStructure >= 0)
     {
-        x265_log(p, X265_LOG_WARNING, "Frame-duplication works only with pic_struct = 0. Setting pic-struct = 0.\n");
-        p->pictureStructure = 0;
+        x265_log(p, X265_LOG_WARNING, "Cannot enforce a picture structure with Frame-duplication, ignoring the user picstruct.\n");
+        p->pictureStructure = -1;
     }
 
     if (m_param->bEnableFrameDuplication && (!bIsVbv || !m_param->bEmitHRDSEI))
@@ -5223,7 +5301,7 @@ void Encoder::readAnalysisFile(x265_analysis_data* analysis, int curPoc, const x
     X265_FREAD(&analysis->satdCost, sizeof(int64_t), 1, m_analysisFileIn, &(picData->satdCost));
     X265_FREAD(&analysis->numCUsInFrame, sizeof(int), 1, m_analysisFileIn, &(picData->numCUsInFrame));
     X265_FREAD(&analysis->numPartitions, sizeof(int), 1, m_analysisFileIn, &(picData->numPartitions));
-    
+
     if (m_param->bDisableLookahead)
     {
         X265_FREAD(&analysis->numCuInHeight, sizeof(uint32_t), 1, m_analysisFileIn, &(picData->numCuInHeight));
