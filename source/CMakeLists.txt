@@ -11,7 +11,7 @@ if(POLICY CMP0042)
     cmake_policy(SET CMP0042 NEW) # MACOSX_RPATH
 endif()
 
-cmake_minimum_required (VERSION 2.8.8...3.10) # OBJECT libraries require 2.8.8
+cmake_minimum_required (VERSION 2.8.8...4.0) # OBJECT libraries require 2.8.8
 
 if (POLICY CMP0075)
     cmake_policy(SET CMP0075 NEW) # CMAKE_REQUIRED_LIBRARIES warning
