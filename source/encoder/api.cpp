@@ -1165,10 +1165,10 @@ const x265_api* x265_api_get(int bitDepth)
             g_recursion++;
 
 #if _WIN32
-        HMODULE h = LoadLibraryA(libname);
+        HMODULE h = LoadLibraryExA(libname, NULL, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
         if (!h)
         {
-            h = LoadLibraryA(multilibname);
+            h = LoadLibraryExA(multilibname, NULL, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
             reqDepth = bitDepth;
         }
         if (h)
@@ -1258,10 +1258,10 @@ const x265_api* x265_api_query(int bitDepth, int apiVersion, int* err)
             g_recursion++;
 
 #if _WIN32
-        HMODULE h = LoadLibraryA(libname);
+        HMODULE h = LoadLibraryExA(libname, NULL, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
         if (!h)
         {
-            h = LoadLibraryA(multilibname);
+            h = LoadLibraryExA(multilibname, NULL, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
             reqDepth = bitDepth;
         }
         if (h)
