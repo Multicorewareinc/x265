@@ -571,9 +571,13 @@ frame counts) are only applicable to the CLI application.
 	the bottom field of a top-field-first frame, 12 for the bottom and 9
 	for the top field of a bottom-field-first frame. With :option:`--field`
 	the frame is the input frame; with field input, pictures 2n and 2n+1
-	are taken as the two fields of one frame. This describes interlaced
-	content, not a progressive frame carried as two fields (PsF), which
-	would need source_scan_type 1.
+	are taken as the two fields of one frame. Field input must therefore
+	hold whole frames, an even number of fields starting with a first
+	field, also after :option:`--seek` and :option:`--frames`. Otherwise
+	fields of different frames are signalled as pairs, or the last field
+	as paired with a next field that is not in the stream. This describes
+	interlaced content, not a progressive frame carried as two fields
+	(PsF), which would need source_scan_type 1.
 
 .. option:: --frame-dup, --no-frame-dup
 
