@@ -765,7 +765,7 @@ ret:
 
                     if (m_cliopt.psfile)
                     {
-                        if (!m_cliopt.parsePSFile(pic_orig[view], m_param->interlaceMode, m_param->bField))
+                        if (!m_cliopt.parsePSFile(pic_orig[view], m_param->interlaceMode))
                         {
                             x265_log(NULL, X265_LOG_ERROR, "can't parse psfile for frame %d in %s\n",
                                 pic_in[view]->poc, profileName);

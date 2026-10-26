@@ -944,21 +944,9 @@ namespace X265_NS {
             return true;
         }
 
-        if (psfile)
+        if (!!psfile && checkParamsWithPSFile(param))
         {
-            if (param->bEnableTemporalSubLayers)
-            {
-                x265_log(param, X265_LOG_ERROR, "Cannot use a psfile with temporal sublayers.\n");
-                return true;
-            }
-            if (param->interlaceMode)
-            {
-                /* not supported: the encoder must check the field complementary of every frame (field) num.
-                 * Only framefieldcoding is useful in interlacing: it can be written to the frame's PicTiming
-                 * SEI source_scan_type to aid a decoder to select between deinterlacing or weaving fields. */
-                x265_log(param, X265_LOG_ERROR, "psfile with interlacing not yet supported.\n");
-                return true;
-            }
+            return true;
         }
 
 #ifdef SVT_HEVC
@@ -1156,45 +1144,99 @@ namespace X265_NS {
         return false;
     }
 
-    bool CLIOptions::parsePSFile(x265_picture &pic_org, int fieldOrder, bool fieldSequence)
+    bool CLIOptions::checkParamsWithPSFile(const x265_param* globalParam)
     {
-        int32_t num = -1;
-        uint32_t frameFieldCoding, pictureStructure;
+        if (!globalParam->bEmitHRDSEI)
+        {
+            x265_log(param, X265_LOG_ERROR, "psfile requires --hrd.\n");
+            return true;
+        }
+        if (globalParam->bEnableTemporalSubLayers)
+        {
+            x265_log(param, X265_LOG_ERROR, "Cannot use a psfile with temporal sublayers.\n");
+            return true;
+        }
+        if (globalParam->interlaceMode)
+        {
+            /* not supported: the encoder must check the field complementary of every frame (field) num.
+             * Only framefieldcoding is useful in interlacing: it can be written to the frame's PicTiming
+             * SEI source_scan_type to aid a decoder to select between deinterlacing or weaving fields. */
+            x265_log(param, X265_LOG_ERROR, "psfile with interlacing not yet supported.\n");
+            return true;
+        }
+        if (globalParam->pictureStructure >= 0)
+        {
+            x265_log(param, X265_LOG_ERROR, "psfile incompatible with user pic-struct.\n");
+            return true;
+        }
+        return false;
+    }
 
-        uint32_t validPicStructMask = 0x181; /* progressive, doubling, tripling */
-        if (fieldOrder > 0)
-            validPicStructMask = fieldSequence ? 0x1e06 : 0x78; /* D.2 field_seq_flag = 1 or 0 */
+    bool CLIOptions::parsePSFile(x265_picture &pic_org, int interlaceMode)
+    {
+        /* field_seq_flag == 0 or 1
+         * progressive: 0x181: single, doubling, tripling
+         * interlaced: 0x1e06: top, bottom, and the prev/next pairings
+         * note: 0x78 (TB, BT, TBT, BTB) is currently rejected */
+        const uint32_t validPicStructMask = !interlaceMode ? 0x181 : 0x1e06;
 
         pic_org.picStruct = PIC_STRUCT_AUTO;
 
-        while (num < pic_org.poc)
+        char buff[384];
+        while (1)
         {
             uint32_t filePos = ftell(psfile);
-            int32_t ret = fscanf(psfile, "%d %u%*[ \t]%u\n", &num, &frameFieldCoding, &pictureStructure);
+            if (!fgets(buff, sizeof(buff), psfile))
+                return 1;
 
-            if (num > pic_org.poc || ret == EOF)
+            if (!strchr(buff, '\n') && !feof(psfile))
             {
+                int c;
+                while ((c = fgetc(psfile)) != '\0')
+                {
+                    if (c == '\n' || c == EOF)
+                        break;
+                }
+            }
+
+            int32_t num;
+            uint32_t frameFieldCoding, pictureStructure;
+
+            if (sscanf(buff, "%d %u %u", &num, &frameFieldCoding, &pictureStructure) != 3)
+                continue;
+
+            if (num > pic_org.poc)
+            {
+                /* restore as the frame is ahead */
                 fseek(psfile, filePos, SEEK_SET);
                 break;
             }
-            if (num < pic_org.poc && ret >= 1)
+            if (num < pic_org.poc)
                 continue;
-            if (ret == 3 && pictureStructure < PIC_STRUCT_COUNT)
+            if (pictureStructure < PIC_STRUCT_COUNT)
             {
-                /* don't allow to change frame_field coding */
-                if ((frameFieldCoding > 0) ^ (fieldOrder > 0))
-                    return 0;
-                if ((1 << pictureStructure) & validPicStructMask)
+#define FFO_STR(interlaced) ((interlaced > 0) ? "interlaced" : "progressive")
+                /* todo: report the frame field coding in the PicTiming SEI source_scan_type.
+                 * Progressive can only be progressive encoding, but interlaced could change
+                 * from pure interlaced to segmented frames. */
+                if ((frameFieldCoding > 0) ^ (interlaceMode > 0))
+                    x265_log(NULL, X265_LOG_WARNING, "Ignored structure for pic %d: its scan type (%s) mismatch the configuration (%s).\n",
+                             num, FFO_STR(frameFieldCoding), FFO_STR(interlaceMode));
+                else if ((1 << pictureStructure) & validPicStructMask)
                     pic_org.picStruct = pictureStructure;
                 else
-                    x265_log(NULL, X265_LOG_WARNING, "Ignored structure for pic %u: not compatible with %s.\n",
-                             num, (!fieldOrder ? "progressive" : (fieldSequence ? "field sequences" : "interlaced")));
+                    x265_log(NULL, X265_LOG_WARNING, "Ignored structure for pic %d: not compatible with %s.\n",
+                             num, FFO_STR(interlaceMode));
+                return 1;
+#undef FFO_STR
+            }
+            else
+            {
+                x265_log(NULL, X265_LOG_WARNING, "Ignored invalid picture structure %u for pic %d.", pictureStructure, num);
                 return 1;
             }
-            if (ret < 3)
-                return 0;
         }
-        /* not changed, use frame's initial value (default) */
+        /* default */
         return 1;
     }
 
