@@ -2197,7 +2197,8 @@ typedef struct x265_param
      * picture is an interlaced frame that the CLI splits into its two fields.
      * Applications using the library must pass fields and set fieldNum in each
      * x265_picture; pic_struct is then derived from fieldNum instead of the
-     * POC. Requires interlaceMode. Default disabled */
+     * POC, which is still used for pictures with fieldNum 0. Requires
+     * interlaceMode. Default disabled */
     int bField;
 
     /*Emit content light level info SEI*/

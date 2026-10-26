@@ -651,6 +651,8 @@ frame counts) are only applicable to the CLI application.
 	The split into fields is done by the x265 CLI. Applications using the
 	library must pass fields and set ``fieldNum`` in each
 	:c:type:`x265_picture` (1 for the first field, 2 for the second).
+	If ``fieldNum`` is left at 0, the even POC is taken as the first field,
+	as for field input.
 	Default disabled.
 	
 Profile, Level, Tier

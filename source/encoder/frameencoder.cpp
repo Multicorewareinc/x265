@@ -815,14 +815,13 @@ void FrameEncoder::compressFrame(int layer)
                  * 10 = bottom field paired with the previous top field (tff frame),
                  * 12 = bottom field paired with the next top field, 9 = top field
                  * paired with the previous bottom field (bff frame). With --field,
-                 * fieldNum 1 is the first field of the frame; with field input the
-                 * even POC is. */
+                 * fieldNum 1 is the first field of the frame; with field input, or
+                 * when a library caller leaves fieldNum at 0, the even POC is. */
+                bool firstField = slice->m_fieldNum ? slice->m_fieldNum == 1 : !(poc & 1);
                 if (m_param->interlaceMode == 2)   // bff: first field is the bottom field
-                    sei->m_picStruct = m_param->bField ? ((slice->m_fieldNum == 1) ? 12 : 9)
-                                                       : ((poc & 1) ? 9 : 12);
+                    sei->m_picStruct = firstField ? 12 : 9;
                 else                               // tff: first field is the top field
-                    sei->m_picStruct = m_param->bField ? ((slice->m_fieldNum == 1) ? 11 : 10)
-                                                       : ((poc & 1) ? 10 : 11);
+                    sei->m_picStruct = firstField ? 11 : 10;
             }
             else if (m_param->bEnableFrameDuplication)
                 sei->m_picStruct = m_frame[layer]->m_picStruct;
