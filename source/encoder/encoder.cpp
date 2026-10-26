@@ -4181,6 +4181,12 @@ void Encoder::configure(x265_param *p)
     if (p->interlaceMode)
         x265_log(p, X265_LOG_WARNING, "Support for interlaced video is experimental\n");
 
+    if (p->interlaceMode && p->pictureStructure >= 0)
+    {
+        x265_log(p, X265_LOG_WARNING, "pic-struct is ignored with interlace, which sets pic_struct from the field order. Resetting pic-struct to -1.\n");
+        p->pictureStructure = -1;
+    }
+
     if (p->rc.rfConstantMin > p->rc.rfConstant)
     {
         x265_log(m_param, X265_LOG_WARNING, "CRF min must be less than CRF\n");

@@ -2568,6 +2568,8 @@ VUI fields must be manually specified.
 	Set the picture structure and emits it in the picture timing SEI message.
 	Values in the range 0..12. See D.3.3 of the HEVC spec. for a detailed explanation.
 	Required for HLG (Hybrid Log Gamma) signaling. Not signaled by default.
+	Ignored with :option:`--interlace`, which sets pic_struct from the field
+	order.
 
 .. option:: --video-signal-type-preset <string>
 
