@@ -219,7 +219,16 @@ void DPB::prepareEncode(Frame *newFrame)
     decodingRefreshMarking(pocCurr, slice->m_nalUnitType, layer);
 
     uint32_t maxDecBuffer = (slice->m_sps->maxDecPicBuffering[newFrame->m_tempLayer] >= 8 && slice->m_param->bEnableSCC) ? 7 : slice->m_sps->maxDecPicBuffering[newFrame->m_tempLayer];
-    computeRPS(pocCurr, newFrame->m_tempLayer, slice->isIRAP(), &slice->m_rps, maxDecBuffer, layer);
+    bool isRAP = slice->isIRAP();
+    #if ENABLE_SCC_EXT || ENABLE_MULTIVIEW || ENABLE_ALPHA
+    // If base view picture is an IFrame we need to treat dependent-view picture as a RAP as well
+    if ((slice->m_param->bEnableSCC || layer) && slice->m_sliceType != slice->m_origSliceType)
+    {
+        isRAP = true;
+    }
+    #endif
+    computeRPS(pocCurr, newFrame->m_tempLayer, isRAP, &slice->m_rps, maxDecBuffer, layer);
+
     bool isTSAPic = ((slice->m_nalUnitType == 2) || (slice->m_nalUnitType == 3)) ? true : false;
     // Mark pictures in m_piclist as unreferenced if they are not included in RPS
     applyReferencePictureSet(&slice->m_rps, pocCurr, newFrame->m_tempLayer, isTSAPic, layer);
