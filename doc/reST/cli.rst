@@ -542,7 +542,8 @@ frame counts) are only applicable to the CLI application.
 
 .. option:: --fps <integer|float|numerator/denominator>
 
-	YUV only: Source frame rate
+	YUV only: Display frame rate. The reciprocal of the value defines
+	the duration of a clock tick in seconds.
 
 	**Range of values:** positive int or float, or num/denom
 
@@ -1531,15 +1532,18 @@ Slice decision options
 
 .. option:: --keyint, -I <integer>
 
-	Max intra period in frames. A special case of infinite-gop (single
+	Max intra period in clock ticks. A special case of infinite-gop (single
 	keyframe at the beginning of the stream) can be triggered with
 	argument -1. Use 1 to force all-intra. When intra-refresh is enabled
 	it specifies the interval between which refresh sweeps happen. Default 250
 
+	A frame is a single clock tick in constant frame rate streams. With
+	:option:`--pic-struct`, :option:`--psfile` or :option:`--frame-dup`, a frame can last up to 3 clock ticks.
+
 .. option:: --min-keyint, -i <integer>
 
-	Minimum GOP size. Scenecuts beyond this interval are coded as IDR and start
-	a new keyframe, while scenecuts closer together are coded as I or P. For
+	Minimum GOP size, in clock ticks. Scenecuts beyond this interval are coded
+	as new keyframes, while scenecuts closer together are coded as I or P. For
 	fixed keyframe interval, set value to be equal to keyint.
 
 	**Range of values:** >=0 (0: auto)
@@ -1585,11 +1589,13 @@ Slice decision options
 
 .. option:: --intra-refresh
 
-	Enables Periodic Intra Refresh(PIR) instead of keyframe insertion.
-	PIR can replace keyframes by inserting a column of intra blocks in 
+	Enables Periodic Intra Refresh (PIR) instead of keyframe insertion.
+	PIR can replace keyframes by inserting a column of intra blocks in
 	non-keyframes, that move across the video from one side to the other
-	and thereby refresh the image but over a period of multiple 
+	and thereby refresh the image but over a period of multiple
 	frames instead of a single keyframe.
+
+	The size of a frame's intra column depends on its duration in ticks.
 
 .. option:: --rc-lookahead <integer>
 
@@ -2573,7 +2579,7 @@ VUI fields must be manually specified.
 	Values in the range 0..12. See D.3.3 of the HEVC spec. for a detailed explanation.
 
 	Ignored with :option:`--interlace`, which sets pic_struct from the field
-	order.
+	order. Requires :option:`--hrd`.
 
 .. option:: --psfile <filename>
 
@@ -2587,8 +2593,9 @@ VUI fields must be manually specified.
 
 	Picstruct is the structure to specify in the framenumber's Picture Timing SEI.
 	It shall be compatible with the encoder configuration for the given sequence.
+	Unspecified framenumbers get a default structure (single frame or field).
 
-	Unspecified frames get the default structure (progressive frame).
+	Requires :option:`--hrd`.
 
 .. option:: --video-signal-type-preset <string>
 

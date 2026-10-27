@@ -289,6 +289,9 @@ If you wish to override the lookahead or rate control for a given
 picture you may specify a slicetype other than X265_TYPE_AUTO, or a
 forceQP value other than 0.
 
+With HRD, the Pic Timing SEI picture structure can be overriden per frame with
+**picStruct**. Refer to the PicStruct enumeration or ITU H.265 Table D.2.
+
 x265 does not modify the picture structure provided as input, so you may
 reuse a single **x265_picture** for all pictures passed to a single
 encoder, or even all pictures passed to multiple encoders.
