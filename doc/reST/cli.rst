@@ -2050,6 +2050,8 @@ Quality, rate control and rate distortion options
 
 	<start frame>,<end frame>,<option> where <option> is either q=<integer>
 	(force QP) or b=<float> (bitrate multiplier).
+	Frame number is in input order, starting from 0, both the start and end
+	numbers are inclusive.
 
 	If zones overlap, whichever comes later in the list takes precedence.
 	Default none
