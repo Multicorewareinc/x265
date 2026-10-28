@@ -170,12 +170,12 @@ inline void copyRceData(RateControlEntry* rce, RateControlEntry* rce2Pass)
 
 }  // end anonymous namespace
 /* Returns the zone for the current frame */
-x265_zone* RateControl::getZone()
+x265_zone* RateControl::getZone(int frameNum)
 {
     for (int i = m_param->rc.zoneCount - 1; i >= 0; i--)
     {
         x265_zone *z = &m_param->rc.zones[i];
-        if (m_framesDone + 1 >= z->startFrame && m_framesDone < z->endFrame)
+        if (frameNum >= z->startFrame && frameNum <= z->endFrame)
             return z;
     }
     return NULL;
@@ -1619,8 +1619,8 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
         else
             m_qp = m_qpConstant[m_sliceType];
         curEncData.m_avgQpAq = curEncData.m_avgQpRc = m_qp;
-        
-        x265_zone* zone = getZone();
+
+        x265_zone* zone = getZone(curFrame->m_sourcePoc);
         if (zone)
         {
             if (zone->bForceQp)
@@ -2154,7 +2154,7 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
             }
             diff = m_predictedBits - (int64_t)rce->expectedBits;
             q = rce->newQScale;
-            x265_zone* zone = getZone();
+            x265_zone* zone = getZone(curFrame->m_sourcePoc);
             if (zone)
             {
                 if (zone->bForceQp)
@@ -2285,7 +2285,7 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
                     }
                 }
                 q = getQScale(rce, m_rateFactorConstant);
-                x265_zone* zone = getZone();
+                x265_zone* zone = getZone(curFrame->m_sourcePoc);
                 if (zone)
                 {
                     if (zone->bForceQp)
@@ -2299,7 +2299,7 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
                 if (!m_param->rc.bStatRead)
                     checkAndResetABR(rce, false);
                 double initialQScale = getQScale(rce, m_wantedBitsWindow / m_cplxrSum);
-                x265_zone* zone = getZone();
+                x265_zone* zone = getZone(curFrame->m_sourcePoc);
                 if (zone)
                 {
                     if (zone->bForceQp)

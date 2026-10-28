@@ -303,7 +303,7 @@ protected:
     int    m_residualCost;
     int    m_partialResidualCost;
 
-    x265_zone* getZone();
+    x265_zone* getZone(int frameNum);
     double getQScale(RateControlEntry *rce, double rateFactor);
     double rateEstimateQscale(Frame* pic, RateControlEntry *rce); // main logic for calculating QP based on ABR
     double tuneAbrQScaleFromFeedback(double qScale);
