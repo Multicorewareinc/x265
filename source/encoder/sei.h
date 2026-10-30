@@ -36,9 +36,12 @@ namespace X265_NS {
 class SEI : public SyntaxElementWriter
 {
 public:
-    /* SEI users call writeSEImessages() to marshal an SEI to a bitstream.
-    * The writeSEImessages() method calls writeSEI() which encodes the header */
-    void writeSEImessages(Bitstream& bs, const SPS& sps, NalUnitType nalUnitType, NALList& list, int isNested, int layerId = 0);
+    /* SEI users call write...SEI() to marshal an SEI to a bitstream.
+     * - writeStreamHeaderSEI for SEIs in the stream header (no repeated headers).
+     * - writeAccessUnitSEI for SEIs within access units.
+     * These calls writeSEI() which encodes the header. */
+    void writeStreamHeaderSEI(Bitstream& bs, const SPS& sps, NALList& list, int isNested);
+    void writeAccessUnitSEI(Bitstream& bs, const SPS& sps, NalUnitType nalUnitType, NALList& list, int isNested, int layer, uint8_t tIdPlus1);
     void setSize(uint32_t size);
     static char* base64Decode(char encodedString[], int base64EncodeLength, char* base64Decode);
     virtual ~SEI() {}
