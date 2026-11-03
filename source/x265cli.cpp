@@ -1042,10 +1042,6 @@ namespace X265_NS {
         }
 #endif
 
-        /* Force CFR until we have support for VFR */
-        info[0].timebaseNum = param->fpsDenom;
-        info[0].timebaseDenom = param->fpsNum;
-
         if (param->bField && param->interlaceMode)
         {   // Field FPS
             param->fpsNum *= 2;
