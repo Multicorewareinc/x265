@@ -348,6 +348,7 @@ static const struct option long_options[] =
     { "atc-sei",        required_argument, NULL, 0 },
     { "frame-packing",  required_argument, NULL, 0 },
     { "pic-struct",     required_argument, NULL, 0 },
+    { "prepulldown-fps",required_argument, NULL, 0 },
     { "nalu-file",      required_argument, NULL, 0 },
     { "dolby-vision-rpu", required_argument, NULL, 0 },
     { "hrd-concat",          no_argument, NULL, 0},
@@ -456,6 +457,10 @@ static const struct option long_options[] =
         uint32_t saveLevel;
         uint32_t numRefs;
 
+        int64_t pulldownFpsRatioNum;
+        int64_t pulldownFpsRatioDenom;
+        int64_t pulldownCumulatedTickError;
+
         /* in microseconds */
         static const int UPDATE_INTERVAL = 250000;
         CLIOptions()
@@ -499,14 +504,19 @@ static const struct option long_options[] =
             orgArgv = NULL;
             argString = NULL;
             stringPool = NULL;
+            pulldownFpsRatioNum = 0;
+            pulldownFpsRatioDenom = 0;
+            pulldownCumulatedTickError = 0;
         }
 
         void destroy();
         void printStatus(uint32_t frameNum);
         bool parse(int argc, char **argv);
         bool parseZoneParam(int argc, char **argv, x265_param* globalParam, int zonefileCount);
-        bool checkParamsWithPSFile(const x265_param* globalParam);
+        bool checkParamsWithCustomPicStruct(const x265_param* globalParam, const char *optName);
         bool parsePSFile(x265_picture &pic_org, int fieldOrder);
+        bool prepareRatesRatioForPulldown(const x265_param* globalParam);
+        bool determineStructureForPulldown(x265_picture &pic_org);
         bool parseQPFile(x265_picture &pic_org);
         bool parseZoneFile();
         int rpuParser(x265_picture * pic);

@@ -2581,6 +2581,15 @@ VUI fields must be manually specified.
 	Ignored with :option:`--interlace`, which sets pic_struct from the field
 	order. Requires :option:`--hrd`.
 
+.. option:: --prepulldown-fps <integer|float|numerator/denominator>
+
+	Specify the input content frame rate, if it is smaller than the output rate (:option:`--fps`)
+	x265 will perform adaptive soft pulldown to attain the target rate. Default disabled.
+
+	The ratio between the two rates shall not exceed 3. It can be fractional or a real number.
+
+	Requires :option:`--hrd`.
+
 .. option:: --psfile <filename>
 
 	Specify a text file which contains the picture structure for some or all frames.
