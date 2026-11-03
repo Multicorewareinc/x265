@@ -5437,6 +5437,7 @@ uint64_t Search::estimateNullCbfCost(sse_t dist, uint32_t energy, uint32_t tuDep
         return m_rdCost.calcRdCost(dist, nullBits);
 }
 
+template<bool skipZeroResidual>
 bool Search::splitTU(Mode& mode, const CUGeom& cuGeom, uint32_t absPartIdx, uint32_t tuDepth, ShortYuv& resiYuv, Cost& splitCost, const uint32_t depthRange[2], int32_t splitMore)
 {
     CUData& cu = mode.cu;
@@ -5454,7 +5455,7 @@ bool Search::splitTU(Mode& mode, const CUGeom& cuGeom, uint32_t absPartIdx, uint
             for (uint32_t i = 1; i < cuGeom.numPartitions / 4; i++)
                 m_maxTUDepth = X265_MAX(m_maxTUDepth, cu.m_tuDepth[i]);
         }
-        estimateResidualQT(mode, cuGeom, qPartIdx, tuDepth + 1, resiYuv, splitCost, depthRange, splitMore);
+        estimateResidualQT<skipZeroResidual>(mode, cuGeom, qPartIdx, tuDepth + 1, resiYuv, splitCost, depthRange, splitMore);
         ycbf |= cu.getCbf(qPartIdx, TEXT_LUMA,     tuDepth + 1);
         if (m_csp != X265_CSP_I400 && m_frame->m_fencPic->m_picCsp != X265_CSP_I400)
         {
@@ -5491,11 +5492,21 @@ bool Search::splitTU(Mode& mode, const CUGeom& cuGeom, uint32_t absPartIdx, uint
 
 void Search::estimateResidualQT(Mode& mode, const CUGeom& cuGeom, uint32_t absPartIdx, uint32_t tuDepth, ShortYuv& resiYuv, Cost& outCosts, const uint32_t depthRange[2], int32_t splitMore)
 {
+    // Select once for the whole TU tree. NR needs transformNxN's statistics;
+    // transquant bypass must also retain the original transform path.
+    if (!m_param->bEnableZeroResidualSkip || mode.cu.m_tqBypass[0] || (m_quant.m_nr && m_quant.m_nr->offset))
+        estimateResidualQT<false>(mode, cuGeom, absPartIdx, tuDepth, resiYuv, outCosts, depthRange, splitMore);
+    else
+        estimateResidualQT<true>(mode, cuGeom, absPartIdx, tuDepth, resiYuv, outCosts, depthRange, splitMore);
+}
+
+template<bool skipZeroResidual>
+void Search::estimateResidualQT(Mode& mode, const CUGeom& cuGeom, uint32_t absPartIdx, uint32_t tuDepth, ShortYuv& resiYuv, Cost& outCosts, const uint32_t depthRange[2], int32_t splitMore)
+{
     CUData& cu = mode.cu;
     uint32_t depth = cuGeom.depth + tuDepth;
     uint32_t log2TrSize = cuGeom.log2CUSize - tuDepth;
     bool bEnableRDOQ = !!m_param->rdoqLevel;
-    bool bNoiseReduction = m_quant.m_nr && m_quant.m_nr->offset;
 
     bool bCheckSplit = log2TrSize > depthRange[0];
     bool bCheckFull = log2TrSize <= depthRange[1];
@@ -5590,11 +5601,13 @@ void Search::estimateResidualQT(Mode& mode, const CUGeom& cuGeom, uint32_t absPa
 
         const pixel* fenc = fencYuv->getLumaAddr(absPartIdx);
         int16_t* resi = resiYuv.getLumaAddr(absPartIdx);
-        const pixel* pred = mode.predYuv.getLumaAddr(absPartIdx);
-        sse_t zeroDistY = primitives.cu[partSize].sse_pp(fenc, fencYuv->m_size, pred, mode.predYuv.m_size);
-        zeroResidual[TEXT_LUMA][0] = !zeroDistY;
-        // transformNxN also updates adaptive noise-reduction statistics.
-        if (!zeroResidual[TEXT_LUMA][0] || cu.m_tqBypass[0] || bNoiseReduction)
+        sse_t zeroDistY;
+        if (skipZeroResidual)
+        {
+            zeroDistY = primitives.cu[partSize].sse_pp(fenc, fencYuv->m_size, mode.predYuv.getLumaAddr(absPartIdx), mode.predYuv.m_size);
+            zeroResidual[TEXT_LUMA][0] = !zeroDistY;
+        }
+        if (!skipZeroResidual || !zeroResidual[TEXT_LUMA][0])
             numSig[TEXT_LUMA][0] = m_quant.transformNxN(cu, fenc, fencYuv->m_size, resi, resiYuv.m_size, coeffCurY, log2TrSize, TEXT_LUMA, absPartIdx, false);
         cbfFlag[TEXT_LUMA][0] = !!numSig[TEXT_LUMA][0];
 
@@ -5609,11 +5622,14 @@ void Search::estimateResidualQT(Mode& mode, const CUGeom& cuGeom, uint32_t absPa
 
         X265_CHECK(log2TrSize <= 5, "log2TrSize is too large\n");
 
+        // Preserve the original calculation order when the optimization is off.
+        if (!skipZeroResidual)
+            zeroDistY = primitives.cu[partSize].sse_pp(fenc, fencYuv->m_size, mode.predYuv.getLumaAddr(absPartIdx), mode.predYuv.m_size);
         uint32_t zeroEnergyY = 0;
         if (m_rdCost.m_psyRd)
-            zeroEnergyY = m_rdCost.psyCost(partSize, fenc, fencYuv->m_size, pred, mode.predYuv.m_size);
+            zeroEnergyY = m_rdCost.psyCost(partSize, fenc, fencYuv->m_size, mode.predYuv.getLumaAddr(absPartIdx), mode.predYuv.m_size);
         else if(m_rdCost.m_ssimRd)
-            zeroEnergyY = m_quant.ssimDistortion(cu, fenc, fencYuv->m_size, pred, mode.predYuv.m_size, log2TrSize, TEXT_LUMA, absPartIdx);
+            zeroEnergyY = m_quant.ssimDistortion(cu, fenc, fencYuv->m_size, mode.predYuv.getLumaAddr(absPartIdx), mode.predYuv.m_size, log2TrSize, TEXT_LUMA, absPartIdx);
 
         int16_t* curResiY = m_rqt[qtLayer].resiQtYuv.getLumaAddr(absPartIdx);
         uint32_t strideResiY = m_rqt[qtLayer].resiQtYuv.m_size;
@@ -5718,11 +5734,13 @@ void Search::estimateResidualQT(Mode& mode, const CUGeom& cuGeom, uint32_t absPa
 
                     fenc = fencYuv->getChromaAddr(chromaId, absPartIdxC);
                     resi = resiYuv.getChromaAddr(chromaId, absPartIdxC);
-                    const pixel* predC = mode.predYuv.getChromaAddr(chromaId, absPartIdxC);
-                    sse_t predErrorC = primitives.cu[log2TrSizeC - 2].sse_pp(fenc, fencYuv->m_csize, predC, mode.predYuv.m_csize);
-                    zeroResidual[chromaId][tuIterator.section] = !predErrorC;
-                    zeroDistC = m_rdCost.scaleChromaDist(chromaId, predErrorC);
-                    if (!zeroResidual[chromaId][tuIterator.section] || cu.m_tqBypass[0] || bNoiseReduction)
+                    if (skipZeroResidual)
+                    {
+                        sse_t predErrorC = primitives.cu[log2TrSizeC - 2].sse_pp(fenc, fencYuv->m_csize, mode.predYuv.getChromaAddr(chromaId, absPartIdxC), mode.predYuv.m_csize);
+                        zeroResidual[chromaId][tuIterator.section] = !predErrorC;
+                        zeroDistC = m_rdCost.scaleChromaDist(chromaId, predErrorC);
+                    }
+                    if (!skipZeroResidual || !zeroResidual[chromaId][tuIterator.section])
                         numSig[chromaId][tuIterator.section] = m_quant.transformNxN(cu, fenc, fencYuv->m_csize, resi, resiYuv.m_csize, coeffCurC + subTUOffset, log2TrSizeC, (TextType)chromaId, absPartIdxC, false);
                     cbfFlag[chromaId][tuIterator.section] = !!numSig[chromaId][tuIterator.section];
 
@@ -5733,12 +5751,14 @@ void Search::estimateResidualQT(Mode& mode, const CUGeom& cuGeom, uint32_t absPa
                     singleBits[chromaId][tuIterator.section] = m_entropyCoder.getNumberOfWrittenBits() - latestBitCount;
 
                     int16_t* curResiC = m_rqt[qtLayer].resiQtYuv.getChromaAddr(chromaId, absPartIdxC);
+                    if (!skipZeroResidual)
+                        zeroDistC = m_rdCost.scaleChromaDist(chromaId, primitives.cu[log2TrSizeC - 2].sse_pp(fenc, fencYuv->m_csize, mode.predYuv.getChromaAddr(chromaId, absPartIdxC), mode.predYuv.m_csize));
 
                     // Assuming zero residual 
                     if (m_rdCost.m_psyRd)
-                        zeroEnergyC = m_rdCost.psyCost(partSizeC, fenc, fencYuv->m_csize, predC, mode.predYuv.m_csize);
+                        zeroEnergyC = m_rdCost.psyCost(partSizeC, fenc, fencYuv->m_csize, mode.predYuv.getChromaAddr(chromaId, absPartIdxC), mode.predYuv.m_csize);
                     else if(m_rdCost.m_ssimRd)
-                        zeroEnergyC = m_quant.ssimDistortion(cu, fenc, fencYuv->m_csize, predC, mode.predYuv.m_csize, log2TrSizeC, (TextType)chromaId, absPartIdxC);
+                        zeroEnergyC = m_quant.ssimDistortion(cu, fenc, fencYuv->m_csize, mode.predYuv.getChromaAddr(chromaId, absPartIdxC), mode.predYuv.m_csize, log2TrSizeC, (TextType)chromaId, absPartIdxC);
 
                     if (cbfFlag[chromaId][tuIterator.section])
                     {
@@ -5847,7 +5867,7 @@ void Search::estimateResidualQT(Mode& mode, const CUGeom& cuGeom, uint32_t absPa
 
             fenc = fencYuv->getLumaAddr(absPartIdx);
             resi = resiYuv.getLumaAddr(absPartIdx);
-            uint32_t numSigTSkipY = zeroResidual[TEXT_LUMA][0] ? 0 :
+            uint32_t numSigTSkipY = skipZeroResidual && zeroResidual[TEXT_LUMA][0] ? 0 :
                 m_quant.transformNxN(cu, fenc, fencYuv->m_size, resi, resiYuv.m_size, m_tsCoeff, log2TrSize, TEXT_LUMA, absPartIdx, true);
 
             if (numSigTSkipY)
@@ -5925,7 +5945,7 @@ void Search::estimateResidualQT(Mode& mode, const CUGeom& cuGeom, uint32_t absPa
 
                     fenc = fencYuv->getChromaAddr(chromaId, absPartIdxC);
                     resi = resiYuv.getChromaAddr(chromaId, absPartIdxC);
-                    uint32_t numSigTSkipC = zeroResidual[chromaId][tuIterator.section] ? 0 :
+                    uint32_t numSigTSkipC = skipZeroResidual && zeroResidual[chromaId][tuIterator.section] ? 0 :
                         m_quant.transformNxN(cu, fenc, fencYuv->m_csize, resi, resiYuv.m_csize, m_tsCoeff, log2TrSizeC, (TextType)chromaId, absPartIdxC, true);
 
                     m_entropyCoder.resetBits();
@@ -6098,7 +6118,7 @@ void Search::estimateResidualQT(Mode& mode, const CUGeom& cuGeom, uint32_t absPa
             splitCost.bits = m_entropyCoder.getNumberOfWrittenBits();
         }
 
-        bool yCbCrCbf = splitTU(mode, cuGeom, absPartIdx, tuDepth, resiYuv, splitCost, depthRange, 0);
+        bool yCbCrCbf = splitTU<skipZeroResidual>(mode, cuGeom, absPartIdx, tuDepth, resiYuv, splitCost, depthRange, 0);
         if (yCbCrCbf || !bCheckFull)
         {
             if (splitCost.rdcost < fullCost.rdcost)
@@ -6118,7 +6138,7 @@ void Search::estimateResidualQT(Mode& mode, const CUGeom& cuGeom, uint32_t absPa
                             m_entropyCoder.codeTransformSubdivFlag(1, 5 - log2TrSize);
                             splitCost.bits = m_entropyCoder.getNumberOfWrittenBits();
                         }
-                        splitTU(mode, cuGeom, absPartIdx, tuDepth, resiYuv, splitCost, depthRange, 1);
+                        splitTU<skipZeroResidual>(mode, cuGeom, absPartIdx, tuDepth, resiYuv, splitCost, depthRange, 1);
                     }
                 }
                 outCosts.distortion += splitCost.distortion;

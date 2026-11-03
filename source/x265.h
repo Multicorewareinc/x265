@@ -2423,6 +2423,11 @@ typedef struct x265_param
      * every picture. It is written on the base layer only and cannot be combined with
      * numViews > 1. Default -1 (disabled). */
     int      framePacking;
+
+    /* Skip inter transform/quantization candidates whose residual is exactly
+     * zero. Default disabled. Active noise reduction and transquant bypass
+     * always retain the original path, even when this option is enabled. */
+    int      bEnableZeroResidualSkip;
 } x265_param;
 
 /* x265_param_alloc:

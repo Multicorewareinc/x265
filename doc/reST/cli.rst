@@ -966,6 +966,21 @@ the prediction quad-tree.
 	Only effective at RD levels 3 and above, which perform RDO mode
 	decisions.
 
+.. option:: --zero-residual-skip, --no-zero-residual-skip
+
+    Skip transform and quantization candidates for inter blocks with an
+    exactly zero residual. The existing prediction distortion is reused
+    to identify these blocks. Default disabled.
+
+    Active noise reduction and transquant bypass retain the original
+    path even when this option is enabled. This preserves noise-reduction
+    statistics and bypass behavior. Intra analysis is unchanged.
+
+    Speed depends on the input and encoding settings. Screen content and
+    static flat content may benefit; validate representative encodes
+    before enabling this option for a workload. This option does not
+    classify content or guarantee a speed improvement.
+
 .. option:: --tskip-fast, --no-tskip-fast
 
 	Only evaluate transform skip for NxN intra predictions (4x4 blocks).

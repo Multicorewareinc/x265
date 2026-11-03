@@ -2663,6 +2663,7 @@ int Encoder::reconfigureParam(x265_param* encParam, x265_param* param)
         encParam->rdPenalty = param->rdPenalty;
         encParam->dynamicRd = param->dynamicRd;
         encParam->bEnableTransformSkip = param->bEnableTransformSkip;
+        encParam->bEnableZeroResidualSkip = param->bEnableZeroResidualSkip;
         encParam->bEnableAMP = param->bEnableAMP;
         if (param->confWinBottomOffset == 0 && param->confWinRightOffset == 0)
         {

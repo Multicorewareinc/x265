@@ -249,6 +249,7 @@ void x265_param_default(x265_param* param)
     param->rdoqLevel = 0;
     param->bEnableSignHiding = 1;
     param->bEnableTransformSkip = 0;
+    param->bEnableZeroResidualSkip = 0;
     param->bEnableTSkipFast = 0;
     param->maxNumReferences = 3;
     param->bEnableTemporalMvp = 1;
@@ -1350,6 +1351,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     if (bExtraParams)
     {
         if (0) ;
+        OPT("zero-residual-skip") p->bEnableZeroResidualSkip = atobool(value);
         OPT("csv") snprintf(p->csvfn, X265_MAX_STRING_SIZE, "%s", value);
         OPT("csv-log-level") p->csvLogLevel = atoi(value);
         OPT("qpmin") p->rc.qpMin = atoi(value);
@@ -2228,6 +2230,7 @@ void x265_print_params(x265_param* param)
     TOOLOPT(param->bEnableSplitRdSkip, "splitrd-skip");
     TOOLVAL(param->noiseReductionIntra, "nr-intra=%d");
     TOOLVAL(param->noiseReductionInter, "nr-inter=%d");
+    TOOLOPT(param->bEnableZeroResidualSkip, "zero-residual-skip");
     TOOLOPT(param->bEnableTSkipFast, "tskip-fast");
     TOOLOPT(!param->bEnableTSkipFast && param->bEnableTransformSkip, "tskip");
     TOOLVAL(param->limitTU , "limit-tu=%d");
@@ -2367,6 +2370,7 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     BOOL(p->bSsimRd, "ssim-rd");
     BOOL(p->bEnableSignHiding, "signhide");
     BOOL(p->bEnableTransformSkip, "tskip");
+    BOOL(p->bEnableZeroResidualSkip, "zero-residual-skip");
     s += snprintf(s, bufSize - (s - buf), " nr-intra=%d", p->noiseReductionIntra);
     s += snprintf(s, bufSize - (s - buf), " nr-inter=%d", p->noiseReductionInter);
     BOOL(p->bEnableConstrainedIntra, "constrained-intra");
@@ -2850,6 +2854,7 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->rdoqLevel = src->rdoqLevel;
     dst->bEnableSignHiding = src->bEnableSignHiding;
     dst->bEnableTransformSkip = src->bEnableTransformSkip;
+    dst->bEnableZeroResidualSkip = src->bEnableZeroResidualSkip;
     dst->noiseReductionInter = src->noiseReductionInter;
     dst->noiseReductionIntra = src->noiseReductionIntra;
     if (strlen(src->scalingLists)) snprintf(dst->scalingLists, X265_MAX_STRING_SIZE, "%s", src->scalingLists);

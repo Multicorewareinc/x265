@@ -154,6 +154,7 @@ namespace X265_NS {
         H0("   --[no-]cu-lossless            Consider lossless mode in CU RDO decisions. Default %s\n", OPT(param->bCULossless));
         H0("   --[no-]signhide               Hide sign bit of one coeff per TU (rdo). Default %s\n", OPT(param->bEnableSignHiding));
         H1("   --[no-]tskip                  Enable intra 4x4 transform skipping. Default %s\n", OPT(param->bEnableTransformSkip));
+        H1("   --[no-]zero-residual-skip     Skip zero-residual inter transform candidates; inactive with NR/bypass. Default %s\n", OPT(param->bEnableZeroResidualSkip));
         H0("\nTemporal / motion search options:\n");
         H0("   --max-merge <1..5>            Maximum number of merge candidates. Default %d\n", param->maxNumMergeCand);
         H0("   --ref <integer>               max number of L0 references to be allowed (1 .. 16) Default %d\n", param->maxNumReferences);
