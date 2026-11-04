@@ -149,13 +149,14 @@
     FUNCDEF_PU(void, pixel_sub_ps, cpu, int16_t* a, intptr_t dstride, const pixel* b0, const pixel* b1, intptr_t sstride0, intptr_t sstride1); \
     FUNCDEF_PU(void, pixel_add_ps, cpu, pixel* a, intptr_t dstride, const pixel* b0, const int16_t* b1, intptr_t sstride0, intptr_t sstride1); \
     FUNCDEF_PU(void, pixel_add_ps_aligned, cpu, pixel* a, intptr_t dstride, const pixel* b0, const int16_t* b1, intptr_t sstride0, intptr_t sstride1); \
-    FUNCDEF_CHROMA_PU(int, pixel_satd, cpu, const pixel*, intptr_t, const pixel*, intptr_t); \
-    FUNCDEF_TU_S2(void, ssimDist, cpu, const pixel *fenc, uint32_t fStride, const pixel *recon, intptr_t rstride, uint64_t *ssBlock, int shift, uint64_t *ac_k); \
-    FUNCDEF_TU_S2(void, normFact, cpu, const pixel *src, uint32_t blockSize, int shift, uint64_t *z_k)
+    FUNCDEF_CHROMA_PU(int, pixel_satd, cpu, const pixel*, intptr_t, const pixel*, intptr_t)
 
 DECLS(neon);
 DECLS(sve);
 DECLS(sve2);
+
+FUNCDEF_TU_S2(void, ssimDist, neon, const pixel *fenc, uint32_t fStride, const pixel *recon, intptr_t rstride, uint64_t *ssBlock, int shift, uint64_t *ac_k);
+FUNCDEF_TU_S2(void, normFact, neon, const pixel *src, uint32_t blockSize, int shift, uint64_t *z_k);
 
 FUNCDEF_PU_MULT_16(int, pixel_sad, neon_dotprod, const pixel*, intptr_t, const pixel*, intptr_t);
 FUNCDEF_PU_MULT_16(void, sad_x3, neon_dotprod, const pixel*, const pixel*, const pixel*, const pixel*, intptr_t, int32_t*);
