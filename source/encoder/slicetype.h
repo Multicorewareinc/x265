@@ -150,6 +150,19 @@ protected:
     bool     allocWeightedRef(Lowres& fenc);
 };
 
+#define X265_COOP_SLICE_SIZE 64
+
+struct CoopSlice
+{
+    int costEst;
+    int costEstAq;
+    int intraMbs;
+#if X265_ENABLE_COOPSLICE_FALSE_SHARING_REDUCTION
+    // x265_malloc aligns the array base; padding keeps each slice on its own cache line.
+    char padding[X265_COOP_SLICE_SIZE - 3 * sizeof(int)];
+#endif
+};
+
 class Lookahead : public JobProvider
 {
 public:
@@ -215,6 +228,10 @@ public:
     SPS            *m_sps;           /* for maximum picture re-ordering setting */
     uint32_t        m_cpbDelay;      /* latest cpb delay in lookahead (ticks) */
     int64_t         m_codedPicCount; /* latest coded picture count in lookahead (ticks) */
+
+#if X265_ENABLE_COOPSLICE_FALSE_SHARING_REDUCTION
+    CoopSlice*              m_coopSlices;
+#endif
 
     Lookahead(x265_param *param, ThreadPool *pool, SPS* sps);
 #if DETAILED_CU_STATS
@@ -308,7 +325,14 @@ public:
     Lowres**   m_frames;
     bool       m_batchMode;
 
-    CostEstimateGroup(Lookahead& l, Lowres** f) : m_lookahead(l), m_frames(f), m_batchMode(false) {}
+    // add()/addRow() fill m_estimates before use; estimateFrameCost() sets m_coop
+    // and clears the active m_slice entries before publishing cooperative jobs.
+    // cppcheck-suppress uninitMemberVar
+    CostEstimateGroup(Lookahead& l, Lowres** f) : m_lookahead(l), m_frames(f), m_batchMode(false)
+#if X265_ENABLE_COOPSLICE_FALSE_SHARING_REDUCTION
+        , m_slice(l.m_coopSlices)
+#endif
+    {}
 
     /* Cooperative cost estimate using multiple slices of downscaled frame */
     struct Coop
@@ -318,12 +342,11 @@ public:
     } m_coop;
 
     enum { MAX_COOP_SLICES = 32 };
-    struct Slice
-    {
-        int  costEst;
-        int  costEstAq;
-        int  intraMbs;
-    } m_slice[MAX_COOP_SLICES];
+#if X265_ENABLE_COOPSLICE_FALSE_SHARING_REDUCTION
+    CoopSlice* m_slice; // borrowed from Lookahead; valid until lookahead jobs stop
+#else
+    CoopSlice m_slice[MAX_COOP_SLICES];
+#endif
 
     int64_t singleCost(int p0, int p1, int b, bool intraPenalty = false);
 
