@@ -76,6 +76,23 @@ Note: For Arm AArch64, the Neon I8MM and SVE instruction sets need GCC 10 or lat
 2. make
 
 
+= False Sharing Reduction =
+
+ENABLE_COOPSLICE_FALSE_SHARING_REDUCTION defaults to ON for AArch64 and OFF for other
+architectures. It uses cache-line-aligned, separately allocated cooperative
+lookahead slices and retries helper recruitment for unassisted frame-cost
+batches. Each slice is padded to 64 bytes and the array is allocated with
+x265_malloc, which provides 64-byte alignment. Profile before enabling.
+
+Other architectures can opt in with:
+
+* cmake -DENABLE_COOPSLICE_FALSE_SHARING_REDUCTION=ON <other configuration options...>
+
+Disable it with -DENABLE_COOPSLICE_FALSE_SHARING_REDUCTION=OFF to retain the unaligned,
+in-class slice array without adding a pointer or allocating separate storage.
+This also retains the original helper recruitment behavior.
+
+
 = Build Instructions Windows =
 
 We recommend you use one of the make-solutions.bat files in the appropriate

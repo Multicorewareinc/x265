@@ -153,6 +153,12 @@ else()
     message(STATUS "Please add this value near ${CMAKE_CURRENT_LIST_FILE}:${CMAKE_CURRENT_LIST_LINE}")
 endif()
 
+option(ENABLE_COOPSLICE_FALSE_SHARING_REDUCTION
+    "Align cooperative lookahead slices and retry helper recruitment" ${ARM64})
+if(ENABLE_COOPSLICE_FALSE_SHARING_REDUCTION)
+    add_definitions(-DX265_ENABLE_COOPSLICE_FALSE_SHARING_REDUCTION=1)
+endif()
+
 if(X64)
     option(ENABLE_CET "Enable Control-flow Enforcement" OFF)
     if(ENABLE_CET)
