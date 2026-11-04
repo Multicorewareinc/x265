@@ -1,8 +1,11 @@
 # vim: syntax=cmake
 
-check_symbol_exists(__rdtsc "intrin.h" HAVE_RDTSC)
-if(HAVE_RDTSC)
-    add_definitions(-DHAVE_RDTSC=1)
+option(TESTBENCH_USE_COUNTER "Use raw counter ticks for benchmark timing" OFF)
+if(TESTBENCH_USE_COUNTER AND
+   (NOT (X86 OR ARM64 OR CROSS_COMPILE_ARM64 OR RISCV64 OR CROSS_COMPILE_RISCV64 OR LOONGARCH64 OR CROSS_COMPILE_LOONGARCH64) OR
+    (NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND NOT (MSVC AND X86))))
+    message(WARNING "Counter timing unavailable for this target or compiler; using std::chrono::steady_clock")
+    set(TESTBENCH_USE_COUNTER OFF)
 endif()
 
 # add X86 assembly files
@@ -55,6 +58,10 @@ add_executable(TestBench ${NASM_SRC}
     ipfilterharness.cpp ipfilterharness.h
     intrapredharness.cpp intrapredharness.h
     mcstfharness.cpp mcstfharness.h)
+
+if(TESTBENCH_USE_COUNTER)
+    target_compile_definitions(TestBench PRIVATE X265_TESTBENCH_USE_COUNTER=1)
+endif()
 
 target_link_libraries(TestBench x265-static ${PLATFORM_LIBS})
 if(LINKER_OPTIONS)
