@@ -125,6 +125,8 @@ static const struct option long_options[] =
     { "tskip",                no_argument, NULL, 0 },
     { "no-tskip-fast",        no_argument, NULL, 0 },
     { "tskip-fast",           no_argument, NULL, 0 },
+    { "zero-residual-skip",   no_argument, NULL, 0 },
+    { "no-zero-residual-skip",no_argument, NULL, 0 },
     { "cu-lossless",          no_argument, NULL, 0 },
     { "no-cu-lossless",       no_argument, NULL, 0 },
     { "no-constrained-intra", no_argument, NULL, 0 },
