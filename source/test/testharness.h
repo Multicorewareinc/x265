@@ -31,9 +31,10 @@
 
 #include <algorithm>
 #include <chrono>
+#include <type_traits>
 #include <utility>
 
-#if X265_TESTBENCH_USE_COUNTER && X265_ARCH_X86 && defined(_MSC_VER)
+#if defined(_MSC_VER) && (X265_ARCH_ARM64 || X265_ARCH_X86)
 #include <intrin.h>
 #endif
 
@@ -55,7 +56,7 @@ class TestHarness
 {
 public:
 
-    TestHarness() {}
+    TestHarness() : m_ok(1), m_rand(0) {}
 
     virtual ~TestHarness() {}
 
@@ -158,24 +159,10 @@ struct BenchmarkClock
     }
 };
 
-#if X265_ARCH_ARM64 && defined(__linux__) && defined(__GNUC__)
-// Work around SVE primitives that clobber callee-saved SIMD registers.
-#define BENCHMARK_CALL_ATTR __attribute__((noinline))
-#define BENCHMARK_SAVE_REGISTERS() \
-    asm volatile("" : : : "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "memory")
-#define BENCHMARK_CALL_BARRIER() asm volatile("" : : : "memory")
-#else
-#define BENCHMARK_CALL_ATTR inline
-#define BENCHMARK_SAVE_REGISTERS()
-#define BENCHMARK_CALL_BARRIER()
-#endif
-
 template<std::size_t... Indices, typename Func, typename... Args>
-BENCHMARK_CALL_ATTR void callUnrolled(std::index_sequence<Indices...>, Func& func, Args&... args)
+inline void callUnrolled(std::index_sequence<Indices...>, Func& func, Args&... args)
 {
-    BENCHMARK_SAVE_REGISTERS();
     ((static_cast<void>(Indices), static_cast<void>(func(args...))), ...);
-    BENCHMARK_CALL_BARRIER();
 }
 
 // Keep the median of five filtered batch averages.
@@ -253,6 +240,109 @@ void REPORT_SPEEDUP(Opt runOpt, Ref runRef, Args... args)
     printf("\t %-8.2lf | \t %-8.2lf\n", optperf, refperf);
 }
 
+#if X265_ARCH_ARM64 && (defined(__GNUC__) || defined(_MSC_VER))
+static constexpr uint64_t checkasmRegisterValues[8] =
+{
+    0x21f86d66c8ca00ce, 0x75b6ba21077c48ad,
+    0xed56bb2dcb3c7736, 0x8bda43d3fd1a7e06,
+    0xb64a9c9e5d318408, 0xdf9a54b303f1d3a3,
+    0x4a75479abd64e097, 0x249214109d5d1c88
+};
+
+#if defined(_MSC_VER)
+// MSVC does not support inline assembly on Arm or x64. Use intrinsics
+// to save, check and restore the registers.
+template<typename Func, typename... Args>
+__declspec(noinline)
+auto checkedCall(Func func, int *ok, Args... args) -> decltype(func(args...))
+{
+    double saved[8] =
+    {
+        __getRegFp(8), __getRegFp(9), __getRegFp(10), __getRegFp(11),
+        __getRegFp(12), __getRegFp(13), __getRegFp(14), __getRegFp(15)
+    };
+    double expected[8];
+    memcpy(expected, checkasmRegisterValues, sizeof(expected));
+    *ok = 1;
+    __setRegFp(8, expected[0]);
+    __setRegFp(9, expected[1]);
+    __setRegFp(10, expected[2]);
+    __setRegFp(11, expected[3]);
+    __setRegFp(12, expected[4]);
+    __setRegFp(13, expected[5]);
+    __setRegFp(14, expected[6]);
+    __setRegFp(15, expected[7]);
+
+    using Result = decltype(func(args...));
+    typename std::conditional<std::is_void<Result>::value, int, Result>::type result = {};
+    if constexpr (std::is_void<Result>::value)
+    {
+        func(args...);
+    }
+    else
+    {
+        result = func(args...);
+    }
+
+    double actual[8] =
+    {
+        __getRegFp(8), __getRegFp(9), __getRegFp(10), __getRegFp(11),
+        __getRegFp(12), __getRegFp(13), __getRegFp(14), __getRegFp(15)
+    };
+    __setRegFp(8, saved[0]);
+    __setRegFp(9, saved[1]);
+    __setRegFp(10, saved[2]);
+    __setRegFp(11, saved[3]);
+    __setRegFp(12, saved[4]);
+    __setRegFp(13, saved[5]);
+    __setRegFp(14, saved[6]);
+    __setRegFp(15, saved[7]);
+    *ok = !memcmp(actual, checkasmRegisterValues, sizeof(actual));
+    if constexpr (!std::is_void<Result>::value)
+    {
+        return result;
+    }
+}
+#else
+class CheckasmRegisters
+{
+    int *m_ok;
+
+public:
+    __attribute__((always_inline)) CheckasmRegisters(int *ok) : m_ok(ok)
+    {
+        *m_ok = 1;
+        asm volatile("ldp d8, d9, [%0]\n\t"
+                     "ldp d10, d11, [%0, #16]\n\t"
+                     "ldp d12, d13, [%0, #32]\n\t"
+                     "ldp d14, d15, [%0, #48]"
+                     : : "r"(checkasmRegisterValues)
+                     : "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "memory");
+    }
+
+    __attribute__((always_inline)) ~CheckasmRegisters()
+    {
+        uint64_t actual[8];
+        asm volatile("stp d8, d9, [%1]\n\t"
+                     "stp d10, d11, [%1, #16]\n\t"
+                     "stp d12, d13, [%1, #32]\n\t"
+                     "stp d14, d15, [%1, #48]"
+                     : "=m"(actual) : "r"(actual)
+                     : "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "memory");
+        *m_ok = !memcmp(actual, checkasmRegisterValues, sizeof(actual));
+    }
+};
+
+template<typename Func, typename... Args>
+__attribute__((noinline))
+auto checkedCall(Func func, int *ok, Args... args) -> decltype(func(args...))
+{
+    CheckasmRegisters check(ok);
+    return func(args...);
+}
+#endif
+#endif
+
 extern "C" {
 #if X265_ARCH_X86
 int PFX(stack_pagealign)(int (*func)(), int align);
@@ -301,6 +391,10 @@ void PFX(checkasm_stack_clobber)(uint64_t clobber, ...);
 #elif ARCH_X86
 #define checked(func, ...) PFX(checkasm_call)((intptr_t(*)())func, &m_ok, __VA_ARGS__);
 #define checked_float(func, ...) PFX(checkasm_call_float)((float(*)())func, &m_ok, __VA_ARGS__);
+#elif X265_ARCH_ARM64 && (defined(__GNUC__) || defined(_MSC_VER))
+#define checked(func, ...) checkedCall(func, &m_ok, __VA_ARGS__)
+#define checked_float(func, ...) checkedCall(func, &m_ok, __VA_ARGS__)
+#define reportfail() if (!m_ok) { fflush(stdout); fprintf(stderr, "register clobber check failed at %s:%d\n", __FILE__, __LINE__); abort(); }
 #elif X265_ARCH_LOONGARCH64
 void PFX(checkasm_stack_clobber)(uint64_t clobber, ...);
 #define checked(func, ...) ( \
