@@ -29,7 +29,6 @@
 #define MIN_FRAME_HEIGHT 64
 #define MAX_FRAME_HEIGHT 8704
 #define MIN_FRAME_RATE 1
-#define MAX_FRAME_RATE 300
 
 #include "common.h"
 
