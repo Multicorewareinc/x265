@@ -115,8 +115,8 @@ function PFX(getResidual32_sve2)
     ld1b            {z4.h}, p0/z, [x1]
     add             x0, x0, x3
     add             x1, x1, x3
-    sub             z8.h, z0.h, z4.h
-    st1h            {z8.h}, p0, [x2]
+    sub             z16.h, z0.h, z4.h
+    st1h            {z16.h}, p0, [x2]
     add             x2, x2, x3, lsl #1
 .endr
     ret
@@ -177,8 +177,8 @@ function PFX(pixel_sub_ps_32x32_sve2)
     ld1b            {z4.h}, p0/z, [x3]
     add             x2, x2, x4
     add             x3, x3, x5
-    sub             z8.h, z0.h, z4.h
-    st1h            {z8.h}, p0, [x0]
+    sub             z16.h, z0.h, z4.h
+    st1h            {z16.h}, p0, [x0]
     add             x0, x0, x1, lsl #1
 .endr
     cbnz            w12, .vl_gt_48_loop_sub_ps_32_sve2
@@ -261,10 +261,10 @@ function PFX(pixel_sub_ps_64x64_sve2)
     sub             w12, w12, #1
 .rept 4
     ld1b            {z0.h}, p0/z, [x2]
-    ld1b            {z8.h}, p0/z, [x3]
+    ld1b            {z4.h}, p0/z, [x3]
     add             x2, x2, x4
     add             x3, x3, x5
-    sub             z16.h, z0.h, z8.h
+    sub             z16.h, z0.h, z4.h
     st1h            {z16.h}, p0, [x0]
     add             x0, x0, x1, lsl #1
 .endr
@@ -327,8 +327,8 @@ function PFX(pixel_sub_ps_32x64_sve2)
     ld1b            {z4.h}, p0/z, [x3]
     add             x2, x2, x4
     add             x3, x3, x5
-    sub             z8.h, z0.h, z4.h
-    st1h            {z8.h}, p0, [x0]
+    sub             z16.h, z0.h, z4.h
+    st1h            {z16.h}, p0, [x0]
     add             x0, x0, x1, lsl #1
 .endr
     cbnz            w12, .vl_gt_48_loop_sub_ps_32x64_sve2
