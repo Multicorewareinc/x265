@@ -2972,11 +2972,12 @@ void Lookahead::slicetypeAnalyse(Lowres **frames, bool bKeyframe)
     int resetStart;
     bool bIsVbvLookahead = m_param->rc.vbvBufferSize && m_param->lookaheadDepth;
 
-    uint32_t keyintTimeLimit = m_param->keyframeMax + (int)(m_lastKeyframe - (frames[0]->dispPicCount + frames[0]->durationPicCount));
-    uint32_t extendedKeyIntTime = keyintTimeLimit + m_param->gopLookahead;
+    int64_t keyintTimeLimit = (int64_t)m_param->keyframeMax + m_lastKeyframe
+                            - ((int64_t)frames[0]->dispPicCount + (int64_t)frames[0]->durationPicCount);
+    int64_t extendedKeyIntTime = keyintTimeLimit + m_param->gopLookahead;
 
     int keyIntFrameCnt = 0, keyIntFrameCntExtended = 0;
-    uint32_t durationAhead = 0;
+    int64_t durationAhead = 0;
 
     /* count undecided frames */
     for (framecnt = 0; framecnt < maxSearch; framecnt++)
@@ -3294,15 +3295,15 @@ void Lookahead::slicetypeAnalyse(Lowres **frames, bool bKeyframe)
 
         if (!m_param->bIntraRefresh)
         {
-            uint32_t duration = 0;
+            int64_t lastKeyDisp = 0;
             for (int j = keyintLimit + 1; j <= numFrames; ++j)
             {
-                if (duration % m_param->keyframeMax == 0)
+                if (j == keyintLimit + 1 || frames[j]->dispPicCount - lastKeyDisp + (int64_t)frames[j]->durationPicCount > m_param->keyframeMax)
                 {
                     frames[j]->sliceType = X265_TYPE_I;
                     resetStart = X265_MIN(resetStart, j + 1);
+                    lastKeyDisp = frames[j]->dispPicCount;
                 }
-                duration += frames[j]->durationPicCount;
             }
         }
 
