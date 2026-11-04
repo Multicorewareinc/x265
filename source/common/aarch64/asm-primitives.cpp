@@ -393,9 +393,8 @@ namespace X265_NS
 // private x265 namespace
 
 
-void setupNeonPrimitives(EncoderPrimitives &p, int cpuMask)
+void setupNeonPrimitives(EncoderPrimitives &p)
 {
-    (void)cpuMask;
     ALL_CHROMA_420_PU(p2s[NONALIGNED], filterPixelToShort, neon);
     ALL_CHROMA_422_PU(p2s[ALIGNED], filterPixelToShort, neon);
     ALL_CHROMA_444_PU(p2s[ALIGNED], filterPixelToShort, neon);
@@ -503,24 +502,6 @@ void setupNeonPrimitives(EncoderPrimitives &p, int cpuMask)
 
     // ssim_4x4x2_core
     p.ssim_4x4x2_core = PFX(ssim_4x4x2_core_neon);
-
-#ifdef HAVE_NEON_DOTPROD
-    if (!(cpuMask & X265_CPU_NEON_DOTPROD))
-#endif
-    {
-        // ssimDist
-        p.cu[BLOCK_4x4].ssimDist = PFX(ssimDist4_neon);
-        p.cu[BLOCK_8x8].ssimDist = PFX(ssimDist8_neon);
-        p.cu[BLOCK_16x16].ssimDist = PFX(ssimDist16_neon);
-        p.cu[BLOCK_32x32].ssimDist = PFX(ssimDist32_neon);
-        p.cu[BLOCK_64x64].ssimDist = PFX(ssimDist64_neon);
-
-        // normFact
-        p.cu[BLOCK_8x8].normFact = PFX(normFact8_neon);
-        p.cu[BLOCK_16x16].normFact = PFX(normFact16_neon);
-        p.cu[BLOCK_32x32].normFact = PFX(normFact32_neon);
-        p.cu[BLOCK_64x64].normFact = PFX(normFact64_neon);
-    }
 
     p.scanPosLast = PFX(scanPosLast_neon);
 
@@ -659,7 +640,7 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask)
 {
     if (cpuMask & X265_CPU_NEON)
     {
-        setupNeonPrimitives(p, cpuMask);
+        setupNeonPrimitives(p);
     }
 #ifdef HAVE_NEON_DOTPROD
     if (cpuMask & X265_CPU_NEON_DOTPROD)

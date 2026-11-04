@@ -2492,7 +2492,7 @@ bool PixelHarness::check_ssimDist(ssimDistortion_t ref, ssimDistortion_t opt)
         opt(pixel_test_buff[index] + j, srcStride[k1], pixel_test_buff[index2] + j, dstStride[k2], &opt_dest1, shift, &opt_dest2);
         BENCHMARK_CALL_BARRIER();
 
-        if (opt_dest1 != ref_dest1 && opt_dest2 != ref_dest2)
+        if (opt_dest1 != ref_dest1 || opt_dest2 != ref_dest2)
         {
             return false;
         }

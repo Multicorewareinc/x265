@@ -35,13 +35,6 @@
     ret PFX(name ## _32_ ## cpu(__VA_ARGS__)); \
     ret PFX(name ## _64_ ## cpu(__VA_ARGS__))
 
-#define FUNCDEF_TU_S2(ret, name, cpu, ...) \
-    ret PFX(name ## 4_ ## cpu(__VA_ARGS__)); \
-    ret PFX(name ## 8_ ## cpu(__VA_ARGS__)); \
-    ret PFX(name ## 16_ ## cpu(__VA_ARGS__)); \
-    ret PFX(name ## 32_ ## cpu(__VA_ARGS__)); \
-    ret PFX(name ## 64_ ## cpu(__VA_ARGS__))
-
 #define FUNCDEF_PU(ret, name, cpu, ...) \
     ret PFX(name ## _4x4_   ## cpu)(__VA_ARGS__); \
     ret PFX(name ## _8x8_   ## cpu)(__VA_ARGS__); \
@@ -154,9 +147,6 @@
 DECLS(neon);
 DECLS(sve);
 DECLS(sve2);
-
-FUNCDEF_TU_S2(void, ssimDist, neon, const pixel *fenc, uint32_t fStride, const pixel *recon, intptr_t rstride, uint64_t *ssBlock, int shift, uint64_t *ac_k);
-FUNCDEF_TU_S2(void, normFact, neon, const pixel *src, uint32_t blockSize, int shift, uint64_t *z_k);
 
 FUNCDEF_PU_MULT_16(int, pixel_sad, neon_dotprod, const pixel*, intptr_t, const pixel*, intptr_t);
 FUNCDEF_PU_MULT_16(void, sad_x3, neon_dotprod, const pixel*, const pixel*, const pixel*, const pixel*, intptr_t, int32_t*);

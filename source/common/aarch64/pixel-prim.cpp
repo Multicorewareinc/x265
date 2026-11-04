@@ -770,6 +770,142 @@ void blockfill_s_neon(int16_t *dst, intptr_t dstride, int16_t val)
 }
 
 #if !HIGH_BIT_DEPTH
+template<int size>
+void ssimDist_neon(const pixel *fenc, uint32_t fStride, const pixel *recon,
+                    intptr_t rstride, uint64_t *ssBlock, int shift, uint64_t *ac_k)
+{
+    // shift is always zero for 8-bit input.
+    if (size >= 16)
+    {
+        uint32x4_t sum_src[2] = { vdupq_n_u32(0), vdupq_n_u32(0) };
+        uint32x4_t sum_diff[2] = { vdupq_n_u32(0), vdupq_n_u32(0) };
+
+        for (int h = 0; h < size; h += 2)
+        {
+            for (int w = 0; w + 16 <= size; w += 16)
+            {
+                uint8x16_t src[2], rec[2];
+                load_u8x16xn<2>(fenc + w, fStride, src);
+                load_u8x16xn<2>(recon + w, rstride, rec);
+
+                uint8x16_t diff0 = vabdq_u8(src[0], rec[0]);
+                uint8x16_t diff1 = vabdq_u8(src[1], rec[1]);
+
+                sum_src[0] = vpadalq_u16(sum_src[0],
+                                            vmull_u8(vget_low_u8(src[0]), vget_low_u8(src[0])));
+                sum_src[1] = vpadalq_u16(sum_src[1],
+                                            vmull_u8(vget_low_u8(src[1]), vget_low_u8(src[1])));
+                sum_src[0] = vpadalq_u16(sum_src[0], vmull_high_u8(src[0], src[0]));
+                sum_src[1] = vpadalq_u16(sum_src[1], vmull_high_u8(src[1], src[1]));
+                sum_diff[0] = vpadalq_u16(sum_diff[0],
+                                            vmull_u8(vget_low_u8(diff0), vget_low_u8(diff0)));
+                sum_diff[1] = vpadalq_u16(sum_diff[1],
+                                            vmull_u8(vget_low_u8(diff1), vget_low_u8(diff1)));
+                sum_diff[0] = vpadalq_u16(sum_diff[0], vmull_high_u8(diff0, diff0));
+                sum_diff[1] = vpadalq_u16(sum_diff[1], vmull_high_u8(diff1, diff1));
+            }
+
+            fenc += 2 * fStride;
+            recon += 2 * rstride;
+        }
+
+        sum_src[0] = vaddq_u32(sum_src[0], sum_src[1]);
+        sum_diff[0] = vaddq_u32(sum_diff[0], sum_diff[1]);
+
+        *ac_k = vaddlvq_u32(sum_src[0]);
+        *ssBlock = vaddlvq_u32(sum_diff[0]);
+    }
+    if (size == 8)
+    {
+        uint32x4_t sum_src = vdupq_n_u32(0);
+        uint32x4_t sum_diff = vdupq_n_u32(0);
+
+        for (int h = 0; h < size; ++h)
+        {
+            uint8x8_t src = vld1_u8(fenc);
+            uint8x8_t rec = vld1_u8(recon);
+            uint8x8_t diff = vabd_u8(src, rec);
+
+            sum_src = vpadalq_u16(sum_src, vmull_u8(src, src));
+            sum_diff = vpadalq_u16(sum_diff, vmull_u8(diff, diff));
+
+            fenc += fStride;
+            recon += rstride;
+        }
+
+        *ac_k = vaddlvq_u32(sum_src);
+        *ssBlock = vaddlvq_u32(sum_diff);
+    }
+    if (size == 4)
+    {
+        uint32x4_t sum_src = vdupq_n_u32(0);
+        uint32x4_t sum_diff = vdupq_n_u32(0);
+
+        for (int h = 0; h < size; h += 2)
+        {
+            uint8x8_t src = load_u8x4x2(fenc, fStride);
+            uint8x8_t rec = load_u8x4x2(recon, rstride);
+            uint8x8_t diff = vabd_u8(src, rec);
+
+            sum_src = vpadalq_u16(sum_src, vmull_u8(src, src));
+            sum_diff = vpadalq_u16(sum_diff, vmull_u8(diff, diff));
+
+            fenc += 2 * fStride;
+            recon += 2 * rstride;
+        }
+
+        *ac_k = vaddlvq_u32(sum_src);
+        *ssBlock = vaddlvq_u32(sum_diff);
+    }
+}
+
+template<int size>
+void normFact_neon(const pixel *src, uint32_t blockSize, int shift, uint64_t *z_k)
+{
+    // shift is always zero for 8-bit input.
+    if (size >= 16)
+    {
+        uint32x4_t sum[2] = { vdupq_n_u32(0), vdupq_n_u32(0) };
+
+        for (int h = 0; h < size; h += 2)
+        {
+            for (int w = 0; w + 16 <= size; w += 16)
+            {
+                uint8x16_t s[2];
+                load_u8x16xn<2>(src + w, blockSize, s);
+
+                sum[0] = vpadalq_u16(sum[0],
+                                        vmull_u8(vget_low_u8(s[0]), vget_low_u8(s[0])));
+                sum[1] = vpadalq_u16(sum[1],
+                                        vmull_u8(vget_low_u8(s[1]), vget_low_u8(s[1])));
+                sum[0] = vpadalq_u16(sum[0], vmull_high_u8(s[0], s[0]));
+                sum[1] = vpadalq_u16(sum[1], vmull_high_u8(s[1], s[1]));
+            }
+
+            src += 2 * blockSize;
+        }
+
+        sum[0] = vaddq_u32(sum[0], sum[1]);
+
+        *z_k = vaddlvq_u32(sum[0]);
+    }
+    if (size == 8)
+    {
+        uint32x4_t sum = vdupq_n_u32(0);
+
+        for (int h = 0; h < size; ++h)
+        {
+            uint8x8_t s = vld1_u8(src);
+
+            sum = vpadalq_u16(sum, vmull_u8(s, s));
+
+            src += blockSize;
+        }
+
+        *z_k = vaddlvq_u32(sum);
+    }
+}
+
 template<int width, int height>
 void blockcopy_ps_neon(int16_t *dst, intptr_t dst_stride, const pixel *src,
                        intptr_t src_stride)
@@ -2365,6 +2501,19 @@ void setupPixelPrimitives_neon(EncoderPrimitives &p)
     p.chroma[X265_CSP_I422].cu[BLOCK_422_8x16].sa8d  = sa8d8_neon<8, 16>;
     p.chroma[X265_CSP_I422].cu[BLOCK_422_16x32].sa8d = sa8d16_neon<16, 32>;
     p.chroma[X265_CSP_I422].cu[BLOCK_422_32x64].sa8d = sa8d16_neon<32, 64>;
+
+#if !HIGH_BIT_DEPTH
+    p.cu[BLOCK_4x4].ssimDist = ssimDist_neon<4>;
+    p.cu[BLOCK_8x8].ssimDist = ssimDist_neon<8>;
+    p.cu[BLOCK_16x16].ssimDist = ssimDist_neon<16>;
+    p.cu[BLOCK_32x32].ssimDist = ssimDist_neon<32>;
+    p.cu[BLOCK_64x64].ssimDist = ssimDist_neon<64>;
+
+    p.cu[BLOCK_8x8].normFact = normFact_neon<8>;
+    p.cu[BLOCK_16x16].normFact = normFact_neon<16>;
+    p.cu[BLOCK_32x32].normFact = normFact_neon<32>;
+    p.cu[BLOCK_64x64].normFact = normFact_neon<64>;
+#endif // !HIGH_BIT_DEPTH
 
     p.weight_pp = weight_pp_neon;
 
