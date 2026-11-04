@@ -761,7 +761,7 @@ function PFX(pixel_sse_ss_64x64_neon)
     movi            v5.4s, #0
     movi            v6.4s, #0
     movi            v7.4s, #0
-    movi            v8.4s, #0
+    movi            v24.4s, #0
     mov             w11, #32
 .Loop_sse_ss_64x1:
     sub             w11, w11, #1
@@ -797,10 +797,10 @@ function PFX(pixel_sse_ss_64x64_neon)
     ldp             q18, q19, [x2, #96]
     sub             v22.8h, v16.8h, v18.8h
     smlal           v7.4s, v22.4h, v22.4h
-    smlal2          v8.4s, v22.8h, v22.8h
+    smlal2          v24.4s, v22.8h, v22.8h
     sub             v23.8h, v17.8h, v19.8h
     smlal           v7.4s, v23.4h, v23.4h
-    smlal2          v8.4s, v23.8h, v23.8h
+    smlal2          v24.4s, v23.8h, v23.8h
 
     add             x0, x0, x1
     add             x2, x2, x3
@@ -813,7 +813,7 @@ function PFX(pixel_sse_ss_64x64_neon)
     uadalp          v0.2d, v5.4s
     uadalp          v0.2d, v6.4s
     uadalp          v0.2d, v7.4s
-    uadalp          v0.2d, v8.4s
+    uadalp          v0.2d, v24.4s
     cbnz            w12, .Loop_sse_ss_64x32
 
     addp            d0, v0.2d

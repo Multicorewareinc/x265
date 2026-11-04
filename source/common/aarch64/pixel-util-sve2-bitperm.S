@@ -22,7 +22,6 @@
  *****************************************************************************/
 
 #include "asm-sve.S"
-#include "pixel-util-common.S"
 
 .arch armv8-a+sve2+sve2-bitperm
 
