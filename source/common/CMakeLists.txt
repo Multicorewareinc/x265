@@ -115,7 +115,7 @@ if(ENABLE_ASSEMBLY AND (ARM64 OR CROSS_COMPILE_ARM64))
     enable_language(ASM)
 
     # Add Arm assembly files here.
-    set(A_SRCS asm.S mc-a.S mc-a-common.S sad-a.S pixel-util.S pixel-util-common.S p2s.S p2s-common.S blockcopy8.S ssd-a.S ssd-a-common.S intrapred.S)
+    set(A_SRCS asm.S mc-a.S mc-a-common.S sad-a.S pixel-util.S p2s.S p2s-common.S blockcopy8.S ssd-a.S ssd-a-common.S intrapred.S)
     set(A_SRCS_NEON_DOTPROD sad-neon-dotprod.S ssd-neon-dotprod.S)
     set(A_SRCS_SVE asm-sve.S p2s-sve.S pixel-util-sve.S ssd-a-sve.S)
     set(A_SRCS_SVE2 mc-a-sve2.S pixel-util-sve2.S)
@@ -131,6 +131,12 @@ if(ENABLE_ASSEMBLY AND (ARM64 OR CROSS_COMPILE_ARM64))
         set(ASM_PRIMITIVES ${ASM_PRIMITIVES} aarch64/${SRC})
         set_source_files_properties(aarch64/${SRC} PROPERTIES COMPILE_FLAGS ${AARCH64_NEON_FLAG})
     endforeach()
+
+    # Increase limit to allow GCC to inline the helper functions.
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        set_property(SOURCE aarch64/pixel-prim.cpp APPEND PROPERTY COMPILE_OPTIONS
+            "--param=inline-unit-growth=100")
+    endif()
 
     if(CPU_HAS_NEON_DOTPROD)
         foreach(SRC ${C_SRCS_NEON_DOTPROD})
