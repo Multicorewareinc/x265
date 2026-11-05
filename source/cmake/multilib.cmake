@@ -16,11 +16,10 @@
 set(_multilib_root "${CMAKE_CURRENT_BINARY_DIR}/multilib")
 set(_multilib_source "${CMAKE_CURRENT_SOURCE_DIR}")
 
-# The nested builds need `file(GLOB_RECURSE ... CONFIGURE_DEPENDS)` and the
-# -j option of `cmake --build`, both introduced in CMake 3.12; plain x265
-# builds keep supporting older CMake versions
-if(CMAKE_VERSION VERSION_LESS 3.12)
-    message(FATAL_ERROR "ENABLE_MULTILIB requires CMake 3.12 or later. "
+# ENABLE_MULTILIB follows the project's own CMake minimum (3.10); the few
+# newer features it can use are version-gated below
+if(CMAKE_VERSION VERSION_LESS 3.10)
+    message(FATAL_ERROR "ENABLE_MULTILIB requires CMake 3.10 or later. "
         "Use build/linux/multilib.sh or the build/vc*-x86_64/multilib.bat "
         "scripts to build the multi-bit-depth library with older CMake.")
 endif()
@@ -82,12 +81,19 @@ if(CMAKE_CROSSCOMPILING AND DEFINED CMAKE_SYSTEM_NAME)
     # cross-compiling mode
     list(APPEND _multilib_common_args "-DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}")
 endif()
-# Inherit this project's build options (STATIC_LINK_CRT matters: mixing /MT
-# and /MD objects fails with LNK2038 on MSVC)
+# Inherit this project's build options, including the CPU feature switches so
+# that all bit depths are compiled with the same instruction sets
+# (STATIC_LINK_CRT matters too: mixing /MT and /MD objects fails with LNK2038
+# on MSVC). The architecture-specific options are only declared on their
+# target platform, hence the DEFINED check.
 foreach(_option IN ITEMS ENABLE_ASSEMBLY ENABLE_PIC ENABLE_LIBNUMA
                            STATIC_LINK_CRT ENABLE_HDR10_PLUS ENABLE_SVT_HEVC
                            ENABLE_LIBVMAF ENABLE_ALPHA ENABLE_MULTIVIEW
-                           ENABLE_SCC_EXT)
+                           ENABLE_SCC_EXT NATIVE_BUILD
+                           AARCH64_RUNTIME_CPU_DETECT ENABLE_NEON
+                           ENABLE_NEON_DOTPROD ENABLE_NEON_I8MM ENABLE_SVE
+                           ENABLE_SVE2 ENABLE_SVE2_BITPERM
+                           RISCV64_RUNTIME_CPU_DETECT ENABLE_RVV)
     if(DEFINED ${_option})
         list(APPEND _multilib_common_args "-D${_option}=${${_option}}")
     endif()
@@ -136,27 +142,52 @@ endif()
 # Forward the parallelism of the parent build so the nested builds do not fall
 # back to -j1. Prefer CMAKE_BUILD_PARALLEL_LEVEL and otherwise fall back to the
 # machine's processor count; the two bit-depth sub-builds are chained
-# sequentially, so each may safely use all cores. The level is passed as a
-# separate argument: `cmake --build` rejects the combined "-jN" form before
-# CMake 3.14.
-set(_multilib_parallel_args "")
+# sequentially, so each may safely use all cores.
+#
+# `cmake --build` only gained its own -j option in CMake 3.12 (as a separate
+# argument: the combined "-jN" form is only accepted from 3.14), so on older
+# versions the native build tool is driven directly instead. That is only
+# safe for the Ninja and Makefile generators; other generators fall back to a
+# plain `cmake --build` without a parallelism option.
+set(_multilib_parallel_level "")
 if(DEFINED ENV{CMAKE_BUILD_PARALLEL_LEVEL} AND NOT "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}" STREQUAL "")
-    set(_multilib_parallel_args -j "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}")
+    set(_multilib_parallel_level "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}")
 else()
     include(ProcessorCount)
     ProcessorCount(_multilib_ncpu)
     if(_multilib_ncpu GREATER 0)
-        set(_multilib_parallel_args -j "${_multilib_ncpu}")
+        set(_multilib_parallel_level "${_multilib_ncpu}")
     endif()
+endif()
+set(_multilib_native_build FALSE)
+set(_multilib_cmake_parallel_args "")
+if(CMAKE_VERSION VERSION_LESS 3.12)
+    if(CMAKE_GENERATOR MATCHES "Ninja" OR
+       (CMAKE_GENERATOR MATCHES "Makefiles" AND NOT CMAKE_GENERATOR MATCHES "NMake"))
+        set(_multilib_native_build TRUE)
+    endif()
+elseif(_multilib_parallel_level)
+    set(_multilib_cmake_parallel_args -j "${_multilib_parallel_level}")
 endif()
 
 # Track the x265 sources so that the nested builds re-run when they change;
 # without this the produced archive would be considered up to date forever.
+#
 # The build tree is excluded from the tracking: it can be located inside
 # source/ (CLion and VS Code do this when they open source/ as the project
 # root), and its generated files would make the sub-builds depend on their
 # own outputs (circular dependency).
-file(GLOB_RECURSE _multilib_depends CONFIGURE_DEPENDS "${_multilib_source}/*")
+#
+# CONFIGURE_DEPENDS (CMake 3.12+) re-runs the configure step whenever the glob
+# result changes. When the build tree is inside source/, its generated files
+# are part of the glob and the configure step would re-run on every build, so
+# it is only used when the build tree is outside source/.
+string(FIND "${CMAKE_CURRENT_BINARY_DIR}/" "${CMAKE_CURRENT_SOURCE_DIR}/" _multilib_pos)
+if(CMAKE_VERSION VERSION_LESS 3.12 OR _multilib_pos EQUAL 0)
+    file(GLOB_RECURSE _multilib_depends "${_multilib_source}/*")
+else()
+    file(GLOB_RECURSE _multilib_depends CONFIGURE_DEPENDS "${_multilib_source}/*")
+endif()
 set(_multilib_build_prefix "${CMAKE_CURRENT_BINARY_DIR}/")
 set(_multilib_sources "")
 foreach(_dep IN LISTS _multilib_depends)
@@ -210,6 +241,15 @@ function(x265_define_multilib_variant name dir archive)
             list(APPEND _archive_dir_args "-DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_${_config}=${dir}")
         endforeach()
     endif()
+    if(_multilib_native_build)
+        set(_multilib_build_command "${CMAKE_MAKE_PROGRAM}" -C "${dir}")
+        if(_multilib_parallel_level)
+            list(APPEND _multilib_build_command -j "${_multilib_parallel_level}")
+        endif()
+    else()
+        set(_multilib_build_command "${CMAKE_COMMAND}" --build "${dir}"
+            --config "$<CONFIG>" ${_multilib_cmake_parallel_args})
+    endif()
     add_custom_command(
         OUTPUT "${archive}"
         # The nested configure is driven through the documented `cmake -E
@@ -224,10 +264,8 @@ function(x265_define_multilib_variant name dir archive)
                 "${_multilib_source}"
         # Run the nested build with an empty MAKEFLAGS so the nested make does
         # not try to join the parent's jobserver ("resetting jobserver mode"
-        # warnings); the explicit -j above gives it its own parallelism
-        COMMAND "${CMAKE_COMMAND}" -E env MAKEFLAGS= "${CMAKE_COMMAND}"
-                --build "${dir}" --config "$<CONFIG>"
-                ${_multilib_parallel_args}
+        # warnings); the -j option gives it its own parallelism
+        COMMAND "${CMAKE_COMMAND}" -E env MAKEFLAGS= ${_multilib_build_command}
         DEPENDS ${_multilib_depends}
         COMMENT "Building the ${name} x265 sub-library"
         VERBATIM)
