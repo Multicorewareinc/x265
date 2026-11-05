@@ -403,6 +403,7 @@ void x265_param_default(x265_param* param)
     param->bLowPassDct = 0;
     param->bAnalysisType = 0;
     param->bSingleSeiNal = 0;
+    param->bUserSEIRaw = 0;
 
     /* SEI messages */
     param->preferredTransferCharacteristics = -1;
@@ -1435,6 +1436,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
         OPT("radl") p->radl = atoi(value);
         OPT("max-ausize-factor") p->maxAUSizeFactor = atof(value);
         OPT("dynamic-refine") p->bDynamicRefine = atobool(value);
+        OPT("sei-udu-raw") p->bUserSEIRaw = atobool(value);
         OPT("single-sei") p->bSingleSeiNal = atobool(value);
         OPT("atc-sei") p->preferredTransferCharacteristics = atoi(value);
         OPT("frame-packing") p->framePacking = atoi(value);
@@ -2530,6 +2532,7 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     s += snprintf(s, bufSize - (s - buf), " refine-analysis-type=%d", p->bAnalysisType);
     s += snprintf(s, bufSize - (s - buf), " copy-pic=%d", p->bCopyPicToFrame);
     s += snprintf(s, bufSize - (s - buf), " max-ausize-factor=%.1f", p->maxAUSizeFactor);
+    BOOL(p->bUserSEIRaw, "sei-udu-raw");
     BOOL(p->bDynamicRefine, "dynamic-refine");
     BOOL(p->bSingleSeiNal, "single-sei");
     BOOL(p->rc.hevcAq, "hevc-aq");
@@ -3056,6 +3059,7 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->radl = src->radl;
     dst->selectiveSAO = src->selectiveSAO;
     dst->maxAUSizeFactor = src->maxAUSizeFactor;
+    dst->bUserSEIRaw = src->bUserSEIRaw;
     dst->bEmitIDRRecoverySEI = src->bEmitIDRRecoverySEI;
     dst->bDynamicRefine = src->bDynamicRefine;
     dst->bSingleSeiNal = src->bSingleSeiNal;

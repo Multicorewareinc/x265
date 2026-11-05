@@ -292,6 +292,13 @@ forceQP value other than 0.
 With HRD, the Pic Timing SEI picture structure can be overriden per frame with
 **picStruct**. Refer to the PicStruct enumeration or ITU H.265 Table D.2.
 
+User SEI messages can be attached to a picture with **userSEI**. For a
+payload of type USER_DATA_UNREGISTERED, x265 by default writes its own
+UUID (2CA2DE09-B517-47DB-BB55-A4FE7FC2FC4E) in front of the payload. If
+the payload already starts with your own 16-byte uuid_iso_iec_11578, set
+**bUserSEIRaw** (:option:`--sei-udu-raw`) so it is written verbatim;
+payloads smaller than 16 bytes are then skipped with an error.
+
 x265 does not modify the picture structure provided as input, so you may
 reuse a single **x265_picture** for all pictures passed to a single
 encoder, or even all pictures passed to multiple encoders.

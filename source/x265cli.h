@@ -345,6 +345,8 @@ static const struct option long_options[] =
     { "no-idr-recovery-sei",  no_argument, NULL, 0 },
     { "single-sei",     no_argument, NULL, 0 },
     { "no-single-sei",  no_argument, NULL, 0 },
+    { "sei-udu-raw",    no_argument, NULL, 0 },
+    { "no-sei-udu-raw", no_argument, NULL, 0 },
     { "atc-sei",        required_argument, NULL, 0 },
     { "frame-packing",  required_argument, NULL, 0 },
     { "pic-struct",     required_argument, NULL, 0 },

@@ -2567,6 +2567,16 @@ VUI fields must be manually specified.
 	Parse the input file specified and inserts SEI messages into the bitstream. 
 	Currently, we support only PREFIX SEI messages. This is an "application-only" feature.
 
+.. option:: --sei-udu-raw, --no-sei-udu-raw
+
+	Write user data unregistered SEI payloads (payload type 5, from
+	x265_picture.userSEI or :option:`--nalu-file`) verbatim. The first 16
+	bytes of each payload must be the caller's uuid_iso_iec_11578, followed
+	by the user data; payloads smaller than 16 bytes are skipped with an
+	error. When disabled, x265 writes its own UUID
+	(2CA2DE09-B517-47DB-BB55-A4FE7FC2FC4E) in front of each payload, so the
+	whole payload becomes user_data_payload_byte. Default disabled.
+
 .. option:: --atc-sei <integer>
 
 	Emit the alternative transfer characteristics SEI message where the integer
