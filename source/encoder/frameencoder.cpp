@@ -887,7 +887,15 @@ void FrameEncoder::compressFrame(int layer)
         x265_sei_payload *payload = &m_frame[layer]->m_userSEI.payloads[i];
         if (payload->payloadType == USER_DATA_UNREGISTERED)
         {
+            if (m_param->bUserSEIRaw && payload->payloadSize < (int)ISO_IEC_11578_LEN)
+            {
+                x265_log(m_param, X265_LOG_ERROR, "user data unregistered SEI payload of %d bytes is "
+                         "smaller than the 16-byte UUID required by --sei-udu-raw, skipped\n",
+                         payload->payloadSize);
+                continue;
+            }
             SEIuserDataUnregistered sei;
+            sei.m_bRaw = !!m_param->bUserSEIRaw;
             sei.m_userData = payload->payload;
             sei.setSize(payload->payloadSize);
             sei.writeAccessUnitSEI(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);

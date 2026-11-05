@@ -395,17 +395,23 @@ static const uint32_t ISO_IEC_11578_LEN = 16;
 class SEIuserDataUnregistered : public SEI
 {
 public:
-    SEIuserDataUnregistered() : m_userData(NULL)
+    SEIuserDataUnregistered() : m_userData(NULL), m_bRaw(false)
     {
         m_payloadType = USER_DATA_UNREGISTERED;
         m_payloadSize = 0;
     }
     static const uint8_t m_uuid_iso_iec_11578[ISO_IEC_11578_LEN];
     uint8_t *m_userData;
+    /* true: m_userData already starts with the caller's 16-byte UUID,
+     * so it is written verbatim without x265's UUID in front */
+    bool m_bRaw;
     void writeSEI(const SPS&)
     {
-        for (uint32_t i = 0; i < ISO_IEC_11578_LEN; i++)
-            WRITE_CODE(m_uuid_iso_iec_11578[i], 8, "sei.uuid_iso_iec_11578[i]");
+        if (!m_bRaw)
+        {
+            for (uint32_t i = 0; i < ISO_IEC_11578_LEN; i++)
+                WRITE_CODE(m_uuid_iso_iec_11578[i], 8, "sei.uuid_iso_iec_11578[i]");
+        }
         for (uint32_t i = 0; i < m_payloadSize; i++)
             WRITE_CODE(m_userData[i], 8, "user_data");
     }

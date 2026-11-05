@@ -2424,6 +2424,14 @@ typedef struct x265_param
      * every picture. It is written on the base layer only and cannot be combined with
      * numViews > 1. Default -1 (disabled). */
     int      framePacking;
+
+    /* Write user data unregistered SEI payloads (x265_picture.userSEI or
+     * --nalu-file, payload type USER_DATA_UNREGISTERED) verbatim. When enabled,
+     * the first 16 bytes of each payload are the caller's uuid_iso_iec_11578,
+     * followed by user_data_payload_byte; payloads smaller than 16 bytes are
+     * rejected. When disabled, x265 writes its own UUID in front of the payload.
+     * Default 0 (disabled). */
+    int      bUserSEIRaw;
 } x265_param;
 
 /* x265_param_alloc:

@@ -373,6 +373,7 @@ namespace X265_NS {
         H0("   --[no-]info                   Emit SEI identifying encoder and parameters. Default %s\n", OPT(param->bEmitInfoSEI));
         H0("   --[no-]hrd                    Enable HRD parameters signaling. Default %s\n", OPT(param->bEmitHRDSEI));
         H0("   --[no-]idr-recovery-sei       Emit recovery point infor SEI at each IDR frame \n");
+        H0("   --[no-]sei-udu-raw            Write user data unregistered SEI payloads verbatim (first 16 bytes are the caller's UUID). Default %s\n", OPT(param->bUserSEIRaw));
         H0("   --temporal-layers             Enable a temporal sublayer for unreferenced B frames. Default %s\n", OPT(param->bEnableTemporalSubLayers));
         H0("   --[no-]aud                    Emit access unit delimiters at the start of each access unit. Default %s\n", OPT(param->bEnableAccessUnitDelimiters));
         H0("   --[no-]eob                    Emit end of bitstream nal unit at the end of the bitstream. Default %s\n", OPT(param->bEnableEndOfBitstream));
