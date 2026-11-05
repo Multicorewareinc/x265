@@ -228,3 +228,7 @@ big_buck_bunny_360p24.y4m,--preset ultrafast --frame-packing 3
 big_buck_bunny_360p24.y4m,--preset superfast --bframes 4 --frame-packing 4
 big_buck_bunny_360p24.y4m,--preset veryfast --frame-packing 5
 big_buck_bunny_360p24.y4m,--preset veryfast --b-adapt 2 --bframes 0 --interlace tff --field --frame-packing 5
+
+#User data unregistered SEI raw tests
+BasketballDrive_1920x1080_50.y4m,--preset ultrafast --nalu-file udu_sei_raw.txt --sei-udu-raw
+big_buck_bunny_360p24.y4m,--preset superfast --nalu-file udu_sei_raw.txt --sei-udu-raw --single-sei
