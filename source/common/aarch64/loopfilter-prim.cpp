@@ -82,8 +82,10 @@ static void processSaoCUE0_neon(pixel *rec, int8_t *offsetEo, int width, int8_t 
             for (; (x + 8) <= width; x += 8)
             {
                 uint8x8_t in = vld1_u8(rec + x);
-                int16x8_t diff = vreinterpretq_s16_u16(vsubl_u8(in, vld1_u8(rec + x + 1)));
-                vsignRight = vmovn_s16(vmaxq_s16(vminq_s16(diff, vdupq_n_s16(1)), vdupq_n_s16(-1)));
+                uint8x8_t right = vld1_u8(rec + x + 1);
+                uint8x8_t lt = vclt_u8(in, right);
+                uint8x8_t gt = vcgt_u8(in, right);
+                vsignRight = vreinterpret_s8_u8(vsub_u8(lt, gt));
                 shifter.val[0] = vneg_s8(vsignRight);
                 int8x8_t tmp = shifter.val[0];
                 int8x8_t edge = vtbl2_s8(shifter, index);
@@ -152,10 +154,10 @@ static void processSaoCUE1_2Rows_neon(pixel *rec, int8_t *upBuff1, int8_t *offse
 
             for (; (x + 16) <= width; x += 16)
             {
-                int8x16_t vsignDown = signOf_neon(rec + x, rec + x + stride);
+                int8x16_t reverseSign = signOf_neon(rec + x + stride, rec + x);
                 int8x16_t vsignUp = vld1q_s8(upBuff1 + x);
-                int8x16_t vedgeType = vaddq_s8(vaddq_s8(vsignDown, vsignUp), c);
-                vst1q_s8(upBuff1 + x, vnegq_s8(vsignDown));
+                int8x16_t vedgeType = vaddq_s8(vsubq_s8(vsignUp, reverseSign), c);
+                vst1q_s8(upBuff1 + x, reverseSign);
                 sao_apply_eo16(rec + x, vedgeType, tbl);
             }
         }

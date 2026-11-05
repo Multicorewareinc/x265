@@ -126,7 +126,7 @@ static inline void compute_eo_zero_stats(int64x2_t *vstats, int64x2_t total_acc)
 }
 
 static inline void merge_eo_stats(int64x2_t *a, int64x2_t ta,
-                                 int64x2_t *b, int64x2_t tb)
+                                  int64x2_t *b, int64x2_t tb)
 {
     a[0] = vaddq_s64(a[0], b[0]);
     a[1] = vaddq_s64(a[1], b[1]);
@@ -458,29 +458,29 @@ static inline void bo_acc_histseg_counts(uint8x16_t band, uint8x16_t idx0,
     uint16x8_t h1_hi = vmovl_u8(vget_high_u8(h1));
 
     vst1q_s32(count + 0,
-              vaddq_s32(vld1q_s32(count + 0),
-                        vreinterpretq_s32_u32(vmovl_u16(vget_low_u16(h0_lo)))));
+              vreinterpretq_s32_u32(vaddw_u16(vreinterpretq_u32_s32(vld1q_s32(count + 0)),
+                                              vget_low_u16(h0_lo))));
     vst1q_s32(count + 4,
-              vaddq_s32(vld1q_s32(count + 4),
-                        vreinterpretq_s32_u32(vmovl_u16(vget_high_u16(h0_lo)))));
+              vreinterpretq_s32_u32(vaddw_u16(vreinterpretq_u32_s32(vld1q_s32(count + 4)),
+                                              vget_high_u16(h0_lo))));
     vst1q_s32(count + 8,
-              vaddq_s32(vld1q_s32(count + 8),
-                        vreinterpretq_s32_u32(vmovl_u16(vget_low_u16(h0_hi)))));
+              vreinterpretq_s32_u32(vaddw_u16(vreinterpretq_u32_s32(vld1q_s32(count + 8)),
+                                              vget_low_u16(h0_hi))));
     vst1q_s32(count + 12,
-              vaddq_s32(vld1q_s32(count + 12),
-                        vreinterpretq_s32_u32(vmovl_u16(vget_high_u16(h0_hi)))));
+              vreinterpretq_s32_u32(vaddw_u16(vreinterpretq_u32_s32(vld1q_s32(count + 12)),
+                                              vget_high_u16(h0_hi))));
     vst1q_s32(count + 16,
-              vaddq_s32(vld1q_s32(count + 16),
-                        vreinterpretq_s32_u32(vmovl_u16(vget_low_u16(h1_lo)))));
+              vreinterpretq_s32_u32(vaddw_u16(vreinterpretq_u32_s32(vld1q_s32(count + 16)),
+                                              vget_low_u16(h1_lo))));
     vst1q_s32(count + 20,
-              vaddq_s32(vld1q_s32(count + 20),
-                        vreinterpretq_s32_u32(vmovl_u16(vget_high_u16(h1_lo)))));
+              vreinterpretq_s32_u32(vaddw_u16(vreinterpretq_u32_s32(vld1q_s32(count + 20)),
+                                              vget_high_u16(h1_lo))));
     vst1q_s32(count + 24,
-              vaddq_s32(vld1q_s32(count + 24),
-                        vreinterpretq_s32_u32(vmovl_u16(vget_low_u16(h1_hi)))));
+              vreinterpretq_s32_u32(vaddw_u16(vreinterpretq_u32_s32(vld1q_s32(count + 24)),
+                                              vget_low_u16(h1_hi))));
     vst1q_s32(count + 28,
-              vaddq_s32(vld1q_s32(count + 28),
-                        vreinterpretq_s32_u32(vmovl_u16(vget_high_u16(h1_hi)))));
+              vreinterpretq_s32_u32(vaddw_u16(vreinterpretq_u32_s32(vld1q_s32(count + 28)),
+                                              vget_high_u16(h1_hi))));
 }
 
 void saoCuStatsBO_sve2(const int16_t *diff, const pixel *rec, intptr_t stride,
