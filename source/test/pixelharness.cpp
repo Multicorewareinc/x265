@@ -1408,6 +1408,82 @@ bool PixelHarness::check_saoCuOrgE3_t(saoCuOrgE3_t ref, saoCuOrgE3_t opt)
     return true;
 }
 
+#if X265_ARCH_ARM64
+static bool checkSaoStatsTail(const EncoderPrimitives& ref, const EncoderPrimitives& opt)
+{
+    const int widths[] = { 4, 5, 6, 7, 8, 15, 16, 17, 31, 32, 33, 59, 60, 63 };
+    const int heights[] = { 1, 2, 5, 8 };
+    const int8_t padding[] = { -8, 6, 7, -7, -6, 127, -128 };
+    const intptr_t stride = MAX_CU_SIZE + 32;
+    pixel rec[stride * 10] = { 0 };
+    int16_t diff[MAX_CU_SIZE * 8];
+    for (size_t i = 0; i < sizeof(diff) / sizeof(diff[0]); i++)
+        diff[i] = 7;
+
+    for (size_t w = 0; w < sizeof(widths) / sizeof(widths[0]); w++)
+    {
+        for (size_t h = 0; h < sizeof(heights) / sizeof(heights[0]); h++)
+        {
+            for (size_t p = 0; p < sizeof(padding) / sizeof(padding[0]); p++)
+            {
+                for (int direction = 0; direction < 4; direction++)
+                {
+                    int32_t stats_ref[5] = { 1, 2, 3, 4, 5 }, stats_vec[5] = { 1, 2, 3, 4, 5 };
+                    int32_t count_ref[5] = { 5, 4, 3, 2, 1 }, count_vec[5] = { 5, 4, 3, 2, 1 };
+                    int8_t up_ref[MAX_CU_SIZE + 32], up_vec[MAX_CU_SIZE + 32];
+                    int8_t tmp_ref[MAX_CU_SIZE + 32], tmp_vec[MAX_CU_SIZE + 32];
+                    memset(up_ref, padding[p], sizeof(up_ref));
+                    memset(up_ref + 16, 0, widths[w]);
+                    memcpy(up_vec, up_ref, sizeof(up_ref));
+                    memset(tmp_ref, padding[p], sizeof(tmp_ref));
+                    memcpy(tmp_vec, tmp_ref, sizeof(tmp_ref));
+
+                    if (direction == 0 && opt.saoCuStatsE0)
+                    {
+                        ref.saoCuStatsE0(diff, rec + 16, stride, widths[w], heights[h], stats_ref, count_ref);
+                        opt.saoCuStatsE0(diff, rec + 16, stride, widths[w], heights[h], stats_vec, count_vec);
+                    }
+                    else if (direction == 1 && opt.saoCuStatsE1)
+                    {
+                        ref.saoCuStatsE1(diff, rec + 16, stride, up_ref + 16,
+                                        widths[w], heights[h], stats_ref, count_ref);
+                        opt.saoCuStatsE1(diff, rec + 16, stride, up_vec + 16,
+                                        widths[w], heights[h], stats_vec, count_vec);
+                    }
+                    else if (direction == 2 && opt.saoCuStatsE2)
+                    {
+                        ref.saoCuStatsE2(diff, rec + 16, stride, up_ref + 16, tmp_ref + 16,
+                                        widths[w], heights[h], stats_ref, count_ref);
+                        opt.saoCuStatsE2(diff, rec + 16, stride, up_vec + 16, tmp_vec + 16,
+                                        widths[w], heights[h], stats_vec, count_vec);
+                    }
+                    else if (direction == 3 && opt.saoCuStatsE3)
+                    {
+                        ref.saoCuStatsE3(diff, rec + 16, stride, up_ref + 16,
+                                        widths[w], heights[h], stats_ref, count_ref);
+                        opt.saoCuStatsE3(diff, rec + 16, stride, up_vec + 16,
+                                        widths[w], heights[h], stats_vec, count_vec);
+                    }
+
+                    for (int edge = 0; edge < 5; edge++)
+                    {
+                        if (stats_ref[edge] != stats_vec[edge] || count_ref[edge] != count_vec[edge])
+                        {
+                            printf("saoCuStatsE%d tail failed: %dx%d, padding=%d, edge=%d, "
+                                   "stats=%d/%d, count=%d/%d (ref/opt)\n",
+                                   direction, widths[w], heights[h], padding[p], edge,
+                                   stats_ref[edge], stats_vec[edge], count_ref[edge], count_vec[edge]);
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return true;
+}
+#endif
+
 bool PixelHarness::check_saoCuStatsBO_t(saoCuStatsBO_t ref, saoCuStatsBO_t opt)
 {
     enum { NUM_EDGETYPE = 33 }; // classIdx = 1 + (rec[x] >> 3);
@@ -3114,6 +3190,11 @@ bool PixelHarness::testCorrectness(const EncoderPrimitives& ref, const EncoderPr
             return false;
         }
     }
+
+#if X265_ARCH_ARM64
+    if (!checkSaoStatsTail(ref, opt))
+        return false;
+#endif
 
     if (opt.saoCuStatsBO)
     {
