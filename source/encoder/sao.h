@@ -107,6 +107,11 @@ public:
 
     bool create(x265_param* param, int initCommon);
     void createFromRootNode(SAO *root);
+
+    // Per-depth SAO-off rates shared by a frame encoder's rows (root node only).
+    bool   hasDepthSaoRate() const { return m_depthSaoRate != NULL; }
+    double getDepthSaoRate(int plane, int depth) const { return m_depthSaoRate[plane * SAO_DEPTHRATE_SIZE + depth]; }
+    void   setDepthSaoRates(const double* rates) { memcpy(m_depthSaoRate, rates, 2 * SAO_DEPTHRATE_SIZE * sizeof(double)); }
     void destroy(int destoryCommon);
 
     void allocSaoParam(SAOParam* saoParam) const;
