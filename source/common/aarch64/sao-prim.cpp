@@ -35,11 +35,9 @@ static inline int8x16_t mask_inactive_elems(const int rem, int8x16_t edge_type)
     // Compute a predicate mask where the bits of an element are 0 if the index
     // is less than the remainder (active), and 1 otherwise.
     const int8x16_t indices = vld1q_s8(quad_reg_byte_indices);
-    int8x16_t pred = vreinterpretq_s8_u8(vcgeq_s8(indices, vdupq_n_s8(rem)));
+    uint8x16_t pred = vcgeq_s8(indices, vdupq_n_s8(rem));
 
-    // Use predicate mask to shift "unused lanes" outside of range [-2, 2]
-    pred = vshlq_n_s8(pred, 3);
-    return veorq_s8(edge_type, pred);
+    return vbslq_s8(pred, vdupq_n_s8(-3), edge_type);
 }
 
 /*
