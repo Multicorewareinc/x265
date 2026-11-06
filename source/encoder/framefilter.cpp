@@ -630,11 +630,13 @@ void FrameFilter::processRow(int row, int layer)
     {
         for (numRowFinished = 0; numRowFinished < m_numRows; numRowFinished++)
         {
-            if (!m_frame->m_reconRowFlag[numRowFinished].get())
-                break;
-
+            /* The current row is finished here, but its reconRowFlag is only set
+             * by processPostRow() below, so skip it before testing the flag. */
             if (numRowFinished == row)
                 continue;
+
+            if (!m_frame->m_reconRowFlag[numRowFinished].get())
+                break;
         }
     }
 
