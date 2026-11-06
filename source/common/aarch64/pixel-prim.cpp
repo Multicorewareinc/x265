@@ -1792,7 +1792,7 @@ static inline int calc_energy_4x4(const pixel *source, intptr_t sstride)
 
     transpose_s16_s32x2(&t0, &t1, s01_23, d01_23);
 
-    int sat = vaddvq_u16(vmaxq_u16(vreinterpretq_u16_s16(t0), vreinterpretq_u16_s16(t1)));
+    int sat = vaddlvq_u16(vmaxq_u16(vreinterpretq_u16_s16(t0), vreinterpretq_u16_s16(t1)));
 
     return sat - sum;
 }

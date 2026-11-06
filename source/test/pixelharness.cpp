@@ -2855,6 +2855,26 @@ bool PixelHarness::testCorrectness(const EncoderPrimitives& ref, const EncoderPr
 
         if (opt.cu[i].psy_cost_pp)
         {
+            if (i == BLOCK_4x4)
+            {
+                ALIGN_VAR_16(pixel, highContrast[16]) =
+                {
+                    PIXEL_MAX, 0, PIXEL_MAX, 0,
+                    0, 0, 0, 0,
+                    0, 0, PIXEL_MAX, PIXEL_MAX,
+                    0, PIXEL_MAX, PIXEL_MAX, 0
+                };
+                ALIGN_VAR_16(pixel, zero[16]) = { 0 };
+                const intptr_t stride = 4;
+                int refCost = ref.cu[i].psy_cost_pp(highContrast, stride, zero, stride);
+                int optCost = (int)checked(opt.cu[i].psy_cost_pp, highContrast, stride, zero, stride);
+                if (refCost != optCost)
+                {
+                    printf("psy_cost_pp[4x4] high-contrast failed: ref=%d opt=%d\n", refCost, optCost);
+                    return false;
+                }
+                reportfail();
+            }
             if (!check_psyCost_pp(ref.cu[i].psy_cost_pp, opt.cu[i].psy_cost_pp))
             {
                 printf("\npsy_cost_pp[%dx%d] failed!\n", 4 << i, 4 << i);
