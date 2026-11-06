@@ -839,7 +839,7 @@ void x265_alloc_analysis_data(x265_param *param, x265_analysis_data* analysis)
 
     //Allocate memory for weightParam pointer
     if (!isMultiPassOpt && !(param->bAnalysisType == AVC_INFO))
-        CHECKED_MALLOC_ZERO(analysis->wt, x265_weight_param, numPlanes * numDir);
+        CHECKED_MALLOC_ZERO(analysis->wt, x265_weight_param, numPlanes * numDir * param->maxNumReferences);
 
     //Allocate memory for intraData pointer
     if ((maxReuseLevel > 1) || isMultiPassOpt)

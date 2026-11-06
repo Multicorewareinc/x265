@@ -5137,7 +5137,7 @@ void Encoder::readAnalysisFile(x265_analysis_data* analysis, int curPoc, const x
     {
         uint32_t numDir = analysis->sliceType == X265_TYPE_P ? 1 : 2;
         uint32_t numPlanes = m_param->internalCsp == X265_CSP_I400 ? 1 : 3;
-        X265_FREAD((WeightParam*)analysis->wt, sizeof(WeightParam), numPlanes * numDir, m_analysisFileIn, (picIn->analysisData.wt));
+        X265_FREAD((WeightParam*)analysis->wt, sizeof(WeightParam), numPlanes * numDir * m_param->maxNumReferences, m_analysisFileIn, (picIn->analysisData.wt));
         if (m_param->analysisLoadReuseLevel < 2)
             return;
 
@@ -5504,7 +5504,7 @@ void Encoder::readAnalysisFile(x265_analysis_data* analysis, int curPoc, const x
     {
         uint32_t numDir = analysis->sliceType == X265_TYPE_P ? 1 : 2;
         uint32_t numPlanes = m_param->internalCsp == X265_CSP_I400 ? 1 : 3;
-        X265_FREAD((WeightParam*)analysis->wt, sizeof(WeightParam), numPlanes * numDir, m_analysisFileIn, (picIn->analysisData.wt));
+        X265_FREAD((WeightParam*)analysis->wt, sizeof(WeightParam), numPlanes * numDir * m_param->maxNumReferences, m_analysisFileIn, (picIn->analysisData.wt));
 		if (m_param->analysisLoadReuseLevel < 2)
 		{
 			/* Restore to the current encode's numPartitions and numCUsInFrame */
@@ -6123,7 +6123,7 @@ void Encoder::writeAnalysisFile(x265_analysis_data* analysis, FrameData &curEncD
     {
         numDir = (analysis->sliceType == X265_TYPE_P) ? 1 : 2;
         numPlanes = m_param->internalCsp == X265_CSP_I400 ? 1 : 3;
-        analysis->frameRecordSize += sizeof(WeightParam) * numPlanes * numDir;
+        analysis->frameRecordSize += sizeof(WeightParam) * numPlanes * numDir * m_param->maxNumReferences;
     }
 
     if (m_param->ctuDistortionRefine == CTU_DISTORTION_INTERNAL)
@@ -6269,7 +6269,7 @@ void Encoder::writeAnalysisFile(x265_analysis_data* analysis, FrameData &curEncD
     if (m_param->ctuDistortionRefine == CTU_DISTORTION_INTERNAL)
         X265_FWRITE((analysis->distortionData)->ctuDistortion, sizeof(sse_t), analysis->numCUsInFrame, m_analysisFileOut);
     if (analysis->sliceType > X265_TYPE_I)
-        X265_FWRITE((WeightParam*)analysis->wt, sizeof(WeightParam), numPlanes * numDir, m_analysisFileOut);
+        X265_FWRITE((WeightParam*)analysis->wt, sizeof(WeightParam), numPlanes * numDir * m_param->maxNumReferences, m_analysisFileOut);
 
     if (m_param->analysisSaveReuseLevel < 2)
         return;
