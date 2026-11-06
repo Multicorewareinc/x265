@@ -18,11 +18,7 @@ static inline void sao_apply_eo16(pixel *rec, int8x16_t edgeType, int8x16_t tbl)
 {
     uint8x16_t in = vld1q_u8(rec);
     int8x16_t off = vqtbl1q_s8(tbl, vreinterpretq_u8_s8(edgeType));
-    int16x8_t lo = vmovl_s8(vget_low_s8(off));
-    int16x8_t hi = vmovl_s8(vget_high_s8(off));
-    lo = vreinterpretq_s16_u16(vaddw_u8(vreinterpretq_u16_s16(lo), vget_low_u8(in)));
-    hi = vreinterpretq_s16_u16(vaddw_u8(vreinterpretq_u16_s16(hi), vget_high_u8(in)));
-    vst1q_u8(rec, vcombine_u8(vqmovun_s16(lo), vqmovun_s16(hi)));
+    vst1q_u8(rec, vsqaddq_u8(in, off));
 }
 
 static inline int8x16_t sao_eo_tbl(const int8_t *offsetEo)
@@ -225,12 +221,9 @@ static inline int8x16_t signOf_saoE3_neon(const pixel *a, const pixel *b)
     return vreinterpretq_s8_u8(vsubq_u8(lt, gt));
 }
 
-// XOR maps unsigned pixels to [-128,127], so signed saturation implements clip8.
 static inline uint8x16_t saoE3_addOffset_neon(uint8x16_t in, int8x16_t offset)
 {
-    const uint8x16_t bias = vdupq_n_u8(128);
-    int8x16_t biased = vreinterpretq_s8_u8(veorq_u8(in, bias));
-    return veorq_u8(vreinterpretq_u8_s8(vqaddq_s8(biased, offset)), bias);
+    return vsqaddq_u8(in, offset);
 }
 
 static void processSaoCUE3_neon(pixel *rec, int8_t *upBuff1, int8_t *offsetEo, intptr_t stride, int startX, int endX)
@@ -275,7 +268,6 @@ static void processSaoCUE3_neon(pixel *rec, int8_t *upBuff1, int8_t *offsetEo, i
 
     const int8x8_t tbl8 = vget_low_s8(tbl);
     const int8x8_t c28 = vdup_n_s8(2);
-    const uint8x8_t bias8 = vdup_n_u8(128);
     for (; (x + 8) <= endX; x += 8)
     {
         uint8x8_t in0 = vld1_u8(rec + x);
@@ -284,8 +276,7 @@ static void processSaoCUE3_neon(pixel *rec, int8_t *upBuff1, int8_t *offsetEo, i
         int8x8_t vsignUp = vld1_s8(upBuff1 + x);
         int8x8_t vedgeType = vadd_s8(vadd_s8(vsignDown, vsignUp), c28);
         int8x8_t offset = vtbl1_s8(tbl8, vedgeType);
-        int8x8_t biased = vreinterpret_s8_u8(veor_u8(in0, bias8));
-        uint8x8_t out = veor_u8(vreinterpret_u8_s8(vqadd_s8(biased, offset)), bias8);
+        uint8x8_t out = vsqadd_u8(in0, offset);
         vst1_s8(upBuff1 + x - 1, vneg_s8(vsignDown));
         vst1_u8(rec + x, out);
     }
@@ -317,16 +308,8 @@ static void processSaoCUB0_neon(pixel *rec, const int8_t *offset, int ctuWidth, 
             uint8x16_t in1 = vld1q_u8(row1 + x);
             int8x16_t o0 = vqtbl2q_s8(table, vshrq_n_u8(in0, boShift));
             int8x16_t o1 = vqtbl2q_s8(table, vshrq_n_u8(in1, boShift));
-            int16x8_t lo0 = vmovl_s8(vget_low_s8(o0));
-            int16x8_t hi0 = vmovl_s8(vget_high_s8(o0));
-            int16x8_t lo1 = vmovl_s8(vget_low_s8(o1));
-            int16x8_t hi1 = vmovl_s8(vget_high_s8(o1));
-            lo0 = vreinterpretq_s16_u16(vaddw_u8(vreinterpretq_u16_s16(lo0), vget_low_u8(in0)));
-            hi0 = vreinterpretq_s16_u16(vaddw_u8(vreinterpretq_u16_s16(hi0), vget_high_u8(in0)));
-            lo1 = vreinterpretq_s16_u16(vaddw_u8(vreinterpretq_u16_s16(lo1), vget_low_u8(in1)));
-            hi1 = vreinterpretq_s16_u16(vaddw_u8(vreinterpretq_u16_s16(hi1), vget_high_u8(in1)));
-            vst1q_u8(row0 + x, vcombine_u8(vqmovun_s16(lo0), vqmovun_s16(hi0)));
-            vst1q_u8(row1 + x, vcombine_u8(vqmovun_s16(lo1), vqmovun_s16(hi1)));
+            vst1q_u8(row0 + x, vsqaddq_u8(in0, o0));
+            vst1q_u8(row1 + x, vsqaddq_u8(in1, o1));
         }
         for (; x < ctuWidth; x++)
         {
@@ -341,11 +324,7 @@ static void processSaoCUB0_neon(pixel *rec, const int8_t *offset, int ctuWidth, 
         {
             uint8x16_t in = vld1q_u8(rec + x);
             int8x16_t offsets = vqtbl2q_s8(table, vshrq_n_u8(in, boShift));
-            int16x8_t lo = vmovl_s8(vget_low_s8(offsets));
-            int16x8_t hi = vmovl_s8(vget_high_s8(offsets));
-            lo = vreinterpretq_s16_u16(vaddw_u8(vreinterpretq_u16_s16(lo), vget_low_u8(in)));
-            hi = vreinterpretq_s16_u16(vaddw_u8(vreinterpretq_u16_s16(hi), vget_high_u8(in)));
-            vst1q_u8(rec + x, vcombine_u8(vqmovun_s16(lo), vqmovun_s16(hi)));
+            vst1q_u8(rec + x, vsqaddq_u8(in, offsets));
         }
         for (; x < ctuWidth; x++)
         {
