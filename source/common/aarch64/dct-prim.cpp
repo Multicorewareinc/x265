@@ -428,10 +428,14 @@ static inline void partialButterfly16_neon(const int16_t *src, int16_t *dst, int
         int32x4_t e30 = vaddl_s16(vget_low_s16(s3_lo), vget_low_s16(s3_hi));
         int32x4_t e31 = vaddl_s16(vget_high_s16(s3_lo), vget_high_s16(s3_hi));
 
-        int16x8_t o0 = vsubq_s16(s0_lo, s0_hi);
-        int16x8_t o1 = vsubq_s16(s1_lo, s1_hi);
-        int16x8_t o2 = vsubq_s16(s2_lo, s2_hi);
-        int16x8_t o3 = vsubq_s16(s3_lo, s3_hi);
+        int32x4_t o0_lo = vsubl_s16(vget_low_s16(s0_lo), vget_low_s16(s0_hi));
+        int32x4_t o0_hi = vsubl_high_s16(s0_lo, s0_hi);
+        int32x4_t o1_lo = vsubl_s16(vget_low_s16(s1_lo), vget_low_s16(s1_hi));
+        int32x4_t o1_hi = vsubl_high_s16(s1_lo, s1_hi);
+        int32x4_t o2_lo = vsubl_s16(vget_low_s16(s2_lo), vget_low_s16(s2_hi));
+        int32x4_t o2_hi = vsubl_high_s16(s2_lo, s2_hi);
+        int32x4_t o3_lo = vsubl_s16(vget_low_s16(s3_lo), vget_low_s16(s3_hi));
+        int32x4_t o3_hi = vsubl_high_s16(s3_lo, s3_hi);
 
         int32x4_t r01 = rev32(e01);
         int32x4_t r11 = rev32(e11);
@@ -462,17 +466,17 @@ static inline void partialButterfly16_neon(const int16_t *src, int16_t *dst, int
         for (int k = 1; k < 16; k += 2)
         {
             const int16x8_t c = vld1q_s16(&g_t16[k][0]);
-            const int16x4_t c_lo = vget_low_s16(c);
-            const int16x4_t c_hi = vget_high_s16(c);
+            const int32x4_t c_lo = vmovl_s16(vget_low_s16(c));
+            const int32x4_t c_hi = vmovl_high_s16(c);
 
-            int32x4_t tt0 = vmull_s16(c_lo, vget_low_s16(o0));
-            int32x4_t tt1 = vmull_s16(c_lo, vget_low_s16(o1));
-            int32x4_t tt2 = vmull_s16(c_lo, vget_low_s16(o2));
-            int32x4_t tt3 = vmull_s16(c_lo, vget_low_s16(o3));
-            tt0 = vmlal_s16(tt0, c_hi, vget_high_s16(o0));
-            tt1 = vmlal_s16(tt1, c_hi, vget_high_s16(o1));
-            tt2 = vmlal_s16(tt2, c_hi, vget_high_s16(o2));
-            tt3 = vmlal_s16(tt3, c_hi, vget_high_s16(o3));
+            int32x4_t tt0 = vmulq_s32(c_lo, o0_lo);
+            int32x4_t tt1 = vmulq_s32(c_lo, o1_lo);
+            int32x4_t tt2 = vmulq_s32(c_lo, o2_lo);
+            int32x4_t tt3 = vmulq_s32(c_lo, o3_lo);
+            tt0 = vmlaq_s32(tt0, c_hi, o0_hi);
+            tt1 = vmlaq_s32(tt1, c_hi, o1_hi);
+            tt2 = vmlaq_s32(tt2, c_hi, o2_hi);
+            tt3 = vmlaq_s32(tt3, c_hi, o3_hi);
 
             int32x4_t tt0123 = vpaddq_s32(vpaddq_s32(tt0, tt1), vpaddq_s32(tt2, tt3));
             int16x4_t res = vrshrn_n_s32(tt0123, shift);
@@ -512,9 +516,30 @@ static inline void partialButterfly16_neon(const int16_t *src, int16_t *dst, int
     }
 }
 
-template<int shift>
-static inline void partialButterfly32_neon(const int16_t *src, int16_t *dst, intptr_t srcStride)
+const int32_t t32_odd_s32[16][16] =
 {
+    {  90,  90,  88,  85,  82,  78,  73,  67,  61,  54,  46,  38,  31,  22,  13,   4 },
+    {  90,  82,  67,  46,  22,  -4, -31, -54, -73, -85, -90, -88, -78, -61, -38, -13 },
+    {  88,  67,  31, -13, -54, -82, -90, -78, -46,  -4,  38,  73,  90,  85,  61,  22 },
+    {  85,  46, -13, -67, -90, -73, -22,  38,  82,  88,  54,  -4, -61, -90, -78, -31 },
+    {  82,  22, -54, -90, -61,  13,  78,  85,  31, -46, -90, -67,   4,  73,  88,  38 },
+    {  78,  -4, -82, -73,  13,  85,  67, -22, -88, -61,  31,  90,  54, -38, -90, -46 },
+    {  73, -31, -90, -22,  78,  67, -38, -90, -13,  82,  61, -46, -88,  -4,  85,  54 },
+    {  67, -54, -78,  38,  85, -22, -90,   4,  90,  13, -88, -31,  82,  46, -73, -61 },
+    {  61, -73, -46,  82,  31, -88, -13,  90,  -4, -90,  22,  85, -38, -78,  54,  67 },
+    {  54, -85,  -4,  88, -46, -61,  82,  13, -90,  38,  67, -78, -22,  90, -31, -73 },
+    {  46, -90,  38,  54, -90,  31,  61, -88,  22,  67, -85,  13,  73, -82,   4,  78 },
+    {  38, -88,  73,  -4, -67,  90, -46, -31,  85, -78,  13,  61, -90,  54,  22, -82 },
+    {  31, -78,  90, -61,   4,  54, -88,  82, -38, -22,  73, -90,  67, -13, -46,  85 },
+    {  22, -61,  85, -90,  73, -38,  -4,  46, -78,  90, -82,  54, -13, -31,  67, -88 },
+    {  13, -38,  61, -78,  88, -90,  85, -73,  54, -31,   4,  22, -46,  67, -82,  90 },
+    {   4, -13,  22, -31,  38, -46,  54, -61,  67, -73,  78, -82,  85, -88,  90, -90 },
+};
+
+template<int shift>
+static inline void partialButterfly32_first_neon(const int16_t *src, int16_t *dst, intptr_t srcStride)
+{
+    static_assert(X265_DEPTH <= 12, "32x32 first-pass butterfly requires at most 12-bit input");
     const int line = 32;
 
     const int32x4_t c0 = vld1q_s32(t8_even[0]);
@@ -547,6 +572,7 @@ static inline void partialButterfly32_neon(const int16_t *src, int16_t *dst, int
         int16x8_t o30 = vsubq_s16(in3.val[0], in3.val[3]);
         int16x8_t o31 = vsubq_s16(in3.val[1], in3.val[2]);
 
+        X265_PRAGMA_UNROLL(1)
         for (int k = 1; k < 32; k += 2)
         {
             const int16x8_t c0_c1 = vld1q_s16(&g_t32[k][0]);
@@ -572,6 +598,176 @@ static inline void partialButterfly32_neon(const int16_t *src, int16_t *dst, int
             tt1 = vmlal_s16(tt1, c3_o, vget_high_s16(o11));
             tt2 = vmlal_s16(tt2, c3_o, vget_high_s16(o21));
             tt3 = vmlal_s16(tt3, c3_o, vget_high_s16(o31));
+
+            int32x4_t t0123 = vpaddq_s32(vpaddq_s32(tt0, tt1),
+                                         vpaddq_s32(tt2, tt3));
+            int16x4_t res = vrshrn_n_s32(t0123, shift);
+            vst1_s16(dst + k * line, res);
+        }
+
+        in0 = vld1q_s16_x4(src + (i + 0) * srcStride);
+        in1 = vld1q_s16_x4(src + (i + 1) * srcStride);
+        in2 = vld1q_s16_x4(src + (i + 2) * srcStride);
+        in3 = vld1q_s16_x4(src + (i + 3) * srcStride);
+
+        in0.val[2] = rev16(in0.val[2]);
+        in0.val[3] = rev16(in0.val[3]);
+        in1.val[2] = rev16(in1.val[2]);
+        in1.val[3] = rev16(in1.val[3]);
+        in2.val[2] = rev16(in2.val[2]);
+        in2.val[3] = rev16(in2.val[3]);
+        in3.val[2] = rev16(in3.val[2]);
+        in3.val[3] = rev16(in3.val[3]);
+
+        int16x8_t e00 = vaddq_s16(in0.val[0], in0.val[3]);
+        int16x8_t e01 = rev16(vaddq_s16(in0.val[1], in0.val[2]));
+        int16x8_t ee0 = vaddq_s16(e00, e01);
+        int16x8_t eo0 = vsubq_s16(e00, e01);
+        int16x4_t eee0 = vadd_s16(vget_low_s16(ee0), vrev64_s16(vget_high_s16(ee0)));
+        int16x4_t eeo0 = vsub_s16(vget_low_s16(ee0), vrev64_s16(vget_high_s16(ee0)));
+
+        int16x8_t e10 = vaddq_s16(in1.val[0], in1.val[3]);
+        int16x8_t e11 = rev16(vaddq_s16(in1.val[1], in1.val[2]));
+        int16x8_t ee1 = vaddq_s16(e10, e11);
+        int16x8_t eo1 = vsubq_s16(e10, e11);
+        int16x4_t eee1 = vadd_s16(vget_low_s16(ee1), vrev64_s16(vget_high_s16(ee1)));
+        int16x4_t eeo1 = vsub_s16(vget_low_s16(ee1), vrev64_s16(vget_high_s16(ee1)));
+
+        int16x8_t e20 = vaddq_s16(in2.val[0], in2.val[3]);
+        int16x8_t e21 = rev16(vaddq_s16(in2.val[1], in2.val[2]));
+        int16x8_t ee2 = vaddq_s16(e20, e21);
+        int16x8_t eo2 = vsubq_s16(e20, e21);
+        int16x4_t eee2 = vadd_s16(vget_low_s16(ee2), vrev64_s16(vget_high_s16(ee2)));
+        int16x4_t eeo2 = vsub_s16(vget_low_s16(ee2), vrev64_s16(vget_high_s16(ee2)));
+
+        int16x8_t e30 = vaddq_s16(in3.val[0], in3.val[3]);
+        int16x8_t e31 = rev16(vaddq_s16(in3.val[1], in3.val[2]));
+        int16x8_t ee3 = vaddq_s16(e30, e31);
+        int16x8_t eo3 = vsubq_s16(e30, e31);
+        int16x4_t eee3 = vadd_s16(vget_low_s16(ee3), vrev64_s16(vget_high_s16(ee3)));
+        int16x4_t eeo3 = vsub_s16(vget_low_s16(ee3), vrev64_s16(vget_high_s16(ee3)));
+
+        X265_PRAGMA_UNROLL(1)
+        for (int k = 2; k < 32; k += 4)
+        {
+            const int16x8_t c = vld1q_s16(&g_t32[k][0]);
+            int32x4_t tt0 = vmull_s16(vget_low_s16(c), vget_low_s16(eo0));
+            tt0 = vmlal_high_s16(tt0, c, eo0);
+            int32x4_t tt1 = vmull_s16(vget_low_s16(c), vget_low_s16(eo1));
+            tt1 = vmlal_high_s16(tt1, c, eo1);
+            int32x4_t tt2 = vmull_s16(vget_low_s16(c), vget_low_s16(eo2));
+            tt2 = vmlal_high_s16(tt2, c, eo2);
+            int32x4_t tt3 = vmull_s16(vget_low_s16(c), vget_low_s16(eo3));
+            tt3 = vmlal_high_s16(tt3, c, eo3);
+            int32x4_t sum = vpaddq_s32(vpaddq_s32(tt0, tt1), vpaddq_s32(tt2, tt3));
+            vst1_s16(dst + k * line, vrshrn_n_s32(sum, shift));
+        }
+
+        X265_PRAGMA_UNROLL(1)
+        for (int k = 4; k < 32; k += 8)
+        {
+            const int16x4_t c = vld1_s16(&g_t32[k][0]);
+            int32x4_t tt0 = vmull_s16(c, eeo0);
+            int32x4_t tt1 = vmull_s16(c, eeo1);
+            int32x4_t tt2 = vmull_s16(c, eeo2);
+            int32x4_t tt3 = vmull_s16(c, eeo3);
+            int32x4_t sum = vpaddq_s32(vpaddq_s32(tt0, tt1), vpaddq_s32(tt2, tt3));
+            vst1_s16(dst + k * line, vrshrn_n_s32(sum, shift));
+        }
+
+        int16x4_t t0 = vreinterpret_s16_s32(vzip1_s32(vreinterpret_s32_s16(eee0),
+                                                        vreinterpret_s32_s16(eee1)));
+        int16x4_t t1 = vrev32_s16(vreinterpret_s16_s32(vzip2_s32(
+            vreinterpret_s32_s16(eee0), vreinterpret_s32_s16(eee1))));
+        int16x4_t t2 = vreinterpret_s16_s32(vzip1_s32(vreinterpret_s32_s16(eee2),
+                                                        vreinterpret_s32_s16(eee3)));
+        int16x4_t t3 = vrev32_s16(vreinterpret_s16_s32(vzip2_s32(
+            vreinterpret_s32_s16(eee2), vreinterpret_s32_s16(eee3))));
+        int32x4_t eeee0 = vaddl_s16(t0, t1);
+        int32x4_t eeee1 = vaddl_s16(t2, t3);
+        int32x4_t eeeo0 = vsubl_s16(t0, t1);
+        int32x4_t eeeo1 = vsubl_s16(t2, t3);
+
+        int32x4_t sum = vpaddq_s32(eeee0, eeee1);
+        vst1_s16(dst, vrshrn_n_s32(vmulq_s32(c0, sum), shift));
+        sum = vpaddq_s32(vmulq_s32(c8, eeeo0), vmulq_s32(c8, eeeo1));
+        vst1_s16(dst + 8 * line, vrshrn_n_s32(sum, shift));
+        sum = vpaddq_s32(vmulq_s32(c16, eeee0), vmulq_s32(c16, eeee1));
+        vst1_s16(dst + 16 * line, vrshrn_n_s32(sum, shift));
+        sum = vpaddq_s32(vmulq_s32(c24, eeeo0), vmulq_s32(c24, eeeo1));
+        vst1_s16(dst + 24 * line, vrshrn_n_s32(sum, shift));
+
+        dst += 4;
+    }
+}
+
+template<int shift>
+static inline void partialButterfly32_neon(const int16_t *src, int16_t *dst, intptr_t srcStride)
+{
+    const int line = 32;
+
+    const int32x4_t c0 = vld1q_s32(t8_even[0]);
+    const int32x4_t c8 = vld1q_s32(t8_even[1]);
+    const int32x4_t c16 = vld1q_s32(t8_even[2]);
+    const int32x4_t c24 = vld1q_s32(t8_even[3]);
+
+    for (int i = 0; i < line; i += 4)
+    {
+        int16x8x4_t in0 = vld1q_s16_x4(src + (i + 0) * srcStride);
+        int16x8x4_t in1 = vld1q_s16_x4(src + (i + 1) * srcStride);
+        int16x8x4_t in2 = vld1q_s16_x4(src + (i + 2) * srcStride);
+        int16x8x4_t in3 = vld1q_s16_x4(src + (i + 3) * srcStride);
+
+        in0.val[2] = rev16(in0.val[2]);
+        in0.val[3] = rev16(in0.val[3]);
+        in1.val[2] = rev16(in1.val[2]);
+        in1.val[3] = rev16(in1.val[3]);
+        in2.val[2] = rev16(in2.val[2]);
+        in2.val[3] = rev16(in2.val[3]);
+        in3.val[2] = rev16(in3.val[2]);
+        in3.val[3] = rev16(in3.val[3]);
+
+        int32x4_t o00_lo = vsubl_s16(vget_low_s16(in0.val[0]), vget_low_s16(in0.val[3]));
+        int32x4_t o00_hi = vsubl_high_s16(in0.val[0], in0.val[3]);
+        int32x4_t o01_lo = vsubl_s16(vget_low_s16(in0.val[1]), vget_low_s16(in0.val[2]));
+        int32x4_t o01_hi = vsubl_high_s16(in0.val[1], in0.val[2]);
+        int32x4_t o10_lo = vsubl_s16(vget_low_s16(in1.val[0]), vget_low_s16(in1.val[3]));
+        int32x4_t o10_hi = vsubl_high_s16(in1.val[0], in1.val[3]);
+        int32x4_t o11_lo = vsubl_s16(vget_low_s16(in1.val[1]), vget_low_s16(in1.val[2]));
+        int32x4_t o11_hi = vsubl_high_s16(in1.val[1], in1.val[2]);
+        int32x4_t o20_lo = vsubl_s16(vget_low_s16(in2.val[0]), vget_low_s16(in2.val[3]));
+        int32x4_t o20_hi = vsubl_high_s16(in2.val[0], in2.val[3]);
+        int32x4_t o21_lo = vsubl_s16(vget_low_s16(in2.val[1]), vget_low_s16(in2.val[2]));
+        int32x4_t o21_hi = vsubl_high_s16(in2.val[1], in2.val[2]);
+        int32x4_t o30_lo = vsubl_s16(vget_low_s16(in3.val[0]), vget_low_s16(in3.val[3]));
+        int32x4_t o30_hi = vsubl_high_s16(in3.val[0], in3.val[3]);
+        int32x4_t o31_lo = vsubl_s16(vget_low_s16(in3.val[1]), vget_low_s16(in3.val[2]));
+        int32x4_t o31_hi = vsubl_high_s16(in3.val[1], in3.val[2]);
+
+        X265_PRAGMA_UNROLL(1)
+        for (int k = 1; k < 32; k += 2)
+        {
+            const int32x4_t c0_o = vld1q_s32(&t32_odd_s32[k / 2][0]);
+            const int32x4_t c1_o = vld1q_s32(&t32_odd_s32[k / 2][4]);
+            const int32x4_t c2_o = vld1q_s32(&t32_odd_s32[k / 2][8]);
+            const int32x4_t c3_o = vld1q_s32(&t32_odd_s32[k / 2][12]);
+
+            int32x4_t tt0 = vmulq_s32(c0_o, o00_lo);
+            int32x4_t tt1 = vmulq_s32(c0_o, o10_lo);
+            int32x4_t tt2 = vmulq_s32(c0_o, o20_lo);
+            int32x4_t tt3 = vmulq_s32(c0_o, o30_lo);
+            tt0 = vmlaq_s32(tt0, c1_o, o00_hi);
+            tt1 = vmlaq_s32(tt1, c1_o, o10_hi);
+            tt2 = vmlaq_s32(tt2, c1_o, o20_hi);
+            tt3 = vmlaq_s32(tt3, c1_o, o30_hi);
+            tt0 = vmlaq_s32(tt0, c2_o, o01_lo);
+            tt1 = vmlaq_s32(tt1, c2_o, o11_lo);
+            tt2 = vmlaq_s32(tt2, c2_o, o21_lo);
+            tt3 = vmlaq_s32(tt3, c2_o, o31_lo);
+            tt0 = vmlaq_s32(tt0, c3_o, o01_hi);
+            tt1 = vmlaq_s32(tt1, c3_o, o11_hi);
+            tt2 = vmlaq_s32(tt2, c3_o, o21_hi);
+            tt3 = vmlaq_s32(tt3, c3_o, o31_hi);
 
             int32x4_t t0123 = vpaddq_s32(vpaddq_s32(tt0, tt1),
                                          vpaddq_s32(tt2, tt3));
@@ -684,6 +880,7 @@ static inline void partialButterfly32_neon(const int16_t *src, int16_t *dst, int
         int32x4_t eeeo0 = vsubq_s32(t0, t1);
         int32x4_t eeeo1 = vsubq_s32(t2, t3);
 
+        X265_PRAGMA_UNROLL(1)
         for (int k = 2; k < 32; k += 4)
         {
             const int32x4_t c0_eo = vld1q_s32(&t32_eo_s32[(k / 4) * 8]);
@@ -704,6 +901,7 @@ static inline void partialButterfly32_neon(const int16_t *src, int16_t *dst, int
             vst1_s16(dst + k * line, res);
         }
 
+        X265_PRAGMA_UNROLL(1)
         for (int k = 4; k < 32; k += 8)
         {
             const int32x4_t c = vld1q_s32(&t32_eeo_s32[(k / 8) * 4]);
@@ -743,7 +941,7 @@ static inline void partialButterfly8_neon(const int16_t *src, int16_t *dst)
 {
     const int line = 8;
 
-    int16x4_t O[line];
+    int32x4_t O[line];
     int32x4_t EE[line / 2];
     int32x4_t EO[line / 2];
 
@@ -758,8 +956,8 @@ static inline void partialButterfly8_neon(const int16_t *src, int16_t *dst)
         int32x4_t E0 = vaddl_s16(s0_lo, s0_hi);
         int32x4_t E1 = vaddl_s16(s1_lo, s1_hi);
 
-        O[i + 0] = vsub_s16(s0_lo, s0_hi);
-        O[i + 1] = vsub_s16(s1_lo, s1_hi);
+        O[i + 0] = vsubl_s16(s0_lo, s0_hi);
+        O[i + 1] = vsubl_s16(s1_lo, s1_hi);
 
         int32x4_t t0 = vreinterpretq_s32_s64(
             vzip1q_s64(vreinterpretq_s64_s32(E0), vreinterpretq_s64_s32(E1)));
@@ -776,33 +974,33 @@ static inline void partialButterfly8_neon(const int16_t *src, int16_t *dst)
     int32x4_t c2 = vld1q_s32(t8_even[1]);
     int32x4_t c4 = vld1q_s32(t8_even[2]);
     int32x4_t c6 = vld1q_s32(t8_even[3]);
-    int16x4_t c1 = vld1_s16(g_t8[1]);
-    int16x4_t c3 = vld1_s16(g_t8[3]);
-    int16x4_t c5 = vld1_s16(g_t8[5]);
-    int16x4_t c7 = vld1_s16(g_t8[7]);
+    int32x4_t c1 = vmovl_s16(vld1_s16(g_t8[1]));
+    int32x4_t c3 = vmovl_s16(vld1_s16(g_t8[3]));
+    int32x4_t c5 = vmovl_s16(vld1_s16(g_t8[5]));
+    int32x4_t c7 = vmovl_s16(vld1_s16(g_t8[7]));
 
     for (int j = 0; j < line; j += 4)
     {
         // O
-        int32x4_t t01 = vpaddq_s32(vmull_s16(c1, O[j + 0]),
-                                   vmull_s16(c1, O[j + 1]));
-        int32x4_t t23 = vpaddq_s32(vmull_s16(c1, O[j + 2]),
-                                   vmull_s16(c1, O[j + 3]));
+        int32x4_t t01 = vpaddq_s32(vmulq_s32(c1, O[j + 0]),
+                                   vmulq_s32(c1, O[j + 1]));
+        int32x4_t t23 = vpaddq_s32(vmulq_s32(c1, O[j + 2]),
+                                   vmulq_s32(c1, O[j + 3]));
         int16x4_t res1 = vrshrn_n_s32(vpaddq_s32(t01, t23), shift);
         vst1_s16(d + 1 * line, res1);
 
-        t01 = vpaddq_s32(vmull_s16(c3, O[j + 0]), vmull_s16(c3, O[j + 1]));
-        t23 = vpaddq_s32(vmull_s16(c3, O[j + 2]), vmull_s16(c3, O[j + 3]));
+        t01 = vpaddq_s32(vmulq_s32(c3, O[j + 0]), vmulq_s32(c3, O[j + 1]));
+        t23 = vpaddq_s32(vmulq_s32(c3, O[j + 2]), vmulq_s32(c3, O[j + 3]));
         int16x4_t res3 = vrshrn_n_s32(vpaddq_s32(t01, t23), shift);
         vst1_s16(d + 3 * line, res3);
 
-        t01 = vpaddq_s32(vmull_s16(c5, O[j + 0]), vmull_s16(c5, O[j + 1]));
-        t23 = vpaddq_s32(vmull_s16(c5, O[j + 2]), vmull_s16(c5, O[j + 3]));
+        t01 = vpaddq_s32(vmulq_s32(c5, O[j + 0]), vmulq_s32(c5, O[j + 1]));
+        t23 = vpaddq_s32(vmulq_s32(c5, O[j + 2]), vmulq_s32(c5, O[j + 3]));
         int16x4_t res5 = vrshrn_n_s32(vpaddq_s32(t01, t23), shift);
         vst1_s16(d + 5 * line, res5);
 
-        t01 = vpaddq_s32(vmull_s16(c7, O[j + 0]), vmull_s16(c7, O[j + 1]));
-        t23 = vpaddq_s32(vmull_s16(c7, O[j + 2]), vmull_s16(c7, O[j + 3]));
+        t01 = vpaddq_s32(vmulq_s32(c7, O[j + 0]), vmulq_s32(c7, O[j + 1]));
+        t23 = vpaddq_s32(vmulq_s32(c7, O[j + 2]), vmulq_s32(c7, O[j + 3]));
         int16x4_t res7 = vrshrn_n_s32(vpaddq_s32(t01, t23), shift);
         vst1_s16(d + 7 * line, res7);
 
@@ -1857,7 +2055,7 @@ void dct32_neon(const int16_t *src, int16_t *dst, intptr_t srcStride)
 
     ALIGN_VAR_32(int16_t, coef[32 * 32]);
 
-    partialButterfly32_neon<shift_pass1>(src, coef, srcStride);
+    partialButterfly32_first_neon<shift_pass1>(src, coef, srcStride);
     partialButterfly32_neon<shift_pass2>(coef, dst, 32);
 }
 
