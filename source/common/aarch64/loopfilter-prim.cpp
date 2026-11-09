@@ -221,11 +221,6 @@ static inline int8x16_t signOf_saoE3_neon(const pixel *a, const pixel *b)
     return vreinterpretq_s8_u8(vsubq_u8(lt, gt));
 }
 
-static inline uint8x16_t saoE3_addOffset_neon(uint8x16_t in, int8x16_t offset)
-{
-    return vsqaddq_u8(in, offset);
-}
-
 static void processSaoCUE3_neon(pixel *rec, int8_t *upBuff1, int8_t *offsetEo, intptr_t stride, int startX, int endX)
 {
     int8_t signDown;
@@ -241,7 +236,7 @@ static void processSaoCUE3_neon(pixel *rec, int8_t *upBuff1, int8_t *offsetEo, i
         int8x16_t vsignUp = vld1q_s8(upBuff1 + x);
         int8x16_t vedgeType = vaddq_s8(vaddq_s8(vsignDown, vsignUp), c2);
         int8x16_t offset = vqtbl1q_s8(tbl, vreinterpretq_u8_s8(vedgeType));
-        uint8x16_t out = saoE3_addOffset_neon(in, offset);
+        uint8x16_t out = vsqaddq_u8(in, offset);
         vst1q_s8(upBuff1 + x - 1, vnegq_s8(vsignDown));
         vst1q_u8(rec + x, out);
     }
@@ -255,7 +250,7 @@ static void processSaoCUE3_neon(pixel *rec, int8_t *upBuff1, int8_t *offsetEo, i
         int8x16_t vsignUp = vld1q_s8(upBuff1 + tailX);
         int8x16_t vedgeType = vaddq_s8(vaddq_s8(vsignDown, vsignUp), c2);
         int8x16_t offset = vqtbl1q_s8(tbl, vreinterpretq_u8_s8(vedgeType));
-        uint8x16_t out = saoE3_addOffset_neon(in, offset);
+        uint8x16_t out = vsqaddq_u8(in, offset);
         const uint8_t firstPixel = vgetq_lane_u8(in, 0);
         out = vsetq_lane_u8(firstPixel, out, 0);
         int8x16_t signs = vnegq_s8(vsignDown);
