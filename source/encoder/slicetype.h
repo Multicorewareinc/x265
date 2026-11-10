@@ -38,6 +38,7 @@ namespace X265_NS {
 struct Lowres;
 class Frame;
 class Lookahead;
+class CostEstimateGroup;
 
 #define LOWRES_COST_MASK  ((1 << 14) - 1)
 #define LOWRES_COST_SHIFT 14
@@ -262,6 +263,7 @@ protected:
 
     void    slicetypePath(Lowres **frames, int length, char(*best_paths)[X265_LOOKAHEAD_MAX + 1]);
     int64_t slicetypePathCost(Lowres **frames, char *path, int64_t threshold);
+    int64_t slicetypePathCostRecursiveBPyramid(Lowres **frames, int cur_p, int next_p, int64_t threshold);
 
     void    calculateDurations(Frame *frame, Frame *prevFrame);
     void    setDurationsToLowres(Frame *frame);
@@ -269,10 +271,13 @@ protected:
     int64_t vbvFrameCost(Lowres **frames, int p0, int p1, int b);
     void    vbvLookahead(Lowres **frames, int numFrames, int keyframes);
     void    aqMotion(Lowres **frames, bool bintra);
+    void    aqMotionBPyramid(Lowres **frames, CostEstimateGroup& estGroup, int p0, int p1);
     void    calcMotionAdaptiveQuantFrame(Lowres **frames, int p0, int p1, int b);
     /* called by slicetypeAnalyse() to effect cuTree adjustments to adaptive
      * quant offsets */
     void    cuTree(Lowres **frames, int numframes, bool bintra);
+    void    cuTreeBPyramid(Lowres **frames, CostEstimateGroup& estGroup, double averageDuration, int p0, int p1);
+    void    cuTreeFinishBPyramid(Lowres **frames, double averageDuration, int p0, int p1);
     void    estimateCUPropagate(Lowres **frames, double average_duration, int p0, int p1, int b, int referenced);
     void    cuTreeFinish(Lowres *frame, double averageDuration, int ref0Distance);
     void    computeCUTreeQpOffset(Lowres *frame, double averageDuration, int ref0Distance);
@@ -282,6 +287,9 @@ protected:
     /*Compute index for positioning B-Ref frames*/
     void     placeBref(Frame** frames, int start, int end, int num, int *brefs);
     void     compCostBref(Lowres **frame, int start, int end, int num);
+    /*Hierarchical B-pyramid used when the mini-GOP is not defined by temporal sub-layers*/
+    void     placeHierarchicalBref(Frame** frames, int start, int end, int num, int *brefs);
+    void     compCostHierarchicalBref(Lowres **frames, int p0, int p1, bool bP0Avail);
 };
 
 class PreLookaheadGroup : public BondedTaskGroup

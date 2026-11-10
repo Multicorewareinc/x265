@@ -1699,6 +1699,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                 inFrame[layer]->m_lowresInit = false;
                 inFrame[layer]->m_isInsideWindow = 0;
                 inFrame[layer]->m_tempLayer = 0;
+                inFrame[layer]->m_bPyramidLayer = 0;
                 inFrame[layer]->m_sameLayerRefPic = 0;
 #if ENABLE_MULTIVIEW
                 inFrame[layer]->m_viewId = m_param->numViews > 1 ? layer : 0;
@@ -2312,6 +2313,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                     frameEnc[layer]->m_lowres.sliceType = IS_X265_TYPE_I(baseViewType) ? X265_TYPE_P : baseViewType;
                 frameEnc[layer]->m_lowres.bKeyframe = frameEnc[0]->m_lowres.bKeyframe;
                 frameEnc[layer]->m_tempLayer = frameEnc[0]->m_tempLayer;
+                frameEnc[layer]->m_bPyramidLayer = frameEnc[0]->m_bPyramidLayer;
             }
 #endif
 
@@ -2534,6 +2536,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                     if ((frameEnc[layer]->m_poc == (m_param->totalFrames - 1)) || (frameEnc[layer]->m_lowres.sliceType == X265_TYPE_I) || (frameEnc[layer]->m_lowres.sliceType == X265_TYPE_IDR))
                     {
                         frameEnc[layer]->m_tempLayer = (int8_t)0;
+                        frameEnc[layer]->m_bPyramidLayer = 0;
                     }
                 }
             }

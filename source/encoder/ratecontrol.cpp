@@ -250,6 +250,7 @@ RateControl::RateControl(x265_param& p, Encoder *top)
     m_cutreeShrMem = NULL;
     m_rce2Pass = NULL;
     m_encOrder = NULL;
+    m_cuTreeRecordIdx = NULL;
     m_lastBsliceSatdCost = 0;
     m_movingAvgSum = 0.0;
     m_isNextGop = false;
@@ -363,8 +364,9 @@ RateControl::RateControl(x265_param& p, Encoder *top)
     /* qpstep - value set as encoder specific */
     m_lstep = pow(2, m_param->rc.qpStep / 6.0);
 
-    for (int i = 0; i < 2; i++)
+    for (int i = 0; i < X265_BFRAME_MAX + 2; i++)
         m_cuTreeStats.qpBuffer[i] = NULL;
+    m_cuTreeStats.qpBufDepth = 0;
 }
 
 bool RateControl::initCUTreeSharedMem()
@@ -757,6 +759,22 @@ bool RateControl::init(const SPS& sps)
                 X265_FREE(statsBuf);
                 m_durationDone = totalDuration;
 
+                /* the 1st pass writes a CU-tree record for each referenced frame in encode order;
+                 * with the hierarchical B-pyramid index them so the 2nd pass can read the record
+                 * of each frame directly */
+                if (m_param->rc.cuTree && X265_SHARE_MODE_FILE == m_param->rc.dataShareMode &&
+                    m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL)
+                {
+                    m_cuTreeRecordIdx = X265_MALLOC(int, m_numEntries);
+                    if (!m_cuTreeRecordIdx)
+                    {
+                        x265_log(m_param, X265_LOG_ERROR, "CU-tree record index cannot be allocated\n");
+                        return false;
+                    }
+                    int rec = 0;
+                    for (int i = 0; i < m_numEntries; i++)
+                        m_cuTreeRecordIdx[i] = m_rce2Pass[i].keptAsRef ? rec++ : -1;
+                }
                 if (m_param->rc.rateControlMode != X265_RC_CQP)
                 {
                     m_start = 0;
@@ -822,18 +840,23 @@ bool RateControl::init(const SPS& sps)
         }
         if (m_param->rc.cuTree && !m_cuTreeStats.qpBuffer[0])
         {
-            if (m_param->rc.qgSize == 8)
+            /* The records are read in order, so the 2nd pass keeps the records of the frames
+             * reordered past by the B-pyramid: one with --b-pyramid 1, as many as --bframes allows
+             * with the hierarchical B-pyramid, whose file mode reads each frame's record directly
+             * and needs one buffer */
+            int depth = 1;
+            if (m_param->bBPyramid && m_param->rc.bStatRead)
             {
-                m_cuTreeStats.qpBuffer[0] = X265_MALLOC(uint16_t, m_ncu * 4 * sizeof(uint16_t));
-                if (m_param->bBPyramid && m_param->rc.bStatRead)
-                    m_cuTreeStats.qpBuffer[1] = X265_MALLOC(uint16_t, m_ncu * 4 * sizeof(uint16_t));
+                if (m_param->bBPyramid != X265_B_PYRAMID_HIERARCHICAL)
+                    depth = 2;
+                else if (X265_SHARE_MODE_SHAREDMEM == m_param->rc.dataShareMode)
+                    depth = x265_clip3(2, X265_BFRAME_MAX + 2, m_param->bframes + 2);
             }
-            else
-            {
-                m_cuTreeStats.qpBuffer[0] = X265_MALLOC(uint16_t, m_ncu * sizeof(uint16_t));
-                if (m_param->bBPyramid && m_param->rc.bStatRead)
-                    m_cuTreeStats.qpBuffer[1] = X265_MALLOC(uint16_t, m_ncu * sizeof(uint16_t));
-            }
+            m_cuTreeStats.qpBufDepth = depth;
+
+            uint32_t bufBytes = (m_param->rc.qgSize == 8 ? m_ncu * 4 : m_ncu) * sizeof(uint16_t);
+            for (int i = 0; i < depth; i++)
+                m_cuTreeStats.qpBuffer[i] = X265_MALLOC(uint16_t, bufBytes);
             m_cuTreeStats.qpBufPos = -1;
         }
     }
@@ -1827,7 +1850,18 @@ bool RateControl::fixUnderflow(int t0, int t1, double adjustment, double qscaleM
 
 bool RateControl::cuTreeReadFor2Pass(Frame* frame)
 {
+    if (frame->m_poc < 0 || frame->m_poc >= m_numEntries)
+    {
+        x265_log(m_param, X265_LOG_ERROR, "CU-tree stats: frame %d is beyond the 1st pass stats (%d frames)\n",
+                 frame->m_poc, m_numEntries);
+        return false;
+    }
     int index = m_encOrder[frame->m_poc];
+    if (index < 0 || index >= m_numEntries)
+    {
+        x265_log(m_param, X265_LOG_ERROR, "CU-tree stats: no 1st pass entry for frame %d\n", frame->m_poc);
+        return false;
+    }
     uint8_t sliceTypeActual = (uint8_t)m_rce2Pass[index].sliceType;
     int ncu;
     if (m_param->rc.qgSize == 8)
@@ -1838,45 +1872,76 @@ bool RateControl::cuTreeReadFor2Pass(Frame* frame)
     {
         /* TODO: We don't need pre-lookahead to measure AQ offsets, but there is currently
          * no way to signal this */
-        uint8_t type;
-        if (m_cuTreeStats.qpBufPos < 0)
+        uint8_t type = 0;
+        if (X265_SHARE_MODE_FILE == m_param->rc.dataShareMode && m_cuTreeRecordIdx)
         {
-            do
+            /* The 1st pass writes the records in encode order and the 2nd pass reads them in POC
+             * order. With a hierarchical B-pyramid the two orders differ by more than one swap,
+             * which a forward scan for a matching frame type cannot realign, so read this
+             * frame's own record */
+            int rec = m_cuTreeRecordIdx[index];
+            if (rec < 0)
             {
-                m_cuTreeStats.qpBufPos++;
+                x265_log(m_param, X265_LOG_ERROR, "CU-tree stats: no record for frame %d\n", frame->m_poc);
+                return false;
+            }
+            int64_t recSize = 1 + (int64_t)ncu * sizeof(uint16_t);
+            if (fseeko(m_cutreeStatFileIn, (int64_t)rec * recSize, SEEK_SET))
+                goto fail;
+            if (!fread(&type, 1, 1, m_cutreeStatFileIn))
+                goto fail;
+            if (fread(m_cuTreeStats.qpBuffer[0], sizeof(uint16_t), ncu, m_cutreeStatFileIn) != (size_t)ncu)
+                goto fail;
+            if (type != sliceTypeActual)
+            {
+                x265_log(m_param, X265_LOG_ERROR, "CU-tree frametype %d doesn't match actual frametype %d at frame %d.\n",
+                         type, sliceTypeActual, frame->m_poc);
+                return false;
+            }
+            primitives.fix8Unpack(frame->m_lowres.qpCuTreeOffset, m_cuTreeStats.qpBuffer[0], ncu);
+        }
+        else
+        {
+            /* the records are read in order: keep the records of frames reordered past */
+            if (m_cuTreeStats.qpBufPos < 0)
+            {
+                do
+                {
+                    m_cuTreeStats.qpBufPos++;
+                    if (m_cuTreeStats.qpBufPos >= m_cuTreeStats.qpBufDepth)
+                        goto fail;
 
-                if (X265_SHARE_MODE_FILE == m_param->rc.dataShareMode)
-                {
-                    if (!fread(&type, 1, 1, m_cutreeStatFileIn))
-                        goto fail;
-                    if (fread(m_cuTreeStats.qpBuffer[m_cuTreeStats.qpBufPos], sizeof(uint16_t), ncu, m_cutreeStatFileIn) != (size_t)ncu)
-                        goto fail;
-                }
-                else // X265_SHARE_MODE_SHAREDMEM == m_param->rc.dataShareMode
-                {
-                    if (!m_cutreeShrMem)
+                    if (X265_SHARE_MODE_FILE == m_param->rc.dataShareMode)
                     {
-                        goto fail;
+                        if (!fread(&type, 1, 1, m_cutreeStatFileIn))
+                            goto fail;
+                        if (fread(m_cuTreeStats.qpBuffer[m_cuTreeStats.qpBufPos], sizeof(uint16_t), ncu, m_cutreeStatFileIn) != (size_t)ncu)
+                            goto fail;
+                    }
+                    else // X265_SHARE_MODE_SHAREDMEM == m_param->rc.dataShareMode
+                    {
+                        if (!m_cutreeShrMem)
+                            goto fail;
+
+                        CUTreeSharedDataItem shrItem;
+                        shrItem.type = &type;
+                        shrItem.stats = m_cuTreeStats.qpBuffer[m_cuTreeStats.qpBufPos];
+                        m_cutreeShrMem->readNext(&shrItem, ReadSharedCUTreeData);
                     }
 
-                    CUTreeSharedDataItem shrItem;
-                    shrItem.type = &type;
-                    shrItem.stats = m_cuTreeStats.qpBuffer[m_cuTreeStats.qpBufPos];
-                    m_cutreeShrMem->readNext(&shrItem, ReadSharedCUTreeData);
+                    if (type != sliceTypeActual && m_cuTreeStats.qpBufPos == 1)
+                    {
+                        x265_log(m_param, X265_LOG_ERROR, "CU-tree frametype %d doesn't match actual frametype %d.\n", type, sliceTypeActual);
+                        return false;
+                    }
                 }
-
-                if (type != sliceTypeActual && m_cuTreeStats.qpBufPos == 1)
-                {
-                    x265_log(m_param, X265_LOG_ERROR, "CU-tree frametype %d doesn't match actual frametype %d.\n", type, sliceTypeActual);
-                    return false;
-                }
+                while (type != sliceTypeActual);
             }
-            while(type != sliceTypeActual);
+            primitives.fix8Unpack(frame->m_lowres.qpCuTreeOffset, m_cuTreeStats.qpBuffer[m_cuTreeStats.qpBufPos], ncu);
+            m_cuTreeStats.qpBufPos--;
         }
-        primitives.fix8Unpack(frame->m_lowres.qpCuTreeOffset, m_cuTreeStats.qpBuffer[m_cuTreeStats.qpBufPos], ncu);
         for (int i = 0; i < ncu; i++)
             frame->m_lowres.invQscaleFactor[i] = x265_exp2fix8(frame->m_lowres.qpCuTreeOffset[i]);
-        m_cuTreeStats.qpBufPos--;
     }
     return true;
 
@@ -3467,7 +3532,8 @@ void RateControl::destroy()
 
     X265_FREE(m_rce2Pass);
     X265_FREE(m_encOrder);
-    for (int i = 0; i < 2; i++)
+    X265_FREE(m_cuTreeRecordIdx);
+    for (int i = 0; i < X265_BFRAME_MAX + 2; i++)
         X265_FREE(m_cuTreeStats.qpBuffer[i]);
     
     if (m_relativeComplexity)

@@ -1374,8 +1374,10 @@ typedef struct x265_param
      * each mini-GOP larger than 2 B frames as a motion reference for the surrounding
      * B frames.  This improves compression efficiency for a small performance
      * penalty.  Referenced B frames are treated somewhere between a B and a P
-     * frame by rate control.  X265_B_PYRAMID_HIERARCHICAL (2): reserved for the
-     * hierarchical B-pyramid, currently the same as 1.  Default 1 */
+     * frame by rate control.  X265_B_PYRAMID_HIERARCHICAL (2): the middle B frame
+     * of the mini-GOP is a B-ref from the two anchors, and each half is split the
+     * same way while it has more than two B frames; with --temporal-layers greater
+     * than 2 the same as 1.  Default 1 */
     int       bBPyramid;
 
     /* A value which is added to the cost estimate of B frames in the lookahead.

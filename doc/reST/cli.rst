@@ -1689,7 +1689,11 @@ Slice decision options
 	0. No B frame is used as a reference
 	1. The middle B frame of each mini-GOP of more than 2 B frames is a
 	   reference for the other B frames of the mini-GOP
-	2. Reserved for the hierarchical B-pyramid, currently the same as 1
+	2. Hierarchical B-pyramid: the middle B frame of a mini-GOP is a B-ref
+	   from the two anchors, and each half is split the same way while it
+	   has more than two B frames, so the B frames are predicted from nearer
+	   references. With :option:`--temporal-layers` greater than 2 the
+	   mini-GOP is defined by the temporal sub-layers, as with 1
 
 	**Values:** 0, 1, 2. Earlier versions took no value: use 1 for
 	:option:`--b-pyramid` and 0 for the removed ``--no-b-pyramid``.
