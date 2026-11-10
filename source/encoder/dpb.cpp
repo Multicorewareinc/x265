@@ -227,7 +227,7 @@ void DPB::prepareEncode(Frame *newFrame)
         isRAP = true;
     }
     #endif
-    computeRPS(pocCurr, newFrame->m_tempLayer, isRAP, &slice->m_rps, maxDecBuffer, layer);
+    computeRPS(pocCurr, newFrame->m_tempLayer, isRAP, &slice->m_rps, maxDecBuffer, layer, newFrame->m_lowres.sliceType, newFrame->m_bPyramidLayer);
 
     bool isTSAPic = ((slice->m_nalUnitType == 2) || (slice->m_nalUnitType == 3)) ? true : false;
     // Mark pictures in m_piclist as unreferenced if they are not included in RPS
@@ -385,7 +385,7 @@ void DPB::prepareEncode(Frame *newFrame)
     }
 }
 
-void DPB::computeRPS(int curPoc, int tempId, bool isRAP, RPS * rps, unsigned int maxDecPicBuffer, int scalableLayerId)
+void DPB::computeRPS(int curPoc, int tempId, bool isRAP, RPS * rps, unsigned int maxDecPicBuffer, int scalableLayerId, int frametype, int pyramidLayer)
 {
     unsigned int poci = 0, numNeg = 0, numPos = 0;
 
@@ -396,7 +396,18 @@ void DPB::computeRPS(int curPoc, int tempId, bool isRAP, RPS * rps, unsigned int
         int layer = iterPic->m_param->numViews > 1 ? iterPic->m_viewId : (iterPic->m_param->numScalableLayers > 1) ? iterPic->m_sLayerId : 0;
         if (iterPic->m_valid && (iterPic->m_poc != curPoc) && iterPic->m_encData->m_bHasReferences && layer == scalableLayerId)
         {
-            if ((!m_bTemporalSublayer || (iterPic->m_tempLayer <= tempId)) && ((m_lastIDR >= curPoc) || (m_lastIDR <= iterPic->m_poc)))
+            bool bKeep;
+            if (m_bTemporalSublayer)
+                /* temporal sub-layers: only pictures of the same or a lower sub-layer */
+                bKeep = iterPic->m_tempLayer <= tempId;
+            else if (iterPic->m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL)
+                /* hierarchical B-pyramid: B-refs keep the pictures of the same or a lower pyramid level,
+                 * P frames keep the I/P frames, non-reference B frames keep all */
+                bKeep = ((iterPic->m_bPyramidLayer <= pyramidLayer) || (frametype == X265_TYPE_P && iterPic->m_lowres.sliceType <= X265_TYPE_P) || frametype == X265_TYPE_B) &&
+                        (curPoc - iterPic->m_poc <= (int)X265_MAX(16, iterPic->m_param->bframes + 1));
+            else
+                bKeep = true;
+            if (bKeep && ((m_lastIDR >= curPoc) || (m_lastIDR <= iterPic->m_poc)))
             {
 #if ENABLE_MULTIVIEW
                     if (iterPic->m_param->numViews > 1 && layer && numNeg == (uint8_t)(iterPic->m_param->maxNumReferences - 1) && (iterPic->m_poc - curPoc) < 0)

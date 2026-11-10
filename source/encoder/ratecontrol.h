@@ -243,6 +243,7 @@ public:
     double  m_expectedBitsSum;   /* sum of qscale2bits after rceq, ratefactor, and overflow, only includes finished frames */
     int64_t m_predictedBits;
     int     *m_encOrder;
+    int     *m_cuTreeRecordIdx;  /* file mode: CU-tree record of each 1st pass entry, -1 for frames without one */
     RateControlEntry* m_rce2Pass;
     Encoder* m_top;
 
@@ -250,9 +251,11 @@ public:
 
     struct
     {
-        uint16_t *qpBuffer[2]; /* Global buffers for converting MB-tree quantizer data. */
-        int qpBufPos;          /* In order to handle pyramid reordering, QP buffer acts as a stack.
-                                * This value is the current position (0 or 1). */
+        uint16_t *qpBuffer[X265_BFRAME_MAX + 2]; /* Global buffers for converting MB-tree quantizer data. */
+        int qpBufPos;    /* In order to handle pyramid reordering, QP buffer acts as a stack.
+                          * This value is the current position (0 .. qpBufDepth - 1). */
+        int qpBufDepth;  /* number of qpBuffer[] slots allocated: the reordering of the hierarchical
+                          * B-pyramid is bounded by --bframes */
     } m_cuTreeStats;
 
     RateControl(x265_param& p, Encoder *enc);
