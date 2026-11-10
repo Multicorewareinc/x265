@@ -73,13 +73,14 @@ static inline int bPyramidLayerAt(int p0, int p1, int idx, int layer = 1)
 
 /* Exponent of --pbratio giving a B-pyramid layer's qscale relative to its anchors
  * (its QP offset is this times 6 * log2(pbratio)): 2 for the deepest layer of the
- * mini-GOP and 0.5 less for each shallower layer, down to 0. Layer 0 is an I/P anchor. */
-static inline double bPyramidQpCoef(int maxLayer, int layer)
+ * mini-GOP and 0.5 less for each shallower layer, down to 0, times scale
+ * (--bpyramid-qp-scale). Layer 0 is an I/P anchor. */
+static inline double bPyramidQpCoef(int maxLayer, int layer, double scale)
 {
     if (layer <= 0)
         return 0;
     layer = X265_MIN(layer, maxLayer);
-    return X265_MAX(0.0, 2.0 - 0.5 * (maxLayer - layer));
+    return scale * X265_MAX(0.0, 2.0 - 0.5 * (maxLayer - layer));
 }
 
 struct Predictor

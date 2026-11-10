@@ -1618,7 +1618,7 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
                 }
 
                 curFrame->m_lowres.plannedSatd[j] = rceLoop->currentSatd;
-                curFrame->m_lowres.plannedBQpCoef[j] = rceLoop->bPyramidMaxLayer ? bPyramidQpCoef(rceLoop->bPyramidMaxLayer, rceLoop->bPyramidLayer) : -1;
+                curFrame->m_lowres.plannedBQpCoef[j] = rceLoop->bPyramidMaxLayer ? bPyramidQpCoef(rceLoop->bPyramidMaxLayer, rceLoop->bPyramidLayer, m_param->bPyramidQpScale) : -1;
                 curFrame->m_lowres.plannedCpbDuration[j] = rceLoop->cpbDuration * m_timebase;
                 totalDuration += m_timebase * rceLoop->frameDuration;
                 index++;
@@ -2043,11 +2043,11 @@ double RateControl::tuneQScaleForGrain(double rcOverflow)
 /* QP offset of a B-pyramid layer above its anchors, derived from --pbratio
  * (pbOffset = 6 * log2(pbratio)): the deepest layer of the mini-GOP sits 2 * pbOffset
  * above the anchors and each shallower layer pbOffset / 2 less, down to 0. Layer 0
- * is an I/P anchor. pbratio 1.0 (--tune grain, --strict-cbr) keeps every layer at
- * the anchor QP. */
-static double bPyramidQpOffset(double pbOffset, int maxLayer, int layer)
+ * is an I/P anchor, all scaled by --bpyramid-qp-scale. pbratio 1.0 (--tune grain,
+ * --strict-cbr) or a scale of 0 keeps every layer at the anchor QP. */
+static double bPyramidQpOffset(double pbOffset, double scale, int maxLayer, int layer)
 {
-    return pbOffset * bPyramidQpCoef(maxLayer, layer);
+    return pbOffset * bPyramidQpCoef(maxLayer, layer, scale);
 }
 
 /* QP offset of a B frame above its anchors: by pyramid layer with the B-pyramid, otherwise
@@ -2055,7 +2055,7 @@ static double bPyramidQpOffset(double pbOffset, int maxLayer, int layer)
 double RateControl::bFrameQpOffset(const Frame* frame, int maxLayer) const
 {
     if (m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL)
-        return bPyramidQpOffset(m_pbOffset, maxLayer, frame->m_bPyramidLayer);
+        return bPyramidQpOffset(m_pbOffset, m_param->bPyramidQpScale, maxLayer, frame->m_bPyramidLayer);
     return IS_REFERENCED(frame) ? m_pbOffset / 2 : m_pbOffset;
 }
 
@@ -2064,7 +2064,7 @@ double RateControl::bFrameQpOffset(const Frame* frame, int maxLayer) const
 double RateControl::bFrameQscaleRatio(const RateControlEntry* rce) const
 {
     if (m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL && rce->bPyramidMaxLayer)
-        return pow(fabs(m_param->rc.pbFactor), bPyramidQpCoef(rce->bPyramidMaxLayer, rce->bPyramidLayer));
+        return pow(fabs(m_param->rc.pbFactor), bPyramidQpCoef(rce->bPyramidMaxLayer, rce->bPyramidLayer, m_param->bPyramidQpScale));
     return fabs(m_param->rc.pbFactor);
 }
 
