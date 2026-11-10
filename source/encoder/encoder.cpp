@@ -1903,6 +1903,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                     {
                         inFrame[0]->m_lowres.plannedSatd[index] = inFrame[0]->m_analysisData.lookahead.plannedSatd[index];
                         inFrame[0]->m_lowres.plannedType[index] = inFrame[0]->m_analysisData.lookahead.plannedType[index];
+                        inFrame[0]->m_lowres.plannedBQpCoef[index] = -1; /* not in the analysis data */
                     }
                 }
             }

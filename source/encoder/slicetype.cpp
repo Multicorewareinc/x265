@@ -3011,6 +3011,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
             int p0 = IS_X265_TYPE_I(frames[curNonB]->sliceType) ? curNonB : prevNonB;
             frames[nextNonB]->plannedSatd[idx] = vbvFrameCost(frames, p0, curNonB, curNonB);
             frames[nextNonB]->plannedType[idx] = frames[curNonB]->sliceType;
+            frames[nextNonB]->plannedBQpCoef[idx] = 0;
             frames[nextNonB]->plannedCpbDuration[idx] = frames[curNonB]->cpbDurationSecs;
 
             /* Save the nextNonB Cost in each B frame of the current miniGop */
@@ -3020,6 +3021,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
                 {
                     frames[j]->plannedSatd[frames[j]->indB] = frames[nextNonB]->plannedSatd[idx];
                     frames[j]->plannedType[frames[j]->indB] = frames[nextNonB]->plannedType[idx];
+                    frames[j]->plannedBQpCoef[frames[j]->indB] = 0;
                     frames[j]->plannedCpbDuration[frames[j]->indB++] = frames[nextNonB]->cpbDurationSecs;
                 }
             }
@@ -3029,17 +3031,20 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
         /* Handle the B-frames: coded order */
         if (bHierarchical)
         {
-            /* the B-refs, references and coding order the pyramid is encoded with */
+            /* the B-refs, references, coding order and QPs the pyramid is encoded with */
             BPyramidPlan plan[X265_LOOKAHEAD_MAX + 1];
             int count = 0;
             bPyramidCodingOrder(prevNonB, curNonB, frames[curNonB]->sliceType != X265_TYPE_IDR, 1, plan, count);
+            const int maxLayer = x265_clip3(1, 5, bPyramidMaxLayer(curNonB - prevNonB));
             for (int k = 0; k < count; k++, idx++)
             {
                 const BPyramidPlan& cur = plan[k];
                 const int64_t satdCost = vbvFrameCost(frames, cur.p0, cur.p1, cur.b);
                 const int type = cur.bRef ? X265_TYPE_BREF : X265_TYPE_B;
+                const double bQpCoef = bPyramidQpCoef(maxLayer, cur.layer);
                 frames[nextNonB]->plannedSatd[idx] = satdCost;
                 frames[nextNonB]->plannedType[idx] = type;
+                frames[nextNonB]->plannedBQpCoef[idx] = bQpCoef;
                 frames[nextNonB]->plannedCpbDuration[idx] = frames[cur.b]->cpbDurationSecs;
 
                 /* Save the cost in each B frame of the current miniGop coded before this one */
@@ -3055,6 +3060,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
                     }
                     frames[j]->plannedSatd[frames[j]->indB] = satdCost;
                     frames[j]->plannedType[frames[j]->indB] = type;
+                    frames[j]->plannedBQpCoef[frames[j]->indB] = bQpCoef;
                     frames[j]->plannedCpbDuration[frames[j]->indB++] = frames[cur.b]->cpbDurationSecs;
                 }
             }
@@ -3086,8 +3092,16 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
             }
             else
                 satdCost = vbvFrameCost(frames, prevNonB, curNonB, i);
+            /* the QP rate control will give this B frame; with temporal sub-layers its layer
+             * is approximated by pushBPyramidRange()'s pyramid over the mini-GOP (frames[i]
+             * is list index i - prevNonB - 1) */
+            const int span = curNonB - prevNonB;
+            const double bQpCoef = m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL
+                ? bPyramidQpCoef(x265_clip3(1, 5, bPyramidMaxLayer(span)), bPyramidLayerAt(0, span, i - prevNonB - 1))
+                : 1.0;
             frames[nextNonB]->plannedSatd[idx] = satdCost;
             frames[nextNonB]->plannedType[idx] = type;
+            frames[nextNonB]->plannedBQpCoef[idx] = bQpCoef;
             frames[nextNonB]->plannedCpbDuration[idx] = frames[i]->cpbDurationSecs;
 
             /* Save the nextB Cost in each B frame of the current miniGop */
@@ -3099,6 +3113,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
                     continue;
                 frames[j]->plannedSatd[frames[j]->indB] = satdCost;
                 frames[j]->plannedType[frames[j]->indB] = type;
+                frames[j]->plannedBQpCoef[frames[j]->indB] = bQpCoef;
                 frames[j]->plannedCpbDuration[frames[j]->indB++] = frames[nextB]->cpbDurationSecs;
             }
         }
