@@ -2504,9 +2504,13 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
                     q = x265_clip3(lqmin, lqmax, q);
                 }
             }
-            else if (m_qCompress != 1 && m_param->rc.rateControlMode == X265_RC_CRF)
+            /* with the hierarchical B-pyramid the first I frame takes ipFactor with CU-tree (qcomp 1) too */
+            else if (m_param->rc.rateControlMode == X265_RC_CRF &&
+                     (m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL ? m_sliceType == I_SLICE : m_qCompress != 1))
             {
-                q = x265_qp2qScale(CRF_INIT_QP) / fabs(m_param->rc.ipFactor);
+                if (m_qCompress != 1)
+                    q = x265_qp2qScale(CRF_INIT_QP);
+                q /= fabs(m_param->rc.ipFactor);
             }
             else if (m_framesDone == 0 && !m_isVbv && m_param->rc.rateControlMode == X265_RC_ABR)
             {
