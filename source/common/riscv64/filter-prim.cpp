@@ -34,7 +34,7 @@ void interp8_horiz_pp_rvv(const pixel *src, intptr_t srcStride, pixel *dst,
 {
     const int N_TAPS = 8;
     src -= (N_TAPS / 2 - 1);
-    size_t vl = 32;
+    size_t vl = __riscv_vsetvlmax_e16m2();
 
     if (width > 8)
     {
@@ -115,7 +115,8 @@ void interp8_vert_pp_rvv(const pixel *src, intptr_t srcStride, pixel *dst,
     const int N_TAPS = 8;
     src -= (N_TAPS / 2 - 1) * srcStride;
 
-    size_t vl = 16;
+    // Initialize every lane that strip-mining can subsequently activate.
+    size_t vl = __riscv_vsetvlmax_e16m1();
 
     vuint8mf2_t shift = __riscv_vmv_v_x_u8mf2(IF_FILTER_PREC, vl);
     vint16m1_t zero = __riscv_vmv_v_x_i16m1(0, vl);
@@ -194,7 +195,7 @@ void interp4_horiz_pp_rvv(const pixel *src, intptr_t srcStride, pixel *dst,
 
     const int16_t* filter = g_chromaFilter8[coeffIdx];
 
-    size_t vl = 32;
+    size_t vl = __riscv_vsetvlmax_e16m2();
 
     if (width > 8)
     {
@@ -274,7 +275,7 @@ void interp4_vert_pp_rvv(const pixel *src, intptr_t srcStride, pixel *dst,
 
     const int16_t* filter = g_chromaFilter8[coeffIdx];
 
-    size_t vl = 16;
+    size_t vl = __riscv_vsetvlmax_e16m1();
     vuint8mf2_t shift = __riscv_vmv_v_x_u8mf2(IF_FILTER_PREC, vl);
     vint16m1_t zero = __riscv_vmv_v_x_i16m1(0, vl);
     vint16m1_t t0, t1, t2, t3, t4, t5, t6;
@@ -477,7 +478,7 @@ void interp8_vert_ps_rvv(const uint8_t *src, intptr_t srcStride, int16_t *dst,
     const int N_TAPS = 8;
     src -= (N_TAPS / 2 - 1) * srcStride;
 
-    size_t vl = 16;
+    size_t vl = __riscv_vsetvlmax_e16m1();
     vint16m1_t c = __riscv_vmv_v_x_i16m1(-IF_INTERNAL_OFFS, vl);
 
     vint16m1_t t0, t1, t2, t3, t4, t5, t6;
@@ -607,7 +608,7 @@ void interp4_vert_ps_rvv(const uint8_t *src, intptr_t srcStride, int16_t *dst,
 
     const int16_t* filter = g_chromaFilter8[coeffIdx];
 
-    size_t vl = 16;
+    size_t vl = __riscv_vsetvlmax_e16m1();
     const vint16m1_t c = __riscv_vmv_v_x_i16m1(-IF_INTERNAL_OFFS, vl);
     vint16m1_t t0, t1, t2, t3, t4, t5, t6;
     vint16m1_t *s0[7] = {&t0, &t1, &t2, &t3, &t4, &t5, &t6};
@@ -776,7 +777,7 @@ void interp8_vert_sp_rvv(const int16_t *src, intptr_t srcStride, pixel *dst,
     const int N_TAPS = 8;
 
     src -= (N_TAPS / 2 - 1) * srcStride;
-    size_t vl = 16;
+    size_t vl = __riscv_vsetvlmax_e32m2();
 
     vuint16m1_t shift = __riscv_vmv_v_x_u16m1(shift0, vl);
     vint16m1_t zero = __riscv_vmv_v_x_i16m1(0, vl);
@@ -857,7 +858,7 @@ void interp4_vert_sp_rvv(const int16_t *src, intptr_t srcStride, uint8_t *dst,
     const int N_TAPS = 4;
     src -= (N_TAPS / 2 - 1) * srcStride;
 
-    size_t vl = 16;
+    size_t vl = __riscv_vsetvlmax_e32m2();
     const int16_t* filter = g_chromaFilter8[coeffIdx];
 
     vuint16m1_t shift = __riscv_vmv_v_x_u16m1(shift0, vl);
@@ -981,7 +982,7 @@ void interp8_vert_ss_rvv(const int16_t *src, intptr_t srcStride, int16_t *dst,
 {
     const int N_TAPS = 8;
     src -= (N_TAPS / 2 - 1) * srcStride;
-    size_t vl = 16;
+    size_t vl = __riscv_vsetvlmax_e32m2();
 
     vuint16m1_t shift = __riscv_vmv_v_x_u16m1(IF_FILTER_PREC, vl);
     vint32m2_t c = __riscv_vmv_v_x_i32m2(0, vl);
@@ -1046,7 +1047,7 @@ void interp4_vert_ss_rvv(const int16_t *src, intptr_t srcStride, int16_t *dst,
 
     src -= (N_TAPS / 2 - 1) * srcStride;
 
-    size_t vl = 16;
+    size_t vl = __riscv_vsetvlmax_e32m2();
     const int16_t* filter = g_chromaFilter8[coeffIdx];
 
     vuint16m1_t shift = __riscv_vmv_v_x_u16m1(IF_FILTER_PREC, vl);
