@@ -4405,9 +4405,16 @@ void CostEstimateGroup::processTasks(int workerThreadID)
                 else if (e.MElevel == 1)
                     m_metld.motionEstimationLuma(ref->mvs1, ref->mvsStride1, lowres->lowresPlane[0], (int)(lowres->lumaStride), (lowres->lines), (lowres->width), ref->lowres, e.blockRow, rowSize, ref->mvs0, ref->mvsStride0, 2);
                 else if (e.MElevel == 2)
+                {
                     m_metld.motionEstimationLuma(ref->mvs2, ref->mvsStride2, curFrame->m_fencPic->m_picOrg[0], (int)curFrame->m_fencPic->m_stride, curFrame->m_fencPic->m_picHeight, curFrame->m_fencPic->m_picWidth, ref->picBuffer->m_picOrg[0], e.blockRow, rowSize, ref->mvs1, ref->mvsStride1, 2);
+                    /* level 3 needs the source block variances of these rows; the first reference's jobs
+                     * compute them once for all references (each level finishes before the next starts) */
+                    if (!e.p0)
+                        m_metld.computeBlockVariance(curFrame->m_fencPic, curFrame->m_mcstf->m_blockVariance, curFrame->m_mcstf->m_blockVarStride, e.blockRow, rowSize);
+                }
                 else if (e.MElevel == 3)
-                    m_metld.motionEstimationLumaDoubleRes(ref->mvs, ref->mvsStride, curFrame->m_fencPic, ref->picBuffer, ref->mvs2, ref->mvsStride2, 1, ref->error, e.blockRow, rowSize);
+                    m_metld.motionEstimationLumaDoubleRes(ref->mvs, ref->mvsStride, curFrame->m_fencPic, ref->picBuffer, ref->mvs2, ref->mvsStride2, 1, ref->error, e.blockRow, rowSize,
+                        curFrame->m_mcstf->m_blockVariance, curFrame->m_mcstf->m_blockVarStride);
             }
             else
             {

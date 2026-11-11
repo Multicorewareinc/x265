@@ -44,6 +44,8 @@ protected:
     ALIGN_VAR_32(pixel, m_dstBufOpt[TEST_BUF_SIZE]);
 
     bool check_motionErrorLumaFrac(const MCSTFPrimitives& ref, const MCSTFPrimitives& opt);
+    bool check_motionErrorLumaInt(const MCSTFPrimitives& ref, const MCSTFPrimitives& opt);
+    bool check_motionSearchLumaFrac(const MCSTFPrimitives& ref, const MCSTFPrimitives& opt);
     bool check_applyMotion(const MCSTFPrimitives& ref, const MCSTFPrimitives& opt);
     bool check_computeBlockStats(const MCSTFPrimitives& ref, const MCSTFPrimitives& opt);
     bool check_bilateralFilter(const MCSTFPrimitives& ref, const MCSTFPrimitives& opt);
