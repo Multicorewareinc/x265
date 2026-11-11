@@ -2029,7 +2029,7 @@ sse_t Search::estIntraPredQT(Mode &intraMode, const CUGeom& cuGeom, const uint32
 
                 Cost icosts;
 
-				if (bUseCachedIntraData)
+                if (m_param->bEnableIntra64x64 && bUseCachedIntraData)
                 {
                     IntraNeighbors cachedNeighbors;
                     initIntraNeighbors(cu, absPartIdx, initTuDepth, true, &cachedNeighbors);
@@ -2039,7 +2039,7 @@ sse_t Search::estIntraPredQT(Mode &intraMode, const CUGeom& cuGeom, const uint32
                 if (checkTransformSkip)
                     codeIntraLumaTSkip(intraMode, cuGeom, initTuDepth, absPartIdx, bUseCachedIntraData, icosts);
                 else
-                    codeIntraLumaQT(intraMode, cuGeom, initTuDepth, absPartIdx, true, bUseCachedIntraData, NULL, icosts, depthRange);
+                    codeIntraLumaQT(intraMode, cuGeom, initTuDepth, absPartIdx, m_param->bEnableIntra64x64 ? true : false, bUseCachedIntraData, NULL, icosts, depthRange);
 
                 if (icosts.rdcost < bcost)
                 {
@@ -2065,7 +2065,7 @@ sse_t Search::estIntraPredQT(Mode &intraMode, const CUGeom& cuGeom, const uint32
 
         Cost icosts;
 
-		 if (bUseCachedIntraData)
+        if (m_param->bEnableIntra64x64 && bUseCachedIntraData)
         {
             IntraNeighbors cachedNeighbors;
             initIntraNeighbors(cu, absPartIdx, initTuDepth, true, &cachedNeighbors);
