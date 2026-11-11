@@ -603,6 +603,13 @@ bool RateControl::init(const SPS& sps)
                     CMP_OPT_FIRST_PASS("weightp", m_param->bEnableWeightedPred);
                     CMP_OPT_FIRST_PASS("bframes", m_param->bframes);
                     CMP_OPT_FIRST_PASS("b-pyramid", m_param->bBPyramid);
+                    /* the param string writes --b-pyramid 1 as "b-pyramid", which the check above
+                     * accepts for 2 as well */
+                    if ((m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL) != !!strstr(opts, "b-pyramid=2"))
+                    {
+                        x265_log(m_param, X265_LOG_ERROR, "different b-pyramid setting than first pass\n");
+                        return false;
+                    }
                     CMP_OPT_FIRST_PASS("open-gop", m_param->bOpenGOP);
                     CMP_OPT_FIRST_PASS(" keyint", m_param->keyframeMax);
                     CMP_OPT_FIRST_PASS("scenecut", m_param->scenecutThreshold);
