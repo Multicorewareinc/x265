@@ -1889,7 +1889,7 @@ sse_t Search::estIntraPredQT(Mode &intraMode, const CUGeom& cuGeom, const uint32
     const Yuv* fencYuv = intraMode.fencYuv;
 
     uint32_t depth        = cuGeom.depth;
-    uint32_t initTuDepth  = cu.m_partSize[0] != SIZE_2Nx2N;
+    uint32_t initTuDepth = (cuGeom.depth == 0 || cu.m_partSize[0] != SIZE_2Nx2N);
     uint32_t numPU        = 1 << (2 * initTuDepth);
     uint32_t log2TrSize   = cuGeom.log2CUSize - initTuDepth;
     uint32_t tuSize       = 1 << log2TrSize;
