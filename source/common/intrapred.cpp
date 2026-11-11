@@ -243,16 +243,19 @@ void setupIntraPrimitives_c(EncoderPrimitives& p)
     p.cu[BLOCK_8x8].intra_filter = intraFilter<8>;
     p.cu[BLOCK_16x16].intra_filter = intraFilter<16>;
     p.cu[BLOCK_32x32].intra_filter = intraFilter<32>;
+    p.cu[BLOCK_64x64].intra_filter = intraFilter<64>;
 
     p.cu[BLOCK_4x4].intra_pred[PLANAR_IDX] = planar_pred_c<2>;
     p.cu[BLOCK_8x8].intra_pred[PLANAR_IDX] = planar_pred_c<3>;
     p.cu[BLOCK_16x16].intra_pred[PLANAR_IDX] = planar_pred_c<4>;
     p.cu[BLOCK_32x32].intra_pred[PLANAR_IDX] = planar_pred_c<5>;
+    p.cu[BLOCK_64x64].intra_pred[PLANAR_IDX] = planar_pred_c<6>;
 
     p.cu[BLOCK_4x4].intra_pred[DC_IDX] = intra_pred_dc_c<4>;
     p.cu[BLOCK_8x8].intra_pred[DC_IDX] = intra_pred_dc_c<8>;
     p.cu[BLOCK_16x16].intra_pred[DC_IDX] = intra_pred_dc_c<16>;
     p.cu[BLOCK_32x32].intra_pred[DC_IDX] = intra_pred_dc_c<32>;
+    p.cu[BLOCK_64x64].intra_pred[DC_IDX] = intra_pred_dc_c<64>;
 
     for (int i = 2; i < NUM_INTRA_MODE; i++)
     {
@@ -260,11 +263,13 @@ void setupIntraPrimitives_c(EncoderPrimitives& p)
         p.cu[BLOCK_8x8].intra_pred[i] = intra_pred_ang_c<8>;
         p.cu[BLOCK_16x16].intra_pred[i] = intra_pred_ang_c<16>;
         p.cu[BLOCK_32x32].intra_pred[i] = intra_pred_ang_c<32>;
+        p.cu[BLOCK_64x64].intra_pred[i] = intra_pred_ang_c<64>;
     }
 
     p.cu[BLOCK_4x4].intra_pred_allangs = all_angs_pred_c<2>;
     p.cu[BLOCK_8x8].intra_pred_allangs = all_angs_pred_c<3>;
     p.cu[BLOCK_16x16].intra_pred_allangs = all_angs_pred_c<4>;
     p.cu[BLOCK_32x32].intra_pred_allangs = all_angs_pred_c<5>;
+    p.cu[BLOCK_64x64].intra_pred_allangs = all_angs_pred_c<6>;
 }
 }
