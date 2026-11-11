@@ -593,11 +593,18 @@ void weightAnalyse(Slice& slice, Frame& frame, x265_param& param)
 
         size_t planeSize = (size_t)fenc.lumaStride * (fenc.lines + 8);
 
-        uint32_t* satd = anyWeight ? X265_MALLOC(uint32_t, (size_t)numBlocks * (2 * numCand + 4)) : NULL;
-        pixel* pbuf = anyWeight ? X265_MALLOC(pixel, 6 * planeSize) : NULL;
+        pixel* pbuf = NULL;
+        uint32_t* satd = NULL;
+        if (anyWeight)
+        {
+            size_t satdCount = (size_t)numBlocks * (2 * numCand + 4);
+            size_t satdInPixels = (satdCount * sizeof(uint32_t) + sizeof(pixel) - 1) / sizeof(pixel);
+            pbuf = X265_MALLOC(pixel, 6 * planeSize + satdInPixels);
+            if (pbuf)
+                satd = (uint32_t*)(pbuf + 6 * planeSize);
+        }
         if (satd && pbuf)
         {
-            memset(pbuf, 0, 6 * planeSize * sizeof(pixel));
             uint32_t* satdU = satd;
             uint32_t* satdW = satd + (size_t)numBlocks * numCand;
             uint32_t* bi = satd + (size_t)numBlocks * 2 * numCand;
@@ -722,7 +729,6 @@ void weightAnalyse(Slice& slice, Frame& frame, x265_param& param)
                 }
             }
         }
-        X265_FREE(satd);
         X265_FREE(pbuf);
     }
 
