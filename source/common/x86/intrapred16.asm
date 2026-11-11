@@ -25987,4 +25987,400 @@ cglobal all_angs_pred_64x64, 3,13,8,0-1024
     jl              .modeloop
     RET
 
+%macro HBD_ANG64_ROW_ZMM 2
+%assign bx 0
+%rep 2
+    movu            m0, [%1 + bx*2]
+    movu            m1, [%1 + bx*2 + 2]
+    vpunpcklwd      m2, m0, m1
+    vpunpckhwd      m0, m0, m1
+    vpmaddwd        m2, m2, m6
+    vpmaddwd        m0, m0, m6
+    vpaddd          m2, m2, m5
+    vpaddd          m0, m0, m5
+    vpsrad          m2, m2, 5
+    vpsrad          m0, m0, 5
+    vpackusdw       m2, m2, m0
+    movu            [%2 + bx*2], m2
+%assign bx bx+32
+%endrep
+%endmacro
+
+INIT_ZMM avx512
+cglobal intra_pred_dc64, 3,4,4
+    add             r1, r1
+    vpternlogd      m3, m3, m3, 0xFF
+    psrlw           m3, 15
+    movu            m0, [r2 + 2]
+    pmaddwd         m0, m3
+    movu            m1, [r2 + 66]
+    pmaddwd         m1, m3
+    paddd           m0, m1
+    movu            m1, [r2 + 258]
+    pmaddwd         m1, m3
+    paddd           m0, m1
+    movu            m1, [r2 + 322]
+    pmaddwd         m1, m3
+    paddd           m0, m1
+    vextracti64x4   ym1, m0, 1
+    paddd           ym0, ym1
+    vextracti128    xm1, ym0, 1
+    paddd           xm0, xm1
+    movhlps         xm1, xm0
+    paddd           xm0, xm1
+    pshufd          xm1, xm0, 1
+    paddd           xm0, xm1
+    movd            r3d, xm0
+    add             r3d, 64
+    shr             r3d, 7
+    movd            xm0, r3d
+    vpbroadcastw    m0, xm0
+    mov             r3d, 64
+.loop:
+    movu            [r0 +  0], m0
+    movu            [r0 + 64], m0
+    add             r0, r1
+    dec             r3d
+    jnz             .loop
+    RET
+
+INIT_ZMM avx512
+cglobal intra_filter_64x64, 2,6,4
+    movzx           r2d, word [r0 + 256]
+    movzx           r3d, word [r0 + 512]
+    vpbroadcastw    m3, [pw_2]
+    xor             r4, r4
+.loop:
+    movu            m0, [r0 + r4*2]
+    movu            m1, [r0 + r4*2 + 2]
+    movu            m2, [r0 + r4*2 + 4]
+    paddw           m0, m2
+    psllw           m1, 1
+    paddw           m1, m0
+    paddw           m1, m3
+    psrlw           m1, 2
+    movu            [r1 + r4*2 + 2], m1
+    add             r4, 32
+    cmp             r4, 256
+    jl              .loop
+    movzx           r5d, word [r0 + 0]
+    movzx           eax, word [r0 + 2]
+    lea             eax, [rax + 2*r5 + 2]
+    movzx           r4d, word [r0 + 258]
+    add             eax, r4d
+    shr             eax, 2
+    mov             [r1 + 0], ax
+    movzx           eax, word [r0 + 258]
+    lea             eax, [r5 + 2*rax + 2]
+    movzx           r4d, word [r0 + 260]
+    add             eax, r4d
+    shr             eax, 2
+    mov             [r1 + 258], ax
+    mov             [r1 + 256], r2w
+    mov             [r1 + 512], r3w
+    RET
+
+INIT_ZMM avx512
+cglobal intra_pred_planar64, 3,9,8
+    add             r1, r1
+    lea             r3, [r2 + 2]
+    lea             r4, [r2 + 258]
+    movzx           r5d, word [r2 + 386]
+    movzx           r8d, word [r2 + 130]
+    shl             r8d, 16
+    xor             r7, r7
+.rowloop:
+    movzx           eax, word [r4 + r7*2]
+    or              eax, r8d
+    movd            xm6, eax
+    vpbroadcastd    m6, xm6
+    mov             eax, 63
+    sub             eax, r7d
+    movd            xm5, eax
+    vpbroadcastd    m5, xm5
+    lea             eax, [r7 + 1]
+    imul            eax, r5d
+    add             eax, 64
+    movd            xm4, eax
+    vpbroadcastd    m4, xm4
+%assign c 0
+%rep 4
+    movu            m0, [c_planar64_pairs + c*4]
+    pmaddwd         m0, m6
+    pmovzxwd        m1, [r3 + c*2]
+    pmulld          m1, m5
+    paddd           m0, m1
+    paddd           m0, m4
+    psrad           m0, 7
+    vpmovusdw       [r0 + c*2], m0
+%assign c c+16
+%endrep
+    add             r0, r1
+    inc             r7
+    cmp             r7, 64
+    jl              .rowloop
+    RET
+
+INIT_ZMM avx512
+cglobal intra_pred_ang64, 5,13,8,0-9280
+    add             r1, r1
+    vpbroadcastd    m5, [pd_16]
+    xor             eax, eax
+    cmp             r3d, 18
+    setl            al
+    mov             [rsp + 9200], eax
+    test            eax, eax
+    jz              .noflip
+    lea             r10, [rsp + 8192]
+    mov             ax, [r2]
+    mov             [r10], ax
+%assign kk 0
+%rep 16
+    movu            xm0, [r2 + 258 + kk]
+    movu            [r10 + 2 + kk], xm0
+    movu            xm0, [r2 + 2 + kk]
+    movu            [r10 + 258 + kk], xm0
+%assign kk kk+16
+%endrep
+    mov             r2, r10
+.noflip:
+    mov             eax, [rsp + 9200]
+    test            eax, eax
+    jz              .vermode
+    mov             eax, 10
+    sub             eax, r3d
+    jmp             .haveao
+.vermode:
+    lea             eax, [r3 - 26]
+.haveao:
+    movsxd          rax, eax
+    lea             r8, [c_ang64_angle]
+    movsx           r3d, byte [r8 + rax + 8]
+    mov             r10, rax
+    neg             r10
+    sub             r10, 1
+    lea             r8, [c_ang64_invAngle]
+    movzx           r11d, word [r8 + r10*2]
+    test            r3d, r3d
+    jns             .posangle
+    mov             eax, r3d
+    add             eax, eax
+    neg             eax
+    sub             eax, 1
+    mov             r5d, eax
+    lea             r10, [rsp + 8832]
+    lea             r10, [r10 + r5*2 + 2]
+    mov             ax, [r2]
+    mov             [r10 - 2], ax
+    movu            xm0, [r2 + 2]
+    movu            [r10 + 0], xm0
+    movu            xm0, [r2 + 18]
+    movu            [r10 + 16], xm0
+    movu            xm0, [r2 + 34]
+    movu            [r10 + 32], xm0
+    movu            xm0, [r2 + 50]
+    movu            [r10 + 48], xm0
+    movu            xm0, [r2 + 66]
+    movu            [r10 + 64], xm0
+    movu            xm0, [r2 + 82]
+    movu            [r10 + 80], xm0
+    movu            xm0, [r2 + 98]
+    movu            [r10 + 96], xm0
+    movu            xm0, [r2 + 114]
+    movu            [r10 + 112], xm0
+    lea             r12, [r10 - 4]
+    mov             r9d, 128
+    lea             r8, [r2 + 256]
+.projloop:
+    add             r9d, r11d
+    mov             eax, r9d
+    shr             eax, 8
+    movzx           eax, word [r8 + rax*2]
+    mov             [r12], ax
+    sub             r12, 2
+    dec             r5d
+    jnz             .projloop
+    mov             r2, r10
+    jmp             .haveref
+.posangle:
+    lea             r2, [r2 + 2]
+.haveref:
+    mov             eax, [rsp + 9200]
+    test            eax, eax
+    jz              .vertout
+    lea             r10, [rsp + 0]
+    mov             r9d, 128
+    jmp             .haveout
+.vertout:
+    mov             r10, r0
+    mov             r9, r1
+.haveout:
+    lea             r7, [ang_table]
+    xor             r4d, r4d
+    xor             r5d, r5d
+.rowloop:
+    add             r4d, r3d
+    mov             eax, r4d
+    sar             eax, 5
+    movsxd          rax, eax
+    lea             r12, [r2 + rax*2]
+    mov             eax, r4d
+    and             eax, 31
+    jz              .copyrow
+    shl             eax, 4
+    vbroadcasti32x4 m6, [r7 + rax]
+    HBD_ANG64_ROW_ZMM r12, r10
+    jmp             .rowdone
+.copyrow:
+%assign bx 0
+%rep 2
+    movu            m0, [r12 + bx*2]
+    movu            [r10 + bx*2], m0
+%assign bx bx+32
+%endrep
+.rowdone:
+    add             r10, r9
+    inc             r5d
+    cmp             r5d, 64
+    jl              .rowloop
+    mov             eax, [rsp + 9200]
+    test            eax, eax
+    jz              .done
+    xor             r5d, r5d
+.trb:
+    xor             r11d, r11d
+.tcb:
+    lea             r8, [rsp + 0]
+    mov             eax, r11d
+    shl             eax, 10
+    add             r8, rax
+    mov             eax, r5d
+    shl             eax, 4
+    add             r8, rax
+    mov             rax, r5
+    shl             rax, 3
+    imul            rax, r1
+    lea             r10, [r0 + rax]
+    mov             eax, r11d
+    shl             eax, 4
+    add             r10, rax
+    TRANS8x8W_64    r8, r10, r1
+    inc             r11d
+    cmp             r11d, 8
+    jl              .tcb
+    inc             r5d
+    cmp             r5d, 8
+    jl              .trb
+.done:
+    RET
+
+INIT_ZMM avx512
+cglobal all_angs_pred_64x64, 3,13,8,0-1024
+    vpbroadcastd    m5, [pd_16]
+    lea             r10, [rsp + 0]
+    mov             ax, [r1]
+    mov             [r10], ax
+%assign kk 0
+%rep 16
+    movu            xm0, [r1 + 258 + kk]
+    movu            [r10 + 2 + kk], xm0
+    movu            xm0, [r1 + 2 + kk]
+    movu            [r10 + 258 + kk], xm0
+%assign kk kk+16
+%endrep
+    lea             r7, [ang_table]
+    mov             r10, r0
+    mov             r5d, 2
+.modeloop:
+    cmp             r5d, 18
+    jge             .vmode
+    lea             r2, [rsp + 0]
+    mov             eax, 10
+    sub             eax, r5d
+    jmp             .haveao2
+.vmode:
+    mov             r2, r1
+    lea             eax, [r5 - 26]
+.haveao2:
+    movsxd          rax, eax
+    lea             r8, [c_ang64_angle]
+    movsx           r3d, byte [r8 + rax + 8]
+    mov             r9, rax
+    neg             r9
+    sub             r9, 1
+    lea             r8, [c_ang64_invAngle]
+    movzx           r8d, word [r8 + r9*2]
+    test            r3d, r3d
+    jns             .posang2
+    mov             eax, r3d
+    add             eax, eax
+    neg             eax
+    sub             eax, 1
+    lea             r11, [rsp + 640]
+    lea             r11, [r11 + rax*2 + 2]
+    mov             r9d, eax
+    mov             ax, [r2]
+    mov             [r11 - 2], ax
+    movu            xm0, [r2 + 2]
+    movu            [r11 + 0], xm0
+    movu            xm0, [r2 + 18]
+    movu            [r11 + 16], xm0
+    movu            xm0, [r2 + 34]
+    movu            [r11 + 32], xm0
+    movu            xm0, [r2 + 50]
+    movu            [r11 + 48], xm0
+    movu            xm0, [r2 + 66]
+    movu            [r11 + 64], xm0
+    movu            xm0, [r2 + 82]
+    movu            [r11 + 80], xm0
+    movu            xm0, [r2 + 98]
+    movu            [r11 + 96], xm0
+    movu            xm0, [r2 + 114]
+    movu            [r11 + 112], xm0
+    lea             r12, [r11 - 4]
+    mov             r0d, 128
+.proj2:
+    add             r0d, r8d
+    mov             eax, r0d
+    shr             eax, 8
+    movzx           eax, word [r2 + 256 + rax*2]
+    mov             [r12], ax
+    sub             r12, 2
+    dec             r9d
+    jnz             .proj2
+    jmp             .haverefA
+.posang2:
+    lea             r11, [r2 + 2]
+.haverefA:
+    xor             r4d, r4d
+    xor             r9d, r9d
+.rowloopA:
+    add             r4d, r3d
+    mov             eax, r4d
+    sar             eax, 5
+    movsxd          rax, eax
+    lea             r12, [r11 + rax*2]
+    mov             eax, r4d
+    and             eax, 31
+    jz              .copyA
+    shl             eax, 4
+    vbroadcasti32x4 m6, [r7 + rax]
+    HBD_ANG64_ROW_ZMM r12, r10
+    jmp             .rowdoneA
+.copyA:
+%assign bx 0
+%rep 2
+    movu            m0, [r12 + bx*2]
+    movu            [r10 + bx*2], m0
+%assign bx bx+32
+%endrep
+.rowdoneA:
+    add             r10, 128
+    inc             r9d
+    cmp             r9d, 64
+    jl              .rowloopA
+    inc             r5d
+    cmp             r5d, 35
+    jl              .modeloop
+    RET
 SECTION_IBT_SHSTK

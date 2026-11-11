@@ -3143,6 +3143,14 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask) // Main10
         p.chroma[X265_CSP_I422].pu[CHROMA_422_32x16].satd = PFX(pixel_satd_32x16_avx512);
 
         p.cu[BLOCK_32x32].intra_pred[DC_IDX] = PFX(intra_pred_dc32_avx512);
+
+        p.cu[BLOCK_64x64].intra_filter = PFX(intra_filter_64x64_avx512);
+        p.cu[BLOCK_64x64].intra_pred[PLANAR_IDX] = PFX(intra_pred_planar64_avx512);
+        p.cu[BLOCK_64x64].intra_pred[DC_IDX] = PFX(intra_pred_dc64_avx512);
+        for (int ang64hb = 2; ang64hb <= 34; ang64hb++)
+            p.cu[BLOCK_64x64].intra_pred[ang64hb] = PFX(intra_pred_ang64_avx512);
+        p.cu[BLOCK_64x64].intra_pred_allangs = PFX(all_angs_pred_64x64_avx512);
+
         p.cu[BLOCK_32x32].intra_pred[2]      = PFX(intra_pred_ang32_2_avx512);
         p.cu[BLOCK_32x32].intra_pred[34]     = PFX(intra_pred_ang32_2_avx512);
         p.cu[BLOCK_32x32].intra_pred[9] = PFX(intra_pred_ang32_9_avx512);
@@ -4793,6 +4801,13 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask) // Main
     }
     if (cpuMask & X265_CPU_AVX512)
     {
+        p.cu[BLOCK_64x64].intra_filter = PFX(intra_filter_64x64_avx512);
+        p.cu[BLOCK_64x64].intra_pred[PLANAR_IDX] = PFX(intra_pred_planar64_avx512);
+        p.cu[BLOCK_64x64].intra_pred[DC_IDX] = PFX(intra_pred_dc64_avx512);
+        for (int ang64b = 2; ang64b <= 34; ang64b++)
+            p.cu[BLOCK_64x64].intra_pred[ang64b] = PFX(intra_pred_ang64_avx512);
+        p.cu[BLOCK_64x64].intra_pred_allangs = PFX(all_angs_pred_64x64_avx512);
+
         p.pu[LUMA_32x8].sad = PFX(pixel_sad_32x8_avx512);
       //  p.pu[LUMA_32x16].sad = PFX(pixel_sad_32x16_avx512);
         p.pu[LUMA_32x24].sad = PFX(pixel_sad_32x24_avx512);

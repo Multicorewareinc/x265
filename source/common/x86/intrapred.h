@@ -80,6 +80,7 @@ FUNCDEF_TU_S2(void, intra_pred_dc, avx512, pixel* dst, intptr_t dstStride, const
 FUNCDEF_TU_S2(void, intra_pred_planar, sse2, pixel* dst, intptr_t dstStride, const pixel*srcPix, int, int filter);
 FUNCDEF_TU_S2(void, intra_pred_planar, sse4, pixel* dst, intptr_t dstStride, const pixel*srcPix, int, int filter);
 FUNCDEF_TU_S2(void, intra_pred_planar, avx2, pixel* dst, intptr_t dstStride, const pixel*srcPix, int, int filter);
+FUNCDEF_TU_S2(void, intra_pred_planar, avx512, pixel* dst, intptr_t dstStride, const pixel*srcPix, int, int filter);
 
 DECL_ALL(sse2);
 DECL_ALL(ssse3);
@@ -92,5 +93,7 @@ DECL_ALL(avx512);
 
 void PFX(intra_pred_ang64_sse4)(pixel* dst, intptr_t dstStride, const pixel* srcPix, int dirMode, int bFilter);
 void PFX(intra_pred_ang64_avx2)(pixel* dst, intptr_t dstStride, const pixel* srcPix, int dirMode, int bFilter);
+
+void PFX(intra_pred_ang64_avx512)(pixel* dst, intptr_t dstStride, const pixel* srcPix, int dirMode, int bFilter);
 
 #endif // ifndef X265_INTRAPRED_H
