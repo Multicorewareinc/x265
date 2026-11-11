@@ -90,5 +90,7 @@ DECL_ALL(avx512);
 #undef DECL_ANGS
 #undef DECL_ANG
 
+void PFX(intra_pred_ang64_sse4)(pixel* dst, intptr_t dstStride, const pixel* srcPix, int dirMode, int bFilter);
+void PFX(intra_pred_ang64_avx2)(pixel* dst, intptr_t dstStride, const pixel* srcPix, int dirMode, int bFilter);
 
 #endif // ifndef X265_INTRAPRED_H
