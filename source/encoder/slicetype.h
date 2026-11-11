@@ -166,6 +166,7 @@ public:
     pixel*        m_noiseBlurBuf;    // persistent blur buffer for estimateNoise() fallback path
     int32_t*      m_gradMagBuf;      // persistent gradient-magnitude buffer for estimateNoise()
     bool          m_filterThisGOP;  // noise gate decision for the GOP currently being dispatched
+    int           m_lastMcstfAnchorPoc; // POC of the last non-I anchor frame that MCSTF was applied to
 
     /* pre-lookahead */
     int           m_fullQueueSize;
@@ -242,7 +243,7 @@ public:
     void    getEstimatedPictureCost(Frame *pic);
     void    setLookaheadQueue();
     int     findSliceType(int poc);
-    bool    generatemcstf(Frame * frame, PicList refPic, int poclast);
+    bool    generatemcstf(Frame* frameEnc, PicList refPic, int poclast);
     bool    isFilterThisframe(uint8_t sliceTypeConfig, int curSliceType);
     int32_t estimateNoise(Frame* curFrame);
 

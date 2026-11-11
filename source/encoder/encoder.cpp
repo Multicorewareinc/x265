@@ -2593,7 +2593,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                 m_lookahead->getEstimatedPictureCost(frameEnc[0]);
 
             // Generate MCSTF References and perform HME
-            if (m_param->bEnableTemporalFilter && isFilterThisframe(frameEnc[0]->m_mcstf->m_sliceTypeConfig, frameEnc[0]->m_lowres.sliceType))
+            if (m_param->bEnableTemporalFilter && frameEnc[0]->m_lowres.bApplyFilter)
             {
                 for (int i = 0; i < frameEnc[0]->m_mcstf->m_numRef; i++)
                 {
@@ -3385,7 +3385,7 @@ void Encoder::finishFrameStats(Frame* curFrame, FrameEncoder *curEncoder, x265_f
         if (m_param->bSelectiveMCSTF && m_param->csvLogLevel >= 2)
         {
             frameStats->frameNoise     = curFrame->m_lowres.noiseScore;
-            frameStats->isMCSTFEnabled = curFrame->m_lowres.filterThisGOP ? 1 : 0;
+            frameStats->isMCSTFEnabled = curFrame->m_lowres.bApplyFilter ? 1 : 0;
         }
 
         if (m_param->csvLogLevel >= 1)

@@ -660,7 +660,7 @@ void FrameEncoder::compressFrame(int layer)
             }
         }
     }
-    if (m_param->bEnableTemporalFilter && m_top->isFilterThisframe(m_frame[layer]->m_mcstf->m_sliceTypeConfig, m_frame[layer]->m_lowres.sliceType) && m_frame[layer]->m_lowres.filterThisGOP)
+    if (m_param->bEnableTemporalFilter && m_frame[layer]->m_lowres.bApplyFilter)
     {
         m_frame[layer]->m_mcstf->m_QP = qp;
         m_frame[layer]->m_mcstf->bilateralFilter(m_frame[layer], m_frame[layer]->m_mcstfRefList, m_pool);
@@ -1098,7 +1098,7 @@ void FrameEncoder::compressFrame(int layer)
     if (m_param->bDynamicRefine && m_top->m_startPoint <= m_frame[layer]->m_encodeOrder) //Avoid collecting data that will not be used by future frames.
         collectDynDataFrame(layer);
 
-    if (m_param->bEnableTemporalFilter && m_top->isFilterThisframe(m_frame[layer]->m_mcstf->m_sliceTypeConfig, m_frame[layer]->m_lowres.sliceType))
+    if (m_param->bEnableTemporalFilter && m_frame[layer]->m_lowres.bApplyFilter)
     {
         //Reset the MCSTF context in Frame Encoder and Frame
         for (int i = 0; i < (m_frame[layer]->m_mcstf->m_range << 1); i++)

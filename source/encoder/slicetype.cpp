@@ -42,6 +42,8 @@
 #define ProfileLookaheadTimeCount(elapsed, count)
 #define ProfileLookaheadTime(elapsed)
 #endif
+#define MCSTF_MIN_ANCHOR_GAP    8   // min POC distance between MCSTF-filtered P anchors
+#define MCSTF_MIN_BREF_GOP_LEN  8   // the mid B-ref is MCSTF-filtered only when the mini-GOP length is greater than this
 
 using namespace X265_NS;
 
@@ -1055,6 +1057,7 @@ Lookahead::Lookahead(x265_param *param, ThreadPool* pool, SPS* sps)
     m_noiseBlurBuf   = NULL;
     m_gradMagBuf     = NULL;
     m_filterThisGOP  = false;
+    m_lastMcstfAnchorPoc = -MCSTF_MIN_ANCHOR_GAP;
     m_filled   = false;
     m_outputSignalRequired = false;
     m_isActive = true;
@@ -2272,6 +2275,9 @@ void Lookahead::slicetypeDecide()
     {
         m_inputLock.acquire();
         Frame* frameEnc = m_inputQueue.first();
+        const int gopLen = bframes + 1;   /* B-frames + the anchor that ends this mini-GOP */
+        /* index of the top B-ref, same formula as placeBref(list, 0, bframes + 1, ...) which runs later */
+        const int midIdx = (m_param->bBPyramid && bframes > 2) ? (bframes + 1) / 2 - 1 : -1;
         for (int b = 0; b < m_inputQueue.size(); b++)
         {
             /* Noise gate: re-evaluate at every GOP boundary (IDR/I/scenecut).
@@ -2296,7 +2302,25 @@ void Lookahead::slicetypeDecide()
             /* Stamp the per-frame flag so frameencoder reads a race-free value */
             frameEnc->m_lowres.filterThisGOP = m_filterThisGOP;
 
-            if (frameEnc->m_lowres.filterThisGOP && isFilterThisframe(frameEnc->m_mcstf->m_sliceTypeConfig, frameEnc->m_lowres.sliceType))
+            /* Only frames of the current mini-GOP (b <= bframes) have a final slice type.
+             * Frames beyond it are decided when their own mini-GOP is dispatched. */
+            if (b <= bframes)
+            {
+                const bool isIFrame = IS_X265_TYPE_I(frameEnc->m_lowres.sliceType);
+                /* P anchor: needs MCSTF_MIN_ANCHOR_GAP since the last filtered anchor.
+                 * poc == m_lastMcstfAnchorPoc keeps the decision stable if this frame is revisited. */
+                const bool isAnchor = (b == bframes) && !isIFrame &&
+                    (frameEnc->m_poc - m_lastMcstfAnchorPoc >= MCSTF_MIN_ANCHOR_GAP ||
+                     frameEnc->m_poc == m_lastMcstfAnchorPoc);
+                /* top B-ref of a long mini-GOP; does not count towards the anchor spacing */
+                const bool isMidBref = (gopLen > MCSTF_MIN_BREF_GOP_LEN) && (b == midIdx);
+
+                frameEnc->m_lowres.bApplyFilter = frameEnc->m_lowres.filterThisGOP && (isIFrame || isAnchor || isMidBref);
+                if (frameEnc->m_lowres.bApplyFilter && (isIFrame || isAnchor))
+                    m_lastMcstfAnchorPoc = frameEnc->m_poc;
+            }
+
+            if (frameEnc->m_lowres.bApplyFilter && frameEnc->m_mcstf->m_numRef == 0)
             {
                 if (!generatemcstf(frameEnc, m_origPicBuf->m_mcstfPicList, m_inputQueue.last()->m_poc))
                 {
@@ -4365,7 +4389,7 @@ void CostEstimateGroup::processTasks(int workerThreadID)
             ProfileScopeEvent(estCostSingle);
             Estimate& e = m_estimates[i];
             Frame* curFrame = e.frame;
-            if (m_lookahead.m_param->bEnableTemporalFilter && curFrame && m_lookahead.isFilterThisframe(curFrame->m_mcstf->m_sliceTypeConfig, curFrame->m_lowres.sliceType))
+            if (m_lookahead.m_param->bEnableTemporalFilter && curFrame && curFrame->m_lowres.bApplyFilter)
             {
                 ProfileLookaheadTime(tld.mcstfBatchElapsedTime);
                 MotionEstimatorTLD& m_metld = m_lookahead.m_metld[id];
