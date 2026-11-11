@@ -588,6 +588,27 @@ void FrameEncoder::compressFrame(int layer)
 
     }
 
+    /* Adaptive WP signalling: weighted_pred_flag/weighted_bipred_flag are PPS
+     * level, so with a single PPS every P/B slice codes a pred_weight_table()
+     * even when no reference is weighted. Slices without any non-trivial weight
+     * refer to pps_id 0 (WP flags cleared), weighted slices refer to pps_id 1 */
+    slice->m_ppsId = -1;
+    slice->m_bWPPPS = true;
+    if ((m_param->bEnableWeightedPred || m_param->bEnableWeightedBiPred) && m_param->numLayers == 1)
+    {
+        bool bAnyWeight = false;
+        if (bUseWeightP || bUseWeightB)
+        {
+            int numPlanes = m_param->internalCsp != X265_CSP_I400 ? 3 : 1;
+            for (int l = 0; l < numPredDir && !bAnyWeight; l++)
+                for (int ref = 0; ref < slice->m_numRefIdx[l] && !bAnyWeight; ref++)
+                    for (int plane = 0; plane < numPlanes; plane++)
+                        bAnyWeight |= !!slice->m_weightPredTable[l][ref][plane].wtPresent;
+        }
+        slice->m_bWPPPS = bAnyWeight;
+        slice->m_ppsId = bAnyWeight ? 1 : 0;
+    }
+
     int numTLD;
     if (m_pool)
         numTLD = m_param->bEnableWavefront ? m_pool->m_numWorkers : m_pool->m_numWorkers + m_pool->m_numProviders;

@@ -418,8 +418,17 @@ public:
 #endif
     bool        m_bTemporalMvp;
 
+    /* Adaptive WP signalling. m_ppsId < 0: slice_pic_parameter_set_id
+     * is the layer id (single PPS). m_bWPPPS is false when the slice
+     * refers to the PPS with both WP flags cleared, in that case no
+     * pred_weight_table is coded and all weights must be absent */
+    int         m_ppsId;
+    bool        m_bWPPPS;
+
     Slice()
     {
+        m_ppsId = -1;
+        m_bWPPPS = true;
         m_lastIDR = 0;
         m_sLFaseFlag = true;
         m_numRefIdx[0] = m_numRefIdx[1] = 0;
