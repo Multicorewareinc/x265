@@ -76,6 +76,85 @@ bool MCSTFHarness::check_motionErrorLumaFrac(const MCSTFPrimitives& ref, const M
     return true;
 }
 
+bool MCSTFHarness::check_motionErrorLumaInt(const MCSTFPrimitives& ref, const MCSTFPrimitives& opt)
+{
+    const int bsValues[] = { 8, 16 };
+
+    for (size_t bi = 0; bi < sizeof(bsValues) / sizeof(int); bi++)
+    {
+        int bs = bsValues[bi];
+
+        for (int i = 0; i < ITERS; i++)
+        {
+            /* the reference block lands on any alignment, as for an integer-pel candidate */
+            int dx = (rand() % (2 * MV_PIXEL_RANGE + 1)) - MV_PIXEL_RANGE;
+            int dy = (rand() % (2 * MV_PIXEL_RANGE + 1)) - MV_PIXEL_RANGE;
+            const pixel* fenc = m_origBuf + CENTER * TEST_STRIDE + CENTER;
+            const pixel* refBlk = m_refBuf + (CENTER + dy) * TEST_STRIDE + CENTER + dx;
+
+            int resRef = ref.motionErrorLumaInt(fenc, TEST_STRIDE, refBlk, TEST_STRIDE, bs);
+            int resOpt = opt.motionErrorLumaInt(fenc, TEST_STRIDE, refBlk, TEST_STRIDE, bs);
+
+            if (resRef != resOpt)
+            {
+                printf("motionErrorLumaInt[bs=%d]: failed (dx=%d dy=%d ref=%d opt=%d)\n", bs, dx, dy, resRef, resOpt);
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+bool MCSTFHarness::check_motionSearchLumaFrac(const MCSTFPrimitives& ref, const MCSTFPrimitives& opt)
+{
+    const int bsValues[] = { 8, 16 };
+    const int range = MCSTF_FRAC_MAX_RANGE;
+
+    for (size_t bi = 0; bi < sizeof(bsValues) / sizeof(int); bi++)
+    {
+        int bs = bsValues[bi];
+
+        for (int i = 0; i < ITERS; i++)
+        {
+            /* centres anywhere in the 1/16 grid, so the window may straddle two integer rows/columns */
+            int cx = (rand() % (2 * (MV_PIXEL_RANGE - 1) * 16 + 1)) - (MV_PIXEL_RANGE - 1) * 16;
+            int cy = (rand() % (2 * (MV_PIXEL_RANGE - 1) * 16 + 1)) - (MV_PIXEL_RANGE - 1) * 16;
+            int leastError = (i % 2) ? INT_MAX : 100;
+
+            /* expected: the per-position loop motionSearchLumaFrac replaces */
+            MV mvExp(0, 0);
+            int errExp = leastError;
+            for (int dy = cy - range; dy <= cy + range; dy++)
+            {
+                for (int dx = cx - range; dx <= cx + range; dx++)
+                {
+                    int error = ref.motionErrorLumaFrac(m_origBuf, TEST_STRIDE, m_refBuf, TEST_STRIDE,
+                        CENTER, CENTER, dx, dy, bs, errExp, X265_DEPTH);
+                    if (error < errExp)
+                    {
+                        mvExp.set(dx, dy);
+                        errExp = error;
+                    }
+                }
+            }
+
+            MV mvRef(0, 0), mvOpt(0, 0);
+            int errRef = ref.motionSearchLumaFrac(m_origBuf, TEST_STRIDE, m_refBuf, TEST_STRIDE,
+                CENTER, CENTER, cx, cy, range, bs, leastError, X265_DEPTH, &mvRef);
+            int errOpt = opt.motionSearchLumaFrac(m_origBuf, TEST_STRIDE, m_refBuf, TEST_STRIDE,
+                CENTER, CENTER, cx, cy, range, bs, leastError, X265_DEPTH, &mvOpt);
+
+            if (errRef != errExp || mvRef != mvExp || errOpt != errExp || mvOpt != mvExp)
+            {
+                printf("motionSearchLumaFrac[bs=%d]: failed (cx=%d cy=%d leastError=%d expected %d (%d,%d) C %d (%d,%d) opt %d (%d,%d))\n",
+                    bs, cx, cy, leastError, errExp, mvExp.x, mvExp.y, errRef, mvRef.x, mvRef.y, errOpt, mvOpt.x, mvOpt.y);
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 bool MCSTFHarness::check_applyMotion(const MCSTFPrimitives& ref, const MCSTFPrimitives& opt)
 {
     struct Cfg { int blockSizeX, blockSizeY, csx, csy; };
@@ -208,6 +287,10 @@ bool MCSTFHarness::testCorrectness(const MCSTFPrimitives& ref, const MCSTFPrimit
 {
     if (opt.motionErrorLumaFrac && !check_motionErrorLumaFrac(ref, opt))
         return false;
+    if (opt.motionErrorLumaInt && !check_motionErrorLumaInt(ref, opt))
+        return false;
+    if (opt.motionSearchLumaFrac && !check_motionSearchLumaFrac(ref, opt))
+        return false;
     if (opt.applyMotion && !check_applyMotion(ref, opt))
         return false;
     if (opt.computeBlockStats && !check_computeBlockStats(ref, opt))
@@ -225,6 +308,21 @@ void MCSTFHarness::measureSpeed(const MCSTFPrimitives& ref, const MCSTFPrimitive
         // cppcheck-suppress unsignedPositive
         REPORT_SPEEDUP(opt.motionErrorLumaFrac, ref.motionErrorLumaFrac,
             m_origBuf, TEST_STRIDE, m_refBuf, TEST_STRIDE, CENTER, CENTER, 20, 5, 16, INT_MAX, X265_DEPTH);
+    }
+
+    if (opt.motionErrorLumaInt)
+    {
+        printf("motionErrorLumaInt[bs=16]\t");
+        REPORT_SPEEDUP(opt.motionErrorLumaInt, ref.motionErrorLumaInt,
+            m_origBuf + CENTER * TEST_STRIDE + CENTER, TEST_STRIDE, m_refBuf + CENTER * TEST_STRIDE + CENTER + 1, TEST_STRIDE, 16);
+    }
+
+    if (opt.motionSearchLumaFrac)
+    {
+        MV best;
+        printf("motionSearchLumaFrac[bs=8]\t");
+        REPORT_SPEEDUP(opt.motionSearchLumaFrac, ref.motionSearchLumaFrac,
+            m_origBuf, TEST_STRIDE, m_refBuf, TEST_STRIDE, CENTER, CENTER, 16, 32, MCSTF_FRAC_MAX_RANGE, 8, INT_MAX, X265_DEPTH, &best);
     }
 
     if (opt.applyMotion)
