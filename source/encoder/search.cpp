@@ -2028,6 +2028,14 @@ sse_t Search::estIntraPredQT(Mode &intraMode, const CUGeom& cuGeom, const uint32
                 cu.setLumaIntraDirSubParts(rdModeList[i], absPartIdx, depth + initTuDepth);
 
                 Cost icosts;
+
+				if (bUseCachedIntraData)
+                {
+                    IntraNeighbors cachedNeighbors;
+                    initIntraNeighbors(cu, absPartIdx, initTuDepth, true, &cachedNeighbors);
+                    initAdiPattern(cu, cuGeom, absPartIdx, cachedNeighbors, ALL_IDX);
+                }
+
                 if (checkTransformSkip)
                     codeIntraLumaTSkip(intraMode, cuGeom, initTuDepth, absPartIdx, bUseCachedIntraData, icosts);
                 else
@@ -2056,6 +2064,14 @@ sse_t Search::estIntraPredQT(Mode &intraMode, const CUGeom& cuGeom, const uint32
         m_entropyCoder.load(m_rqt[depth].cur);
 
         Cost icosts;
+
+		 if (bUseCachedIntraData)
+        {
+            IntraNeighbors cachedNeighbors;
+            initIntraNeighbors(cu, absPartIdx, initTuDepth, true, &cachedNeighbors);
+            initAdiPattern(cu, cuGeom, absPartIdx, cachedNeighbors, ALL_IDX);
+        }
+
         if (checkTransformSkip)
             codeIntraLumaTSkip(intraMode, cuGeom, initTuDepth, absPartIdx, bUseCachedIntraData, icosts);
         else
