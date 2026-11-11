@@ -2738,7 +2738,7 @@ SplitData Analysis::compressInterCU_rd5_6(const CUData& parentCTU, const CUGeom&
                 }
 #endif
 
-                if ((m_slice->m_sliceType != B_SLICE || m_param->bIntraInBFrames) && (cuGeom.log2CUSize != MAX_LOG2_CU_SIZE) && !((m_param->bCTUInfo & 4) && bCtuInfoCheck))
+                if ((m_slice->m_sliceType != B_SLICE || m_param->bIntraInBFrames) && !((m_param->bCTUInfo & 4) && bCtuInfoCheck))
                 {
                     if (!m_param->limitReferences || splitIntra)
                     {
