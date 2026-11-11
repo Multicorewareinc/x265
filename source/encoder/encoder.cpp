@@ -268,6 +268,10 @@ void Encoder::create()
         p->frameNumThreads = 1;
     }
 
+    /* Like x264, --tune psnr/ssim optimize luma metrics, so chroma distortion is not up-weighted.
+     * Resolved here because p->tune is not owned by the encoder and may not outlive this call */
+    m_bChromaDistWeight = !(p->tune && (!strcmp(p->tune, "psnr") || !strcmp(p->tune, "ssim")));
+
     bool allowPools = !strlen(p->numaPools) || strcmp(p->numaPools, "none");
 
     // Trim the thread pool if --wpp, --pme, and --pmode are disabled
