@@ -3996,6 +3996,7 @@ void Lookahead::aqMotion(Lowres **frames, bool bIntra)
  * two B frames, otherwise the B frames reference p0 and p1 directly */
 void Lookahead::aqMotionBPyramid(Lowres **frames, CostEstimateGroup& estGroup, int p0, int p1)
 {
+    // cppcheck-suppress knownConditionTrueFalse
     if (p1 - p0 <= 3)
     {
         for (int b = p0 + 1; b < p1; b++)
