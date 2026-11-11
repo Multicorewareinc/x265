@@ -105,7 +105,7 @@ void intra_pred_ang_c(pixel* dst, intptr_t dstStride, const pixel *srcPix0, int 
     int width2 = width << 1;
     // Flip the neighbours in the horizontal case.
     int horMode = dirMode < 18;
-    pixel neighbourBuf[129];
+    pixel neighbourBuf[4 * width + 1];
     const pixel *srcPix = srcPix0;
 
     if (horMode)
@@ -144,7 +144,7 @@ void intra_pred_ang_c(pixel* dst, intptr_t dstStride, const pixel *srcPix0, int 
     else // Angular prediction.
     {
         // Get the reference pixels. The reference base is the first pixel to the top (neighbourBuf[1]).
-        pixel refBuf[64];
+        pixel refBuf[4 * width + 1];
         const pixel *ref;
 
         // Use the projected left neighbours and the top neighbours.
