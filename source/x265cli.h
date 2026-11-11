@@ -133,6 +133,8 @@ static const struct option long_options[] =
     { "no-cip",               no_argument, NULL, 0 },
     { "fast-intra",           no_argument, NULL, 0 },
     { "no-fast-intra",        no_argument, NULL, 0 },
+    { "intra-64x64",          no_argument, NULL, 0 },
+    { "no-intra-64x64",       no_argument, NULL, 0 },
     { "no-open-gop",          no_argument, NULL, 0 },
     { "open-gop",             no_argument, NULL, 0 },
     { "cra-nal",              no_argument, NULL, 0 },

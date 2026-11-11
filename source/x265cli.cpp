@@ -173,6 +173,7 @@ namespace X265_NS {
         H0("   --[no-]constrained-intra      Constrained intra prediction (use only intra-coded reference pixels) Default %s\n", OPT(param->bEnableConstrainedIntra));
         H0("   --[no-]b-intra                Enable intra in B frames in veryslow presets. Default %s\n", OPT(param->bIntraInBFrames));
         H0("   --[no-]fast-intra             Enable faster search method for angular intra predictions. Default %s\n", OPT(param->bEnableFastIntra));
+        H0("   --[no-]intra-64x64            Enable evaluating intra CU size 64x64. Default %s\n", OPT(param->bEnableIntra64x64));
         H0("   --rdpenalty <0..2>            penalty for 32x32 intra TU in non-I slices. 0:disabled 1:RD-penalty 2:maximum. Default %d\n", param->rdPenalty);
         H0("\nSlice decision options:\n");
         H0("   --[no-]open-gop               Enable open-GOP, allows I slices to be non-IDR. Default %s\n", OPT(param->bOpenGOP));

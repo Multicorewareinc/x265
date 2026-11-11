@@ -970,6 +970,12 @@ the prediction quad-tree.
 	modes are checked.  Only applicable for :option:`--rd` levels 4 and
 	below (medium preset and faster).
 
+.. option:: --intra-64x64, --no-intra-64x64
+
+	Enable evaluation of 64x64 intra CUs in addition to the 32x32 and
+	smaller intra CU sizes. Improves intra compression on large flat
+	regions at the cost of extra analysis. Default disabled
+
 .. option:: --b-intra, --no-b-intra
 
 	Enables the evaluation of intra modes in B slices. Default enabled.
