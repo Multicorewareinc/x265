@@ -121,7 +121,7 @@ old_town_cross_444_720p50.y4m,--preset veryfast --qp 1 --tune ssim
 old_town_cross_444_720p50.y4m,--preset faster --rd 1 --tune zero-latency
 old_town_cross_444_720p50.y4m,--preset fast --no-cutree --analysis-save pass1_analysis.dat --analysis-save-reuse-level 1 --bitrate 3000 --early-skip::--preset fast --no-cutree --analysis-load pass1_analysis.dat --analysis-save pass2_analysis.dat --analysis-load-reuse-level 1 --analysis-save-reuse-level 1 --bitrate 3000 --early-skip::--preset fast --no-cutree --analysis-load pass2_analysis.dat --analysis-load-reuse-level 1 --bitrate 3000 --early-skip
 old_town_cross_444_720p50.y4m,--preset medium --keyint -1 --no-weightp --ref 6
-old_town_cross_444_720p50.y4m,--preset slow --rdoq-level 1 --early-skip --ref 7 --no-b-pyramid
+old_town_cross_444_720p50.y4m,--preset slow --rdoq-level 1 --early-skip --ref 7 --b-pyramid 0
 old_town_cross_444_720p50.y4m,--preset slower --crf 4 --cu-lossless
 old_town_cross_444_720p50.y4m,--preset veryslow --max-tu-size 4 --min-cu-size 32 --limit-tu 4
 parkrun_ter_720p50.y4m,--preset medium --no-open-gop --sao-non-deblock --crf 4 --cu-lossless

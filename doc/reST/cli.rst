@@ -1682,9 +1682,17 @@ Slice decision options
 	more likely x265 is to use B frames. Can be any value between -90
 	and 100 and is clipped to that range. Default 0
 
-.. option:: --b-pyramid, --no-b-pyramid
+.. option:: --b-pyramid <integer>
 
-	Use B-frames as references, when possible. Default enabled
+	Use B-frames as references, when possible. Default 1
+
+	0. No B frame is used as a reference
+	1. The middle B frame of each mini-GOP of more than 2 B frames is a
+	   reference for the other B frames of the mini-GOP
+	2. Reserved for the hierarchical B-pyramid, currently the same as 1
+
+	**Values:** 0, 1, 2. Earlier versions took no value: use 1 for
+	:option:`--b-pyramid` and 0 for the removed ``--no-b-pyramid``.
 
 .. option:: --force-flush <integer>
 
