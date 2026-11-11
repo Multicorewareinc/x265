@@ -2031,7 +2031,7 @@ sse_t Search::estIntraPredQT(Mode &intraMode, const CUGeom& cuGeom, const uint32
                 if (checkTransformSkip)
                     codeIntraLumaTSkip(intraMode, cuGeom, initTuDepth, absPartIdx, bUseCachedIntraData, icosts);
                 else
-                    codeIntraLumaQT(intraMode, cuGeom, initTuDepth, absPartIdx, false, bUseCachedIntraData, NULL, icosts, depthRange);
+                    codeIntraLumaQT(intraMode, cuGeom, initTuDepth, absPartIdx, true, bUseCachedIntraData, NULL, icosts, depthRange);
 
                 if (icosts.rdcost < bcost)
                 {
