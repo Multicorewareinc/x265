@@ -25725,7 +25725,7 @@ cglobal intra_pred_planar64, 3,9,8
     RET
 
 INIT_YMM avx2
-cglobal intra_pred_ang64, 5,13,8,0-9280
+cglobal intra_pred_ang64, 5,13,12,0-9280
     add             r1, r1
     vpbroadcastd    m5, [pd_16]
     xor             eax, eax
@@ -26122,7 +26122,7 @@ cglobal intra_pred_planar64, 3,9,8
     RET
 
 INIT_ZMM avx512
-cglobal intra_pred_ang64, 5,13,8,0-9280
+cglobal intra_pred_ang64, 5,13,12,0-9280
     add             r1, r1
     vpbroadcastd    m5, [pd_16]
     xor             eax, eax
