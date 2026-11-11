@@ -468,6 +468,8 @@ TemporalFilter::TemporalFilter()
     m_metld = NULL;
     m_blockVariance = NULL;
     m_blockVarStride = 0;
+    m_blockGridStride = 0;
+    m_blockGridRows = 0;
 }
 
 TemporalFilter::~TemporalFilter()
@@ -492,30 +494,55 @@ void TemporalFilter::init(const x265_param* param)
     const int varBlockSize = m_metld->m_blockSize / 2;
     m_blockVarStride = m_sourceWidth / varBlockSize;
     m_blockVariance = X265_MALLOC(double, m_blockVarStride * (m_sourceHeight / varBlockSize));
+
+    /* mvs is indexed per 8x8 luma block; noise and error also per 4x4 chroma block in
+     * bilateralFilterCore, which needs a larger grid for 4:2:2 and 4:4:4 */
+    m_blockGridStride = m_sourceWidth / 8;
+    m_blockGridRows = m_sourceHeight / 8;
+    if (m_numComponents > 1)
+    {
+        const int csx = CHROMA_H_SHIFT(m_internalCsp);
+        const int csy = CHROMA_V_SHIFT(m_internalCsp);
+        m_blockGridStride = X265_MAX(m_blockGridStride, (uint32_t)((m_sourceWidth >> csx) / 4));
+        m_blockGridRows = X265_MAX(m_blockGridRows, (uint32_t)((m_sourceHeight >> csy) / 4));
+    }
 }
 
-int TemporalFilter::createRefPicInfo(TemporalFilterRefPicInfo* refFrame, x265_param* param)
+int TemporalFilter::createRefPicInfo(TemporalFilterRefPicInfo* refFrame)
 {
-    CHECKED_MALLOC_ZERO(refFrame->mvs, MV, sizeof(MV)* ((m_sourceWidth ) / 4) * ((m_sourceHeight ) / 4));
-    refFrame->mvsStride = m_sourceWidth / 4;
-    CHECKED_MALLOC_ZERO(refFrame->mvs0, MV, sizeof(MV)* ((m_sourceWidth ) / 16) * ((m_sourceHeight ) / 16));
+    const uint32_t numBlocks = m_blockGridStride * m_blockGridRows;
+    const uint32_t numBlocks16 = (m_sourceWidth / 16) * (m_sourceHeight / 16);
+
+    CHECKED_MALLOC_ZERO(refFrame->mvs, MV, numBlocks);
+    refFrame->mvsStride = m_blockGridStride;
+    CHECKED_MALLOC_ZERO(refFrame->mvs0, MV, numBlocks16);
     refFrame->mvsStride0 = m_sourceWidth / 16;
-    CHECKED_MALLOC_ZERO(refFrame->mvs1, MV, sizeof(MV)* ((m_sourceWidth ) / 16) * ((m_sourceHeight ) / 16));
+    CHECKED_MALLOC_ZERO(refFrame->mvs1, MV, numBlocks16);
     refFrame->mvsStride1 = m_sourceWidth / 16;
-    CHECKED_MALLOC_ZERO(refFrame->mvs2, MV, sizeof(MV)* ((m_sourceWidth ) / 16)*((m_sourceHeight ) / 16));
+    CHECKED_MALLOC_ZERO(refFrame->mvs2, MV, numBlocks16);
     refFrame->mvsStride2 = m_sourceWidth / 16;
 
-    CHECKED_MALLOC_ZERO(refFrame->noise, int, sizeof(int) * ((m_sourceWidth) / 4) * ((m_sourceHeight) / 4));
-    CHECKED_MALLOC_ZERO(refFrame->error, int, sizeof(int) * ((m_sourceWidth) / 4) * ((m_sourceHeight) / 4));
+    CHECKED_MALLOC_ZERO(refFrame->noise, int, numBlocks);
+    CHECKED_MALLOC_ZERO(refFrame->error, int, numBlocks);
 
     refFrame->slicetype = X265_TYPE_AUTO;
-
-    refFrame->compensatedPic = new PicYuv;
-    refFrame->compensatedPic->create(param, true);
 
     return 1;
 fail:
     return 0;
+}
+
+void TemporalFilter::resetRefPicInfo(TemporalFilterRefPicInfo* refFrame)
+{
+    const uint32_t numBlocks = m_blockGridStride * m_blockGridRows;
+    const uint32_t numBlocks16 = (m_sourceWidth / 16) * (m_sourceHeight / 16);
+
+    memset(refFrame->mvs0, 0, sizeof(MV) * numBlocks16);
+    memset(refFrame->mvs1, 0, sizeof(MV) * numBlocks16);
+    memset(refFrame->mvs2, 0, sizeof(MV) * numBlocks16);
+    memset(refFrame->mvs, 0, sizeof(MV) * numBlocks);
+    memset(refFrame->noise, 0, sizeof(int) * numBlocks);
+    memset(refFrame->error, 0, sizeof(int) * numBlocks);
 }
 
 int MotionEstimatorTLD::motionErrorLumaSSD(pixel* src,
@@ -591,7 +618,7 @@ void TemporalFilter::applyMotion(MV *mvs, uint32_t mvsStride, PicYuv *input, Pic
     }
 }
 
-void TemporalFilter::bilateralFilterCore(Frame* frame, TemporalFilterRefPicInfo* m_mcstfRefList, int numRefs, int blockRow, int rowSize)
+void TemporalFilter::bilateralFilterCore(Frame* frame, TemporalFilterRefPicInfo* m_mcstfRefList, PicYuv** compensatedPics, int numRefs, int blockRow, int rowSize)
 {
 
     int refStrengthRow = 0;
@@ -600,11 +627,9 @@ void TemporalFilter::bilateralFilterCore(Frame* frame, TemporalFilterRefPicInfo*
     const double chromaSigmaSq = 30 * 30;
     PicYuv* orgPic = frame->m_fencPic;
 
+    /* only the rows compensated here are read below, so compensatedPics never leak another frame's pixels */
     for (int i = 0; i < numRefs; i++)
-    {
-        TemporalFilterRefPicInfo* ref = &m_mcstfRefList[i];
-        applyMotion(m_mcstfRefList[i].mvs, m_mcstfRefList[i].mvsStride, m_mcstfRefList[i].picBuffer, ref->compensatedPic, blockRow, rowSize);
-    }
+        applyMotion(m_mcstfRefList[i].mvs, m_mcstfRefList[i].mvsStride, m_mcstfRefList[i].picBuffer, compensatedPics[i], blockRow, rowSize);
 
     for (int c = 0; c < m_numComponents; c++)
     {
@@ -638,9 +663,9 @@ void TemporalFilter::bilateralFilterCore(Frame* frame, TemporalFilterRefPicInfo*
                 for (int i = 0; i < numRefs; i++)
                 {
                     TemporalFilterRefPicInfo* refPicInfo = &m_mcstfRefList[i];
-                    const intptr_t refStride = (!c) ? refPicInfo->compensatedPic->m_stride
-                        : refPicInfo->compensatedPic->m_strideC;
-                    const pixel* refPel = refPicInfo->compensatedPic->m_picOrg[c]
+                    const intptr_t refStride = (!c) ? compensatedPics[i]->m_stride
+                        : compensatedPics[i]->m_strideC;
+                    const pixel* refPel = compensatedPics[i]->m_picOrg[c]
                         + by * refStride + bx;
 
                     int iVariance = 0, iDiffsum = 0;
@@ -680,10 +705,9 @@ void TemporalFilter::bilateralFilterCore(Frame* frame, TemporalFilterRefPicInfo*
                 intptr_t     refBlkStrides[MCSTF_MAX_REFS];
                 for (int i = 0; i < numRefs; i++)
                 {
-                    TemporalFilterRefPicInfo* refPicInfo = &m_mcstfRefList[i];
-                    refBlkStrides[i] = (!c) ? refPicInfo->compensatedPic->m_stride
-                        : refPicInfo->compensatedPic->m_strideC;
-                    refBlkPtrs[i] = refPicInfo->compensatedPic->m_picOrg[c]
+                    refBlkStrides[i] = (!c) ? compensatedPics[i]->m_stride
+                        : compensatedPics[i]->m_strideC;
+                    refBlkPtrs[i] = compensatedPics[i]->m_picOrg[c]
                         + by * refBlkStrides[i] + bx;
                 }
                 mcstfPrim.bilateralFilter(srcPel, srcStride, numRefs, refBlkPtrs, refBlkStrides, vww, vsw, bitDepthDiffWeighting, maxSampleValue,
@@ -694,7 +718,7 @@ void TemporalFilter::bilateralFilterCore(Frame* frame, TemporalFilterRefPicInfo*
 }
 
 //  Splits the frame into 64-row blocks, dispatches jobs to the threadpool via BilateralFilterGroup, then returns.
-void TemporalFilter::bilateralFilter(Frame* curFrame, TemporalFilterRefPicInfo* mcstfRefList, ThreadPool* pool)
+void TemporalFilter::bilateralFilter(Frame* curFrame, TemporalFilterRefPicInfo* mcstfRefList, PicYuv** compensatedPics, ThreadPool* pool)
 {
     const int numRef       = curFrame->m_mcstf->m_numRef;
     const int rowSize      = 64;
@@ -706,14 +730,14 @@ void TemporalFilter::bilateralFilter(Frame* curFrame, TemporalFilterRefPicInfo* 
 
     if (!pool)
     {
-        bilateralFilterCore(curFrame, mcstfRefList, numRef, 0, 0);
+        bilateralFilterCore(curFrame, mcstfRefList, compensatedPics, numRef, 0, 0);
         return;
     }
 
     BilateralFilterGroup filterGroup(*this, pool);
 
     for (int row = 0; row < numBlockRows; row++)
-        filterGroup.add(curFrame, mcstfRefList, numRef, row, rowSize);
+        filterGroup.add(curFrame, mcstfRefList, compensatedPics, numRef, row, rowSize);
 
     filterGroup.finishBatch();
 }
@@ -991,12 +1015,6 @@ void TemporalFilter::destroyRefPicInfo(TemporalFilterRefPicInfo* curFrame)
 {
     if (curFrame)
     {
-        if (curFrame->compensatedPic)
-        {
-            curFrame->compensatedPic->destroy();
-            delete curFrame->compensatedPic;
-        }
-
         if (curFrame->mvs)
             X265_FREE(curFrame->mvs);
         if (curFrame->mvs0)
