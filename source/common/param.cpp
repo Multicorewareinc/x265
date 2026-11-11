@@ -1089,7 +1089,6 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     OPT("cu-lossless") p->bCULossless = atobool(value);
     OPT2("constrained-intra", "cip") p->bEnableConstrainedIntra = atobool(value);
     OPT("fast-intra") p->bEnableFastIntra = atobool(value);
-    OPT("intra-64x64") p->bEnableIntra64x64 = atobool(value);
     OPT("open-gop") p->bOpenGOP = atobool(value);
     OPT("intra-refresh") p->bIntraRefresh = atobool(value);
     OPT("lookahead-slices") p->lookaheadSlices = atoi(value);
@@ -1355,6 +1354,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     {
         if (0) ;
         OPT("csv") snprintf(p->csvfn, X265_MAX_STRING_SIZE, "%s", value);
+        OPT("intra-64x64") p->bEnableIntra64x64 = atobool(value);
         OPT("csv-log-level") p->csvLogLevel = atoi(value);
         OPT("qpmin") p->rc.qpMin = atoi(value);
         OPT("analyze-src-pics") p->bSourceReferenceEstimation = atobool(value);
