@@ -1098,7 +1098,7 @@ void FrameEncoder::compressFrame(int layer)
     if (m_param->bDynamicRefine && m_top->m_startPoint <= m_frame[layer]->m_encodeOrder) //Avoid collecting data that will not be used by future frames.
         collectDynDataFrame(layer);
 
-    if (m_param->bEnableTemporalFilter && m_frame[layer]->m_lowres.bApplyFilter)
+    if (m_param->bEnableTemporalFilter && (m_frame[layer]->m_lowres.bApplyFilter || m_frame[layer]->m_mcstf->m_numRef))
     {
         //Reset the MCSTF context in Frame Encoder and Frame
         for (int i = 0; i < (m_frame[layer]->m_mcstf->m_range << 1); i++)
@@ -1109,9 +1109,9 @@ void FrameEncoder::compressFrame(int layer)
             memset(m_frame[layer]->m_mcstfRefList[i].mvs,  0, sizeof(MV) * ((m_param->sourceWidth / 4) * (m_param->sourceHeight / 4)));
             memset(m_frame[layer]->m_mcstfRefList[i].noise, 0, sizeof(int) * ((m_param->sourceWidth / 4) * (m_param->sourceHeight / 4)));
             memset(m_frame[layer]->m_mcstfRefList[i].error, 0, sizeof(int) * ((m_param->sourceWidth / 4) * (m_param->sourceHeight / 4)));
-
-            m_frame[layer]->m_mcstf->m_numRef = 0;
         }
+        /* always leave the Frame with no references: a stale count makes the next use of this Frame skip generatemcstf() */
+        m_frame[layer]->m_mcstf->m_numRef = 0;
     }
 
 

@@ -2320,7 +2320,9 @@ void Lookahead::slicetypeDecide()
                     m_lastMcstfAnchorPoc = frameEnc->m_poc;
             }
 
-            if (frameEnc->m_lowres.bApplyFilter && frameEnc->m_mcstf->m_numRef == 0)
+            /* Dispatch only frames of the current mini-GOP: bApplyFilter of any later frame is not decided yet
+             * and may be stale from a previous use of the same Frame object. */
+            if (b <= bframes && frameEnc->m_lowres.bApplyFilter && frameEnc->m_mcstf->m_numRef == 0)
             {
                 if (!generatemcstf(frameEnc, m_origPicBuf->m_mcstfPicList, m_inputQueue.last()->m_poc))
                 {
