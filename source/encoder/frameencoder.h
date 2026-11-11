@@ -257,6 +257,7 @@ public:
     Frame**                  m_retFrameBuffer;
     NoiseReduction*          m_nr;
     ThreadLocalData*         m_tld; /* for --no-wpp */
+    PicYuv*                  m_mcstfCompensatedPics[MCSTF_MAX_REFS]; /* MCSTF motion-compensated references of the frame being filtered */
     Bitstream*               m_outStreams;
     Bitstream*               m_backupStreams;
     uint32_t*                m_substreamSizes;

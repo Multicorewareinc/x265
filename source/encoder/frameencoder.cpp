@@ -59,6 +59,7 @@ FrameEncoder::FrameEncoder()
     m_cuGeoms = NULL;
     m_ctuGeomMap = NULL;
     m_localTldIdx = 0;
+    memset(m_mcstfCompensatedPics, 0, sizeof(m_mcstfCompensatedPics));
     memset(&m_rce, 0, sizeof(RateControlEntry));
     for (int layer = 0; layer < MAX_LAYERS; layer++)
     {
@@ -102,6 +103,16 @@ void FrameEncoder::destroy()
     X265_FREE(m_retFrameBuffer);
 
     m_frameFilter.destroy();
+
+    for (int i = 0; i < MCSTF_MAX_REFS; i++)
+    {
+        if (m_mcstfCompensatedPics[i])
+        {
+            m_mcstfCompensatedPics[i]->destroy();
+            delete m_mcstfCompensatedPics[i];
+            m_mcstfCompensatedPics[i] = NULL;
+        }
+    }
 
     if (m_param->bEmitHRDSEI || !!m_param->interlaceMode)
     {
@@ -205,6 +216,16 @@ bool FrameEncoder::init(Encoder *top, int numRows, int numCols)
     m_retFrameBuffer = X265_MALLOC(Frame*, m_param->numLayers);
     for (int layer = 0; layer < m_param->numLayers; layer++)
         m_retFrameBuffer[layer] = NULL;
+
+    /* one set per frame encoder instead of one per Frame: they are only used while filtering */
+    if (m_param->bEnableTemporalFilter)
+    {
+        for (int i = 0; i < (m_param->mcstfFrameRange << 1); i++)
+        {
+            m_mcstfCompensatedPics[i] = new PicYuv;
+            ok &= m_mcstfCompensatedPics[i]->create(m_param, true);
+        }
+    }
     return ok;
 }
 
@@ -663,7 +684,7 @@ void FrameEncoder::compressFrame(int layer)
     if (m_param->bEnableTemporalFilter && m_frame[layer]->m_lowres.bApplyFilter)
     {
         m_frame[layer]->m_mcstf->m_QP = qp;
-        m_frame[layer]->m_mcstf->bilateralFilter(m_frame[layer], m_frame[layer]->m_mcstfRefList, m_pool);
+        m_frame[layer]->m_mcstf->bilateralFilter(m_frame[layer], m_frame[layer]->m_mcstfRefList, m_mcstfCompensatedPics, m_pool);
     }
 
     if (m_nr)
@@ -1102,14 +1123,7 @@ void FrameEncoder::compressFrame(int layer)
     {
         //Reset the MCSTF context in Frame Encoder and Frame
         for (int i = 0; i < (m_frame[layer]->m_mcstf->m_range << 1); i++)
-        {
-            memset(m_frame[layer]->m_mcstfRefList[i].mvs0, 0, sizeof(MV) * ((m_param->sourceWidth / 16) * (m_param->sourceHeight / 16)));
-            memset(m_frame[layer]->m_mcstfRefList[i].mvs1, 0, sizeof(MV) * ((m_param->sourceWidth / 16) * (m_param->sourceHeight / 16)));
-            memset(m_frame[layer]->m_mcstfRefList[i].mvs2, 0, sizeof(MV) * ((m_param->sourceWidth / 16) * (m_param->sourceHeight / 16)));
-            memset(m_frame[layer]->m_mcstfRefList[i].mvs,  0, sizeof(MV) * ((m_param->sourceWidth / 4) * (m_param->sourceHeight / 4)));
-            memset(m_frame[layer]->m_mcstfRefList[i].noise, 0, sizeof(int) * ((m_param->sourceWidth / 4) * (m_param->sourceHeight / 4)));
-            memset(m_frame[layer]->m_mcstfRefList[i].error, 0, sizeof(int) * ((m_param->sourceWidth / 4) * (m_param->sourceHeight / 4)));
-        }
+            m_frame[layer]->m_mcstf->resetRefPicInfo(&m_frame[layer]->m_mcstfRefList[i]);
         /* always leave the Frame with no references: a stale count makes the next use of this Frame skip generatemcstf() */
         m_frame[layer]->m_mcstf->m_numRef = 0;
     }

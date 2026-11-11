@@ -107,15 +107,8 @@ bool Frame::create(x265_param *param, float* quantOffsets)
         m_mcstf->init(param);
 
         for (int i = 0; i < (m_mcstf->m_range << 1); i++)
-            m_mcstf->createRefPicInfo(&m_mcstfRefList[i], m_param);
-
-        m_fencPicSubsampled2 = new PicYuv;
-        m_fencPicSubsampled4 = new PicYuv;
-
-        if (!m_fencPicSubsampled2->createScaledPicYUV(param, 2))
-            return false;
-        if (!m_fencPicSubsampled4->createScaledPicYUV(param, 4))
-            return false;
+            if (!m_mcstf->createRefPicInfo(&m_mcstfRefList[i]))
+                return false;
 
         m_mcstffencPic->create(param, !!m_param->bCopyPicToFrame);
         CHECKED_MALLOC_ZERO(m_isSubSampled, int, 1);
@@ -199,22 +192,6 @@ bool Frame::create(x265_param *param, float* quantOffsets)
         return true;
     }
     return false;
-fail:
-    return false;
-}
-
-bool Frame::createSubSample()
-{
-
-    m_fencPicSubsampled2 = new PicYuv;
-    m_fencPicSubsampled4 = new PicYuv;
-
-    if (!m_fencPicSubsampled2->createScaledPicYUV(m_param, 2))
-        return false;
-    if (!m_fencPicSubsampled4->createScaledPicYUV(m_param, 4))
-        return false;
-    CHECKED_MALLOC_ZERO(m_isSubSampled, int, 1);
-    return true;
 fail:
     return false;
 }
@@ -312,21 +289,6 @@ void Frame::destroy()
 
     if (m_param->bEnableTemporalFilter)
     {
-
-        if (m_fencPicSubsampled2)
-        {
-            m_fencPicSubsampled2->destroy();
-            delete m_fencPicSubsampled2;
-            m_fencPicSubsampled2 = NULL;
-        }
-
-        if (m_fencPicSubsampled4)
-        {
-            m_fencPicSubsampled4->destroy();
-            delete m_fencPicSubsampled4;
-            m_fencPicSubsampled4 = NULL;
-        }
-
         delete m_mcstf->m_metld;
         m_mcstf->m_metld = NULL;
         for (int i = 0; i < (m_mcstf->m_range << 1); i++)

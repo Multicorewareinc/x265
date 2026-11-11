@@ -171,8 +171,6 @@ namespace X265_NS {
     struct TemporalFilterRefPicInfo
     {
         PicYuv*    picBuffer;
-        PicYuv*    picBufferSubSampled2;
-        PicYuv*    picBufferSubSampled4;
         MV*        mvs;
         MV*        mvs0;
         MV*        mvs1;
@@ -189,7 +187,6 @@ namespace X265_NS {
 
         int16_t    origOffset;
         bool       isFilteredFrame;
-        PicYuv*    compensatedPic;
 
         int*       isSubsampled;
 
@@ -231,17 +228,28 @@ namespace X265_NS {
         double*  m_blockVariance;   /* source block variances shared by the per-reference ME jobs */
         uint32_t m_blockVarStride;
 
-        int createRefPicInfo(TemporalFilterRefPicInfo* refFrame, x265_param* param);
+        /* the block grid of mvs, noise and error: 8x8 luma blocks, or the 4x4 chroma blocks of
+         * the bilateral filter, whichever plane has more */
+        uint32_t m_blockGridStride;
+        uint32_t m_blockGridRows;
 
+        int createRefPicInfo(TemporalFilterRefPicInfo* refFrame);
+
+        /* compensatedPics: one motion-compensated picture per reference, owned by the caller (the
+         * frame encoder), since they are only needed while a frame is being filtered */
         void bilateralFilter(Frame*                    frame,
                             TemporalFilterRefPicInfo* mcstfRefList,
+                            PicYuv**                  compensatedPics,
                             ThreadPool*               pool);
 
         void bilateralFilterCore(Frame*                    frame,
                                 TemporalFilterRefPicInfo* mcstfRefList,
+                                PicYuv**                  compensatedPics,
                                 int                       numRef,
                                 int                       blockRow,
                                 int                       blockSize);
+
+        void resetRefPicInfo(TemporalFilterRefPicInfo* refFrame);
 
         void destroyRefPicInfo(TemporalFilterRefPicInfo* curFrame);
 
@@ -259,6 +267,7 @@ namespace X265_NS {
         {
             Frame*                    frame;
             TemporalFilterRefPicInfo* mcstfRefList;
+            PicYuv**                  compensatedPics;
             int                       numRef;
             int                       blockRow;
             int                       rowSize;
@@ -270,7 +279,7 @@ namespace X265_NS {
         BilateralFilterGroup(TemporalFilter& f, ThreadPool* pool)
             : m_filter(f), m_pool(pool), m_jobs() {}
 
-        void add(Frame* frame, TemporalFilterRefPicInfo* mcstfRefList,
+        void add(Frame* frame, TemporalFilterRefPicInfo* mcstfRefList, PicYuv** compensatedPics,
                 int numRef, int blockRow, int rowSize)
         {
             X265_CHECK(m_jobTotal < MAX_FILTER_JOBS,
@@ -278,6 +287,7 @@ namespace X265_NS {
             FilterJob& j    = m_jobs[m_jobTotal++];
             j.frame         = frame;
             j.mcstfRefList   = mcstfRefList;
+            j.compensatedPics = compensatedPics;
             j.numRef        = numRef;
             j.blockRow      = blockRow;
             j.rowSize       = rowSize;
@@ -301,7 +311,7 @@ namespace X265_NS {
                 m_lock.release();
 
                 const FilterJob& j = m_jobs[i];
-                m_filter.bilateralFilterCore(j.frame, j.mcstfRefList, j.numRef,
+                m_filter.bilateralFilterCore(j.frame, j.mcstfRefList, j.compensatedPics, j.numRef,
                                             j.blockRow, j.rowSize);
                 m_lock.acquire();
             }
