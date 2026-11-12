@@ -93,21 +93,12 @@ void NALList::serialize(NalUnitType nalUnitType, const Bitstream& bs, int layerI
     uint8_t *out = m_buffer + m_occupancy;
     uint32_t bytes = 0;
 
-    if (!m_annexB)
-    {
-        /* Will write size later */
-        bytes += 4;
-    }
-    else if (!m_numNal || nalUnitType == NAL_UNIT_VPS || nalUnitType == NAL_UNIT_SPS || nalUnitType == NAL_UNIT_PPS || nalUnitType == NAL_UNIT_UNSPECIFIED)
-    {
-        memcpy(out, startCodePrefix, 4);
-        bytes += 4;
-    }
-    else
-    {
-        memcpy(out, startCodePrefix + 1, 3);
-        bytes += 3;
-    }
+    const uint8_t startCodeLength = getNextStartCodeLength(nalUnitType);
+
+    if (m_annexB)
+        memcpy(out, startCodePrefix + (4 - startCodeLength), startCodeLength);
+    /* else, write length later */
+    bytes += startCodeLength;
 
     /* 16 bit NAL header:
      * forbidden_zero_bit       1-bit
@@ -232,4 +223,23 @@ uint32_t NALList::serializeSubstreams(uint32_t* streamSizeBytes, uint32_t stream
 
     m_extraOccupancy = bytes;
     return maxStreamSize;
+}
+
+uint8_t NALList::getNextStartCodeLength(NalUnitType nalUnitType) const
+{
+    /* ITU H.265 Annex B B.2.2 Byte stream NAL unit semantics
+     * The zero_byte prior to the 3-byte start code shall be present for:
+     * - VPS, SPS, PPS NALUs
+     * - The very first NALU of an access unit (always the AUD if present)
+     *
+     * On IRAP frames, x265 prepends the EOS unit of the last CVS to the current list.
+     * EOS shall not consume the 4-byte header of the first NALU of the picture. */
+    X265_CHECK(nalUnitType < 64, "NAL_UNIT_INVALID\n");
+    const uint64_t longCodeBitmask = ((1ull << NAL_UNIT_ACCESS_UNIT_DELIMITER) |
+        (1ull << NAL_UNIT_VPS) | (1ull << NAL_UNIT_SPS) | (1ull << NAL_UNIT_PPS) | (1ull << NAL_UNIT_UNSPECIFIED));
+
+    if (!m_annexB || (nalUnitType != NAL_UNIT_EOS && (!m_numNal || back()->type == NAL_UNIT_EOS ||
+                                                      longCodeBitmask & (1ull << nalUnitType))))
+        return 4;
+    return 3;
 }

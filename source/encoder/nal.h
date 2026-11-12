@@ -63,6 +63,21 @@ public:
     void serialize(NalUnitType nalUnitType, const Bitstream& bs, int layerId = 0, uint8_t temporalID = 1);
 
     uint32_t serializeSubstreams(uint32_t* streamSizeBytes, uint32_t streamCount, const Bitstream* streams);
+
+    const x265_nal* begin() const { return m_nal; }
+    const x265_nal* end() const   { return m_nal + m_numNal; }
+    const x265_nal* back() const  { return m_numNal ? m_nal + m_numNal - 1 : NULL; }
+
+    uint32_t getNaluBytesLength(const x265_nal& nal) const
+    {
+        const uint32_t startCodeLength = getStartCodeLength(nal);
+        X265_CHECK(nal.sizeBytes > startCodeLength, "NALU payload < header\n");
+        return nal.sizeBytes - startCodeLength;
+    }
+
+private:
+    uint8_t getStartCodeLength(const x265_nal& nal) const { return (m_annexB && nal.payload[2] == 1) ? 3 : 4; }
+    uint8_t getNextStartCodeLength(NalUnitType nalUnitType) const;
 };
 
 }
