@@ -767,9 +767,12 @@ Profile, Level, Tier
 .. option:: --uhd-bd
 
     Enable Ultra HD Blu-ray format support. If specified with incompatible
-    encoding options, the encoder will attempt to modify/set the right 
+    encoding options, the encoder will attempt to modify/set the right
     encode specifications. If the encoder is unable to do so, this option
     will be turned OFF. Highly experimental.
+
+    Open GOP is enabled by default. Use :option:`--no-open-gop` to preserve older
+    x265 :option:`--uhd-bd` behaviour.
 
     Default: disabled
 
