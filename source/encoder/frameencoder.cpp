@@ -1344,18 +1344,14 @@ void FrameEncoder::compressFrame(int layer)
         writeTrailingSEIMessages(layer, sliceTempIdPlus1);
 
     uint64_t bytes = 0;
-    for (uint32_t i = 0; i < m_nalList.m_numNal; i++)
-    {
-        int type = m_nalList.m_nal[i].type;
 
+    for (const x265_nal& nal : m_nalList)
+    {
         // exclude SEI
-        if (type != NAL_UNIT_PREFIX_SEI && type != NAL_UNIT_SUFFIX_SEI)
-        {
-            bytes += m_nalList.m_nal[i].sizeBytes;
-            // and exclude start code prefix
-            bytes -= (!i || type == NAL_UNIT_SPS || type == NAL_UNIT_PPS) ? 4 : 3;
-        }
+        if (nal.type != NAL_UNIT_PREFIX_SEI && nal.type != NAL_UNIT_SUFFIX_SEI)
+            bytes += m_nalList.getNaluBytesLength(nal);
     }
+
     m_accessUnitBits[layer] = (layer) ? (bytes - (m_accessUnitBits[0] >> 3)) << 3 : bytes << 3;
 
     int filler = 0;
@@ -1391,8 +1387,7 @@ void FrameEncoder::compressFrame(int layer)
         m_bs.writeByteAlignment();
         /* FD unit must carry the same temporalId as the associated frame */
         m_nalList.serialize(NAL_UNIT_FILLER_DATA, m_bs, layer, sliceTempIdPlus1);
-        bytes += m_nalList.m_nal[m_nalList.m_numNal - 1].sizeBytes;
-        bytes -= 3; //exclude start code prefix
+        bytes += m_nalList.getNaluBytesLength(*m_nalList.back());   // filler
         m_accessUnitBits[layer] = bytes << 3;
     }
 
