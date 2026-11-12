@@ -1711,7 +1711,11 @@ Slice decision options
 	never get a lower QP than their anchors while :option:`--pbratio` is at
 	least 1. Rate control's bit estimates for B frames (2-pass planning, VBV
 	lookahead) use the same scaled offsets. Only used with
-	:option:`--b-pyramid` 2. Range 0 to 2. Default 1.0
+	:option:`--b-pyramid` 2. Range 0 to 2, or auto. Default 1.0
+
+	**auto** flattens the pyramid as :option:`--crf` or :option:`--qp`
+	rises: 1.0 up to CRF 22 (QP 25), falling linearly to 0.5 at CRF 37
+	(QP 40) and above. ABR keeps 1.0.
 
 .. option:: --force-flush <integer>
 

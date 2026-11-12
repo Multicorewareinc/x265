@@ -1096,6 +1096,9 @@ typedef enum
     X265_SHARE_MODE_SHAREDMEM
 }X265_DATA_SHARE_MODES;
 
+/* bPyramidQpScale: derive the scale from the CRF or QP */
+#define X265_BPYRAMID_QP_SCALE_AUTO -1.0
+
 /* x265 input parameters
  *
  * For version safety you may use x265_param_alloc/free() to manage the
@@ -2444,7 +2447,7 @@ typedef struct x265_param
     /* Scales the QP offsets of the hierarchical B-pyramid layers over their anchors (their
      * pbratio exponents), in every rate control mode: 0 codes the B frames at the anchor
      * QP, 1 keeps the offsets derived from --pbratio, above 1 makes them steeper. Range
-     * 0 to 2. Default 1.0 */
+     * 0 to 2, or X265_BPYRAMID_QP_SCALE_AUTO to derive it from the CRF or QP. Default 1.0 */
     double   bPyramidQpScale;
 } x265_param;
 

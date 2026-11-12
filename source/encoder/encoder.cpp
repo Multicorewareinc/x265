@@ -4387,6 +4387,22 @@ void Encoder::configure(x265_param *p)
 
     m_bframeDelay = p->bframes ? (p->bBPyramid ? 2 : 1) : 0;
 
+    /* --bpyramid-qp-scale auto: 1.0 at CRF 22 / QP 25 down to 0.5 at CRF 37 / QP 40; ABR keeps 1.0 */
+    if (p->bPyramidQpScale < 0)
+    {
+        double scale = 1.0;
+        if (p->bBPyramid == X265_B_PYRAMID_HIERARCHICAL)
+        {
+            if (p->rc.rateControlMode == X265_RC_CRF)
+                scale = 1.0 - (p->rc.rfConstant - 22.0) / 30.0;
+            else if (p->rc.rateControlMode == X265_RC_CQP)
+                scale = 1.0 - (p->rc.qp - 25.0) / 30.0;
+            scale = x265_clip3(0.5, 1.0, scale);
+            x265_log(p, X265_LOG_INFO, "bpyramid-qp-scale auto: %.2f\n", scale);
+        }
+        p->bPyramidQpScale = scale;
+    }
+
     p->bFrameBias = X265_MIN(X265_MAX(-90, p->bFrameBias), 100);
     p->scenecutBias = (double)(p->scenecutBias / 100);
 

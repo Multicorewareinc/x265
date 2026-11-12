@@ -1353,7 +1353,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     {
         if (0) ;
         OPT("csv") snprintf(p->csvfn, X265_MAX_STRING_SIZE, "%s", value);
-        OPT("bpyramid-qp-scale") p->bPyramidQpScale = atof(value);
+        OPT("bpyramid-qp-scale") p->bPyramidQpScale = !strcmp(value, "auto") ? X265_BPYRAMID_QP_SCALE_AUTO : atof(value);
         OPT("csv-log-level") p->csvLogLevel = atoi(value);
         OPT("qpmin") p->rc.qpMin = atoi(value);
         OPT("analyze-src-pics") p->bSourceReferenceEstimation = atobool(value);
@@ -1927,8 +1927,8 @@ int x265_check_params(x265_param* param)
           "Target bitrate can not be less than zero");
     CHECK(param->rc.qCompress < 0.5 || param->rc.qCompress > 1.0,
           "qCompress must be between 0.5 and 1.0");
-    CHECK(param->bPyramidQpScale < 0 || param->bPyramidQpScale > 2.0,
-          "bpyramid-qp-scale must be between 0 and 2");
+    CHECK((param->bPyramidQpScale < 0 && param->bPyramidQpScale != X265_BPYRAMID_QP_SCALE_AUTO) || param->bPyramidQpScale > 2.0,
+          "bpyramid-qp-scale must be between 0 and 2, or auto");
     if (param->noiseReductionIntra)
         CHECK(0 > param->noiseReductionIntra || param->noiseReductionIntra > 2000, "Valid noise reduction range 0 - 2000");
     if (param->noiseReductionInter)
