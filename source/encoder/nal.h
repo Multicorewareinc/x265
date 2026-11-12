@@ -63,6 +63,8 @@ public:
     void serialize(NalUnitType nalUnitType, const Bitstream& bs, int layerId = 0, uint8_t temporalID = 1);
 
     uint32_t serializeSubstreams(uint32_t* streamSizeBytes, uint32_t streamCount, const Bitstream* streams);
+
+    uint8_t getStartCodeLength(NalUnitType nalUnitType);
 };
 
 }
