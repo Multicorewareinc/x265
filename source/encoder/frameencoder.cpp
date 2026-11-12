@@ -1260,7 +1260,7 @@ void FrameEncoder::compressFrame(int layer)
         {
             bytes += m_nalList.m_nal[i].sizeBytes;
             // and exclude start code prefix
-            bytes -= (!i || type == NAL_UNIT_SPS || type == NAL_UNIT_PPS) ? 4 : 3;
+            bytes -= m_nalList.getStartCodeLength((NalUnitType)type);
         }
     }
     m_accessUnitBits[layer] = (layer) ? (bytes - (m_accessUnitBits[0] >> 3)) << 3 : bytes << 3;
@@ -1299,7 +1299,7 @@ void FrameEncoder::compressFrame(int layer)
         /* FD unit must carry the same temporalId as the associated frame */
         m_nalList.serialize(NAL_UNIT_FILLER_DATA, m_bs, layer, sliceTempIdPlus1);
         bytes += m_nalList.m_nal[m_nalList.m_numNal - 1].sizeBytes;
-        bytes -= 3; //exclude start code prefix
+        bytes -= m_nalList.getStartCodeLength(NAL_UNIT_FILLER_DATA); //exclude start code prefix
         m_accessUnitBits[layer] = bytes << 3;
     }
 
