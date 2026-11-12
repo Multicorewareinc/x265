@@ -136,6 +136,7 @@ Encoder::Encoder()
     m_bframeDelayTime = 0;
     m_prevReorderedPts[0] = m_prevReorderedPts[1] = 0;
     m_curEncoder = 0;
+    memset(m_saoDepthRate, 0, sizeof(m_saoDepthRate));
     m_numLumaWPFrames = 0;
     m_numChromaWPFrames = 0;
     m_numLumaWPBiFrames = 0;
@@ -2050,6 +2051,18 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
          * accomplished when the encoder is full */
         if (!m_bZeroLatency || pass)
             outFrames = curEncoder->getEncodedPicture(m_nalList);
+        if (outFrames && m_param->bEnableSAO)
+        {
+            /* This encoder's frame is complete: publish its SAO-off rates for its own
+             * temporal depth (m_refDepth). Its other entries are stale copies of the
+             * shared table. */
+            SAO& sao = curEncoder->m_frameFilter.m_parallelFilter[0].m_sao;
+            if (curEncoder->m_frameFilter.m_useSao && sao.hasDepthSaoRate())
+            {
+                m_saoDepthRate[0 * SAO::SAO_DEPTHRATE_SIZE + sao.m_refDepth] = sao.getDepthSaoRate(0, sao.m_refDepth);
+                m_saoDepthRate[1 * SAO::SAO_DEPTHRATE_SIZE + sao.m_refDepth] = sao.getDepthSaoRate(1, sao.m_refDepth);
+            }
+        }
         if (outFrames)
         {
             for (int sLayer = 0; sLayer < m_param->numLayers; sLayer++)
@@ -2615,6 +2628,16 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                             ref->slicetype = X265_TYPE_I;
                     }
                 }
+            }
+
+            /* Hand the encoder the SAO-off rates of all frames finished so far: for
+             * frame n in encode order, frames 0..n-frameNumThreads. The encoder is
+             * idle, so nothing races with this. */
+            if (m_param->bEnableSAO && curEncoder->m_frameFilter.m_parallelFilter)
+            {
+                SAO& sao = curEncoder->m_frameFilter.m_parallelFilter[0].m_sao;
+                if (curEncoder->m_frameFilter.m_useSao && sao.hasDepthSaoRate())
+                    sao.setDepthSaoRates(m_saoDepthRate);
             }
 
             /* Allow FrameEncoder::compressFrame() to start in the frame encoder thread */
