@@ -218,7 +218,7 @@ uint32_t weightCost(pixel *         fenc,
 }
 
 
-void blockSatd(uint32_t* out, Lowres& fenc, pixel* ref, const WeightParam* w, pixel* tmp, const Cache& cache)
+void blockSatd(uint32_t* out, const Lowres& fenc, pixel* ref, const WeightParam* w, pixel* tmp, const Cache& cache)
 {
     intptr_t stride = fenc.lumaStride;
     int width = fenc.width, height = fenc.lines;
@@ -229,7 +229,7 @@ void blockSatd(uint32_t* out, Lowres& fenc, pixel* ref, const WeightParam* w, pi
         int correction = IF_INTERNAL_PREC - X265_DEPTH;
         int pwidth = ((width + 31) >> 5) << 5;
         primitives.weight_pp(ref, tmp, stride, pwidth, height, w->inputWeight,
-                             round << correction, denom + correction, w->inputOffset << (X265_DEPTH - 8));
+                             round << correction, denom + correction, w->inputOffset * (1 << (X265_DEPTH - 8)));
         ref = tmp;
     }
     for (int y = 0, cu = 0; y < height; y += 8)
@@ -241,7 +241,7 @@ void blockSatd(uint32_t* out, Lowres& fenc, pixel* ref, const WeightParam* w, pi
 /* Lowres luma cost of predicting fenc from the nearest L0/L1 pair: per 8x8
  * block the cheapest of bi-average, uni-0, uni-1 and intra. r0/r1 are the
  * (already motion compensated and, if applicable, weighted) references. */
-uint64_t biPairCost(Lowres& fenc, const pixel* r0, const pixel* r1, const Cache& cache)
+uint64_t biPairCost(const Lowres& fenc, const pixel* r0, const pixel* r1, const Cache& cache)
 {
     intptr_t stride = fenc.lumaStride;
     uint64_t cost = 0;
@@ -284,7 +284,7 @@ uint64_t wpBlockChoiceCost(const bool* on, const WPCand* cand, int numCand, cons
 }
 
 /* Per 8x8 SATD of the average of two (already weighted) lowres references */
-void blockSatdBi(uint32_t* out, Lowres& fenc, const pixel* r0, const pixel* r1)
+void blockSatdBi(uint32_t* out, const Lowres& fenc, const pixel* r0, const pixel* r1)
 {
     intptr_t stride = fenc.lumaStride;
     ALIGN_VAR_16(pixel, avg[8 * 8]);
@@ -601,7 +601,7 @@ void weightAnalyse(Slice& slice, Frame& frame, x265_param& param)
             size_t satdInPixels = (satdCount * sizeof(uint32_t) + sizeof(pixel) - 1) / sizeof(pixel);
             pbuf = X265_MALLOC(pixel, 6 * planeSize + satdInPixels);
             if (pbuf)
-                satd = (uint32_t*)(pbuf + 6 * planeSize);
+                satd = reinterpret_cast<uint32_t*>(pbuf + 6 * planeSize);
         }
         if (satd && pbuf)
         {
@@ -820,7 +820,7 @@ void weightAnalyse(Slice& slice, Frame& frame, x265_param& param)
         {
             for (int ref = 0; ref < slice.m_numRefIdx[list] && p < (int)sizeof(buf); ref++)
             {
-                WeightParam* w = &wp[list][ref][0];
+                const WeightParam* w = &wp[list][ref][0];
                 if (w[0].wtPresent || w[1].wtPresent || w[2].wtPresent)
                 {
                     bWeighted = true;
