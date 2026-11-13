@@ -313,6 +313,7 @@ void MCSTFHarness::measureSpeed(const MCSTFPrimitives& ref, const MCSTFPrimitive
     if (opt.motionErrorLumaInt)
     {
         printf("motionErrorLumaInt[bs=16]\t");
+        // cppcheck-suppress unsignedPositive
         REPORT_SPEEDUP(opt.motionErrorLumaInt, ref.motionErrorLumaInt,
             m_origBuf + CENTER * TEST_STRIDE + CENTER, TEST_STRIDE, m_refBuf + CENTER * TEST_STRIDE + CENTER + 1, TEST_STRIDE, 16);
     }
@@ -321,6 +322,7 @@ void MCSTFHarness::measureSpeed(const MCSTFPrimitives& ref, const MCSTFPrimitive
     {
         MV best;
         printf("motionSearchLumaFrac[bs=8]\t");
+        // cppcheck-suppress unsignedPositive
         REPORT_SPEEDUP(opt.motionSearchLumaFrac, ref.motionSearchLumaFrac,
             m_origBuf, TEST_STRIDE, m_refBuf, TEST_STRIDE, CENTER, CENTER, 16, 32, MCSTF_FRAC_MAX_RANGE, 8, INT_MAX, X265_DEPTH, &best);
     }

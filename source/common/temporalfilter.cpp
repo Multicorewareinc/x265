@@ -513,16 +513,22 @@ int TemporalFilter::createRefPicInfo(TemporalFilterRefPicInfo* refFrame)
     const uint32_t numBlocks = m_blockGridStride * m_blockGridRows;
     const uint32_t numBlocks16 = (m_sourceWidth / 16) * (m_sourceHeight / 16);
 
+    // cppcheck-suppress cstyleCast
     CHECKED_MALLOC_ZERO(refFrame->mvs, MV, numBlocks);
     refFrame->mvsStride = m_blockGridStride;
+    // cppcheck-suppress cstyleCast
     CHECKED_MALLOC_ZERO(refFrame->mvs0, MV, numBlocks16);
     refFrame->mvsStride0 = m_sourceWidth / 16;
+    // cppcheck-suppress cstyleCast
     CHECKED_MALLOC_ZERO(refFrame->mvs1, MV, numBlocks16);
     refFrame->mvsStride1 = m_sourceWidth / 16;
+    // cppcheck-suppress cstyleCast
     CHECKED_MALLOC_ZERO(refFrame->mvs2, MV, numBlocks16);
     refFrame->mvsStride2 = m_sourceWidth / 16;
 
+    // cppcheck-suppress cstyleCast
     CHECKED_MALLOC_ZERO(refFrame->noise, int, numBlocks);
+    // cppcheck-suppress cstyleCast
     CHECKED_MALLOC_ZERO(refFrame->error, int, numBlocks);
 
     refFrame->slicetype = X265_TYPE_AUTO;
