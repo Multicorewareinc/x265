@@ -79,7 +79,7 @@ public:
 
 protected:
 
-    void computeRPS(int curPoc,int tempId, bool isRAP, RPS * rps, unsigned int maxDecPicBuffer, int sLayerId);
+    void computeRPS(int curPoc,int tempId, bool isRAP, RPS * rps, unsigned int maxDecPicBuffer, int sLayerId, int frametype, int pyramidLayer);
 
     void applyReferencePictureSet(RPS *rps, int curPoc, int tempId, bool isTSAPicture, int sLayerId);
     bool getTemporalLayerNonReferenceFlag(int sLayerId);

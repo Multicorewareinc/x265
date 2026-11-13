@@ -165,7 +165,8 @@ public:
     int                    m_isInsideWindow;
 
     /*Frame's temporal layer info*/
-    uint8_t                m_tempLayer;
+    uint8_t                m_tempLayer;      // TemporalId signalled in the bitstream (--temporal-layers)
+    uint8_t                m_bPyramidLayer;  // hierarchical B-pyramid level, 0 for I/P; never signalled
     int8_t                 m_gopId;
     bool                   m_sameLayerRefPic;
 

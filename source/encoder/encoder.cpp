@@ -1699,6 +1699,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                 inFrame[layer]->m_lowresInit = false;
                 inFrame[layer]->m_isInsideWindow = 0;
                 inFrame[layer]->m_tempLayer = 0;
+                inFrame[layer]->m_bPyramidLayer = 0;
                 inFrame[layer]->m_sameLayerRefPic = 0;
 #if ENABLE_MULTIVIEW
                 inFrame[layer]->m_viewId = m_param->numViews > 1 ? layer : 0;
@@ -1902,6 +1903,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                     {
                         inFrame[0]->m_lowres.plannedSatd[index] = inFrame[0]->m_analysisData.lookahead.plannedSatd[index];
                         inFrame[0]->m_lowres.plannedType[index] = inFrame[0]->m_analysisData.lookahead.plannedType[index];
+                        inFrame[0]->m_lowres.plannedBQpCoef[index] = -1; /* not in the analysis data */
                     }
                 }
             }
@@ -2312,6 +2314,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                     frameEnc[layer]->m_lowres.sliceType = IS_X265_TYPE_I(baseViewType) ? X265_TYPE_P : baseViewType;
                 frameEnc[layer]->m_lowres.bKeyframe = frameEnc[0]->m_lowres.bKeyframe;
                 frameEnc[layer]->m_tempLayer = frameEnc[0]->m_tempLayer;
+                frameEnc[layer]->m_bPyramidLayer = frameEnc[0]->m_bPyramidLayer;
             }
 #endif
 
@@ -2534,6 +2537,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                     if ((frameEnc[layer]->m_poc == (m_param->totalFrames - 1)) || (frameEnc[layer]->m_lowres.sliceType == X265_TYPE_I) || (frameEnc[layer]->m_lowres.sliceType == X265_TYPE_IDR))
                     {
                         frameEnc[layer]->m_tempLayer = (int8_t)0;
+                        frameEnc[layer]->m_bPyramidLayer = 0;
                     }
                 }
             }
@@ -4382,6 +4386,22 @@ void Encoder::configure(x265_param *p)
     }
 
     m_bframeDelay = p->bframes ? (p->bBPyramid ? 2 : 1) : 0;
+
+    /* --bpyramid-qp-scale auto: 1.0 at CRF 22 / QP 25 down to 0.5 at CRF 37 / QP 40; ABR keeps 1.0 */
+    if (p->bPyramidQpScale < 0)
+    {
+        double scale = 1.0;
+        if (p->bBPyramid == X265_B_PYRAMID_HIERARCHICAL)
+        {
+            if (p->rc.rateControlMode == X265_RC_CRF)
+                scale = 1.0 - (p->rc.rfConstant - 22.0) / 30.0;
+            else if (p->rc.rateControlMode == X265_RC_CQP)
+                scale = 1.0 - (p->rc.qp - 25.0) / 30.0;
+            scale = x265_clip3(0.5, 1.0, scale);
+            x265_log(p, X265_LOG_INFO, "bpyramid-qp-scale auto: %.2f\n", scale);
+        }
+        p->bPyramidQpScale = scale;
+    }
 
     p->bFrameBias = X265_MIN(X265_MAX(-90, p->bFrameBias), 100);
     p->scenecutBias = (double)(p->scenecutBias / 100);

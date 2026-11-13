@@ -198,6 +198,7 @@ void x265_param_default(x265_param* param)
     param->lookaheadDepth = 20;
     param->bFrameAdaptive = X265_B_ADAPT_TRELLIS;
     param->bBPyramid = 1;
+    param->bPyramidQpScale = 1.0;
     param->scenecutThreshold = 40; /* Magic number pulled in from x264 */
     param->bHistBasedSceneCut = 0;
     param->lookaheadSlices = 8;
@@ -1190,7 +1191,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     OPT("hash") p->decodedPictureHashSEI = atoi(value);
     OPT("aud") p->bEnableAccessUnitDelimiters = atobool(value);
     OPT("info") p->bEmitInfoSEI = atobool(value);
-    OPT("b-pyramid") p->bBPyramid = atobool(value);
+    OPT("b-pyramid") p->bBPyramid = atoi(value);
     OPT("hrd") p->bEmitHRDSEI = atobool(value);
     OPT2("ipratio", "ip-factor") p->rc.ipFactor = atof(value);
     OPT2("pbratio", "pb-factor") p->rc.pbFactor = atof(value);
@@ -1352,6 +1353,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     {
         if (0) ;
         OPT("csv") snprintf(p->csvfn, X265_MAX_STRING_SIZE, "%s", value);
+        OPT("bpyramid-qp-scale") p->bPyramidQpScale = !strcmp(value, "auto") ? X265_BPYRAMID_QP_SCALE_AUTO : atof(value);
         OPT("csv-log-level") p->csvLogLevel = atoi(value);
         OPT("qpmin") p->rc.qpMin = atoi(value);
         OPT("analyze-src-pics") p->bSourceReferenceEstimation = atobool(value);
@@ -1884,6 +1886,8 @@ int x265_check_params(x265_param* param)
           "Valid quality based range: -qpBDOffsetY to 51");
     CHECK(param->bFrameAdaptive < 0 || param->bFrameAdaptive > 2,
           "Valid adaptive b scheduling values 0 - none, 1 - fast, 2 - full");
+    CHECK(param->bBPyramid < X265_B_PYRAMID_NONE || param->bBPyramid > X265_B_PYRAMID_HIERARCHICAL,
+          "Valid b-pyramid values 0 - none, 1 - normal, 2 - hierarchical");
     CHECK(param->logLevel<-1 || param->logLevel> X265_LOG_FULL,
           "Valid Logging level -1:none 0:error 1:warning 2:info 3:debug 4:full");
     CHECK(param->scenecutThreshold < 0,
@@ -1923,6 +1927,8 @@ int x265_check_params(x265_param* param)
           "Target bitrate can not be less than zero");
     CHECK(param->rc.qCompress < 0.5 || param->rc.qCompress > 1.0,
           "qCompress must be between 0.5 and 1.0");
+    CHECK((param->bPyramidQpScale < 0 && param->bPyramidQpScale != X265_BPYRAMID_QP_SCALE_AUTO) || param->bPyramidQpScale > 2.0,
+          "bpyramid-qp-scale must be between 0 and 2, or auto");
     if (param->noiseReductionIntra)
         CHECK(0 > param->noiseReductionIntra || param->noiseReductionIntra > 2000, "Valid noise reduction range 0 - 2000");
     if (param->noiseReductionInter)
@@ -2239,6 +2245,11 @@ void x265_print_params(x265_param* param)
     TOOLOPT(param->bEnableConstrainedIntra, "cip");
     TOOLOPT(param->bIntraInBFrames, "b-intra");
     TOOLOPT(param->bEnableFastIntra, "fast-intra");
+    if (param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL && param->bPyramidQpScale != 1.0)
+    {
+        snprintf(tmp, sizeof(tmp), "bpyramid-qp-scale=%.2f", param->bPyramidQpScale);
+        appendtool(param, buf, sizeof(buf), tmp);
+    }
     TOOLOPT(param->bEnableStrongIntraSmoothing, "strong-intra-smoothing");
     TOOLVAL(param->lookaheadSlices, "lslices=%d");
     TOOLVAL(param->lookaheadThreads, "lthreads=%d")
@@ -2347,7 +2358,14 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     s += snprintf(s, bufSize - (s - buf), " gop-lookahead=%d", p->gopLookahead);
     s += snprintf(s, bufSize - (s - buf), " bframes=%d", p->bframes);
     s += snprintf(s, bufSize - (s - buf), " b-adapt=%d", p->bFrameAdaptive);
-    BOOL(p->bBPyramid, "b-pyramid");
+    /* 0 and 1 keep the boolean form of the earlier option */
+    if (p->bBPyramid == X265_B_PYRAMID_HIERARCHICAL)
+    {
+        s += snprintf(s, bufSize - (s - buf), " b-pyramid=%d", p->bBPyramid);
+        s += snprintf(s, bufSize - (s - buf), " bpyramid-qp-scale=%.2f", p->bPyramidQpScale);
+    }
+    else
+        BOOL(p->bBPyramid, "b-pyramid");
     s += snprintf(s, bufSize - (s - buf), " bframe-bias=%d", p->bFrameBias);
     s += snprintf(s, bufSize - (s - buf), " rc-lookahead=%d", p->lookaheadDepth);
     s += snprintf(s, bufSize - (s - buf), " lookahead-slices=%d", p->lookaheadSlices);
@@ -2836,6 +2854,7 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->bFrameAdaptive = src->bFrameAdaptive;
     dst->bFrameBias = src->bFrameBias;
     dst->bBPyramid = src->bBPyramid;
+    dst->bPyramidQpScale = src->bPyramidQpScale;
     dst->lookaheadDepth = src->lookaheadDepth;
     dst->lookaheadSlices = src->lookaheadSlices;
     dst->lookaheadThreads = src->lookaheadThreads;

@@ -1682,9 +1682,40 @@ Slice decision options
 	more likely x265 is to use B frames. Can be any value between -90
 	and 100 and is clipped to that range. Default 0
 
-.. option:: --b-pyramid, --no-b-pyramid
+.. option:: --b-pyramid <integer>
 
-	Use B-frames as references, when possible. Default enabled
+	Use B-frames as references, when possible. Default 1
+
+	0. No B frame is used as a reference
+	1. The middle B frame of each mini-GOP of more than 2 B frames is a
+	   reference for the other B frames of the mini-GOP
+	2. Hierarchical B-pyramid: the middle B frame of a mini-GOP is a B-ref
+	   from the two anchors, and each half is split the same way while it
+	   has more than two B frames, so the B frames are predicted from nearer
+	   references. With :option:`--temporal-layers` greater than 2 the
+	   mini-GOP is defined by the temporal sub-layers, as with 1
+
+	**Values:** 0, 1, 2. Earlier versions took no value: use 1 for
+	:option:`--b-pyramid` and 0 for the removed ``--no-b-pyramid``.
+
+	With 2 the B frames of each layer of the pyramid get a QP offset over the
+	anchors from :option:`--pbratio`: the deepest layer of the mini-GOP
+	2 * 6 * log2(pbratio) and each shallower layer a quarter of that less,
+	down to 0.
+
+.. option:: --bpyramid-qp-scale <float>
+
+	Scale the QP offsets of the B-pyramid layers over their anchors in every
+	rate control mode. 0 codes the B frames at the anchor QP, values between 0
+	and 1 flatten the pyramid, values above 1 make it steeper, and the B frames
+	never get a lower QP than their anchors while :option:`--pbratio` is at
+	least 1. Rate control's bit estimates for B frames (2-pass planning, VBV
+	lookahead) use the same scaled offsets. Only used with
+	:option:`--b-pyramid` 2. Range 0 to 2, or auto. Default 1.0
+
+	**auto** flattens the pyramid as :option:`--crf` or :option:`--qp`
+	rises: 1.0 up to CRF 22 (QP 25), falling linearly to 0.5 at CRF 37
+	(QP 40) and above. ABR keeps 1.0.
 
 .. option:: --force-flush <integer>
 
