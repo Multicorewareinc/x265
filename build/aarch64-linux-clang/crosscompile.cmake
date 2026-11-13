@@ -18,8 +18,5 @@ endif()
 set(CMAKE_C_COMPILER_TARGET ${TARGET_TRIPLE})
 set(CMAKE_CXX_COMPILER_TARGET ${TARGET_TRIPLE})
 
-# specify assembler target
-list(APPEND ASM_FLAGS "--target=${TARGET_TRIPLE}")
-
 # specify the target environment
 SET(CMAKE_FIND_ROOT_PATH /usr/aarch64-linux-gnu)
