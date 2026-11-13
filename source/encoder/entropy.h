@@ -147,7 +147,9 @@ public:
     void codeVPS(const VPS& vps);
 #endif
     void codeSPS(const SPS& sps, const ScalingList& scalingList, const ProfileTierLevel& ptl, int layer = 0);
-    void codePPS( const PPS& pps, bool filerAcross, int iPPSInitQpMinus26, int layer = 0);
+    /* ppsId < 0 means pps_pic_parameter_set_id = layer. bWPFlags = false
+     * writes weighted_pred_flag and weighted_bipred_flag as 0 */
+    void codePPS( const PPS& pps, bool filerAcross, int iPPSInitQpMinus26, int layer = 0, int ppsId = -1, bool bWPFlags = true);
     void codeVUI(const VUI& vui, int maxSubTLayers, bool bEmitVUITimingInfo, bool bEmitVUIHRDInfo, int layer = 0);
     void codeAUD(const Slice& slice);
     void codeHrdParameters(const HRDInfo& hrd, int maxSubTLayers);

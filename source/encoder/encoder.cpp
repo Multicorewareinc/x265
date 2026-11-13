@@ -122,6 +122,20 @@ static const char* defaultAnalysisFileName = "x265_analysis.dat";
 
 using namespace X265_NS;
 
+/* Returns true if any active reference index of the list has a weight on the
+ * selected component: luma when bChroma is false, chroma (U/V, always
+ * signalled together) when bChroma is true. */
+static bool anyRefWeighted(const Slice* slice, int list, bool bChroma)
+{
+    for (int ref = 0; ref < slice->m_numRefIdx[list]; ref++)
+    {
+        const WeightParam* w = slice->m_weightPredTable[list][ref];
+        if (bChroma ? (w[1].wtPresent || w[2].wtPresent) : !!w[0].wtPresent)
+            return true;
+    }
+    return false;
+}
+
 Encoder::Encoder()
 {
     m_aborted = false;
@@ -140,6 +154,7 @@ Encoder::Encoder()
     m_numChromaWPFrames = 0;
     m_numLumaWPBiFrames = 0;
     m_numChromaWPBiFrames = 0;
+    m_numWPNonZeroRefIdx = 0;
     m_lookahead = NULL;
     m_threadedME = NULL;
     m_rateControl = NULL;
@@ -2155,11 +2170,17 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                 }
                 if (m_param->analysisMultiPassRefine || m_param->analysisMultiPassDistortion)
                     x265_free_analysis_data(m_param, &outFrame->m_analysisData);
+                if (slice->m_sliceType == P_SLICE || slice->m_sliceType == B_SLICE)
+                {
+                    for (int l = 0; l < (slice->m_sliceType == B_SLICE ? 2 : 1); l++)
+                        for (int ref = 1; ref < slice->m_numRefIdx[l]; ref++)
+                            m_numWPNonZeroRefIdx += !!slice->m_weightPredTable[l][ref][0].wtPresent;
+                }
                 if (m_param->internalCsp == X265_CSP_I400)
                 {
                     if (slice->m_sliceType == P_SLICE)
                     {
-                        if (slice->m_weightPredTable[0][0][0].wtPresent)
+                        if (anyRefWeighted(slice, 0, false))
                             m_numLumaWPFrames++;
                     }
                     else if (slice->m_sliceType == B_SLICE)
@@ -2167,7 +2188,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                         bool bLuma = false;
                         for (int l = 0; l < 2; l++)
                         {
-                            if (slice->m_weightPredTable[l][0][0].wtPresent)
+                            if (anyRefWeighted(slice, l, false))
                                 bLuma = true;
                         }
                         if (bLuma)
@@ -2178,10 +2199,9 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                 {
                     if (slice->m_sliceType == P_SLICE)
                     {
-                        if (slice->m_weightPredTable[0][0][0].wtPresent)
+                        if (anyRefWeighted(slice, 0, false))
                             m_numLumaWPFrames++;
-                        if (slice->m_weightPredTable[0][0][1].wtPresent ||
-                            slice->m_weightPredTable[0][0][2].wtPresent)
+                        if (anyRefWeighted(slice, 0, true))
                             m_numChromaWPFrames++;
                     }
                     else if (slice->m_sliceType == B_SLICE)
@@ -2189,10 +2209,9 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                         bool bLuma = false, bChroma = false;
                         for (int l = 0; l < 2; l++)
                         {
-                            if (slice->m_weightPredTable[l][0][0].wtPresent)
+                            if (anyRefWeighted(slice, l, false))
                                 bLuma = true;
-                            if (slice->m_weightPredTable[l][0][1].wtPresent ||
-                                slice->m_weightPredTable[l][0][2].wtPresent)
+                            if (anyRefWeighted(slice, l, true))
                                 bChroma = true;
                         }
 
@@ -2913,6 +2932,8 @@ void Encoder::printSummary()
                 (float)100.0 * m_numLumaWPBiFrames / m_analyzeB[layer].m_numPics,
                 (float)100.0 * m_numChromaWPBiFrames / m_analyzeB[layer].m_numPics);
         }
+        if (m_param->bEnableWeightedPred || m_param->bEnableWeightedBiPred)
+            x265_log(m_param, X265_LOG_INFO, "Weighted references with refIdx > 0: %d\n", m_numWPNonZeroRefIdx);
 
         if (m_param->bLossless)
         {
@@ -3500,12 +3521,31 @@ void Encoder::getStreamHeaders(NALList& list, Entropy& sbacCoder, Bitstream& bs)
         list.serialize(NAL_UNIT_SPS, bs, layer);
     }
 
-    for (int layer = 0; layer < m_param->numLayers; layer++)
+    if ((m_param->bEnableWeightedPred || m_param->bEnableWeightedBiPred) && m_param->numLayers == 1)
     {
-        bs.resetBits();
-        sbacCoder.codePPS(m_pps, (m_param->maxSlices <= 1), m_iPPSQpMinus26, layer);
-        bs.writeByteAlignment();
-        list.serialize(NAL_UNIT_PPS, bs, layer);
+        /* Adaptive WP signalling: weighted_pred_flag / weighted_bipred_flag live in
+         * the PPS, so with a single PPS every P/B slice codes a pred_weight_table
+         * even when no reference is weighted. Two PPSs are emitted instead.
+         * pps_id 0: weighted_pred_flag = weighted_bipred_flag = 0, used by slices
+         * without any non-trivial weight. pps_id 1: WP flags as configured, used
+         * only by slices that actually carry weights */
+        for (int ppsId = 0; ppsId < 2; ppsId++)
+        {
+            bs.resetBits();
+            sbacCoder.codePPS(m_pps, (m_param->maxSlices <= 1), m_iPPSQpMinus26, 0, ppsId, !!ppsId);
+            bs.writeByteAlignment();
+            list.serialize(NAL_UNIT_PPS, bs, 0);
+        }
+    }
+    else
+    {
+        for (int layer = 0; layer < m_param->numLayers; layer++)
+        {
+            bs.resetBits();
+            sbacCoder.codePPS(m_pps, (m_param->maxSlices <= 1), m_iPPSQpMinus26, layer);
+            bs.writeByteAlignment();
+            list.serialize(NAL_UNIT_PPS, bs, layer);
+        }
     }
 
 #if ENABLE_ALPHA
@@ -5097,7 +5137,7 @@ void Encoder::readAnalysisFile(x265_analysis_data* analysis, int curPoc, const x
     {
         uint32_t numDir = analysis->sliceType == X265_TYPE_P ? 1 : 2;
         uint32_t numPlanes = m_param->internalCsp == X265_CSP_I400 ? 1 : 3;
-        X265_FREAD((WeightParam*)analysis->wt, sizeof(WeightParam), numPlanes * numDir, m_analysisFileIn, (picIn->analysisData.wt));
+        X265_FREAD((WeightParam*)analysis->wt, sizeof(WeightParam), numPlanes * numDir * m_param->maxNumReferences, m_analysisFileIn, (picIn->analysisData.wt));
         if (m_param->analysisLoadReuseLevel < 2)
             return;
 
@@ -5464,7 +5504,7 @@ void Encoder::readAnalysisFile(x265_analysis_data* analysis, int curPoc, const x
     {
         uint32_t numDir = analysis->sliceType == X265_TYPE_P ? 1 : 2;
         uint32_t numPlanes = m_param->internalCsp == X265_CSP_I400 ? 1 : 3;
-        X265_FREAD((WeightParam*)analysis->wt, sizeof(WeightParam), numPlanes * numDir, m_analysisFileIn, (picIn->analysisData.wt));
+        X265_FREAD((WeightParam*)analysis->wt, sizeof(WeightParam), numPlanes * numDir * m_param->maxNumReferences, m_analysisFileIn, (picIn->analysisData.wt));
 		if (m_param->analysisLoadReuseLevel < 2)
 		{
 			/* Restore to the current encode's numPartitions and numCUsInFrame */
@@ -6083,7 +6123,7 @@ void Encoder::writeAnalysisFile(x265_analysis_data* analysis, FrameData &curEncD
     {
         numDir = (analysis->sliceType == X265_TYPE_P) ? 1 : 2;
         numPlanes = m_param->internalCsp == X265_CSP_I400 ? 1 : 3;
-        analysis->frameRecordSize += sizeof(WeightParam) * numPlanes * numDir;
+        analysis->frameRecordSize += sizeof(WeightParam) * numPlanes * numDir * m_param->maxNumReferences;
     }
 
     if (m_param->ctuDistortionRefine == CTU_DISTORTION_INTERNAL)
@@ -6229,7 +6269,7 @@ void Encoder::writeAnalysisFile(x265_analysis_data* analysis, FrameData &curEncD
     if (m_param->ctuDistortionRefine == CTU_DISTORTION_INTERNAL)
         X265_FWRITE((analysis->distortionData)->ctuDistortion, sizeof(sse_t), analysis->numCUsInFrame, m_analysisFileOut);
     if (analysis->sliceType > X265_TYPE_I)
-        X265_FWRITE((WeightParam*)analysis->wt, sizeof(WeightParam), numPlanes * numDir, m_analysisFileOut);
+        X265_FWRITE((WeightParam*)analysis->wt, sizeof(WeightParam), numPlanes * numDir * m_param->maxNumReferences, m_analysisFileOut);
 
     if (m_param->analysisSaveReuseLevel < 2)
         return;
