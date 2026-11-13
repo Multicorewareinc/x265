@@ -300,7 +300,7 @@ int main(int argc, char *argv[])
     }
 #endif
 
-    /******************* Cycle count for all primitives **********************/
+    /******************* Timing for all primitives in nanoseconds or raw counter ticks **********************/
     if (run_benchmarks)
     {
         EncoderPrimitives optprim;
@@ -320,6 +320,7 @@ int main(int argc, char *argv[])
         memcpy(&primitives, &optprim, sizeof(EncoderPrimitives));
 
         printf("\nTest performance improvement with full optimizations\n");
+        printf("Times are %s; columns: reference/optimized ratio | optimized | reference\n", BenchmarkClock::units());
         fflush(stdout);
 
         for (size_t h = 0; h < sizeof(harness) / sizeof(TestHarness*); h++)
