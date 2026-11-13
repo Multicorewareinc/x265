@@ -304,6 +304,198 @@ namespace X265_NS {
         return error;
     }
 
+    /* unaligned loads on both blocks; differences fit int16, so madd squares and pairs them in int32 */
+    MCSTF_TARGET_AVX2
+        static int motionErrorLumaInt_avx2(const pixel* fenc, intptr_t fencStride, const pixel* ref, intptr_t refStride, int bs)
+    {
+        X265_CHECK(bs == 8 || bs == 16, "Unsupported block size\n");
+
+        if (bs == 16)
+        {
+            __m256i acc = _mm256_setzero_si256();
+            for (int y1 = 0; y1 < 16; y1++, fenc += fencStride, ref += refStride)
+            {
+#if X265_DEPTH > 8
+                __m256i f = _mm256_loadu_si256((const __m256i*)fenc);
+                __m256i r = _mm256_loadu_si256((const __m256i*)ref);
+#else
+                __m256i f = _mm256_cvtepu8_epi16(_mm_loadu_si128(reinterpret_cast<const __m128i*>(fenc)));
+                __m256i r = _mm256_cvtepu8_epi16(_mm_loadu_si128(reinterpret_cast<const __m128i*>(ref)));
+#endif
+                __m256i d = _mm256_sub_epi16(f, r);
+                acc = _mm256_add_epi32(acc, _mm256_madd_epi16(d, d));
+            }
+            return hsum_epi32_avx(acc);
+        }
+
+        __m128i acc = _mm_setzero_si128();
+        for (int y1 = 0; y1 < 8; y1++, fenc += fencStride, ref += refStride)
+        {
+#if X265_DEPTH > 8
+            __m128i f = _mm_loadu_si128((const __m128i*)fenc);
+            __m128i r = _mm_loadu_si128((const __m128i*)ref);
+#else
+            __m128i f = _mm_cvtepu8_epi16(_mm_loadl_epi64(reinterpret_cast<const __m128i*>(fenc)));
+            __m128i r = _mm_cvtepu8_epi16(_mm_loadl_epi64(reinterpret_cast<const __m128i*>(ref)));
+#endif
+            __m128i d = _mm_sub_epi16(f, r);
+            acc = _mm_add_epi32(acc, _mm_madd_epi16(d, d));
+        }
+        return hsum_epi32(acc);
+    }
+
+    /* Same arithmetic as motionErrorLumaFrac_avx2, but the horizontal pass of each column
+     * position is computed once and shared by every row position of the window */
+    MCSTF_TARGET_AVX2
+        static int motionSearchLumaFrac_avx2(
+            const pixel* origOrigin, intptr_t origStride,
+            const pixel* buffOrigin, intptr_t buffStride,
+            int x, int y, int cx, int cy, int range,
+            int bs, int leastError, int bitDepth, MV* bestMv)
+    {
+        X265_CHECK(range <= MCSTF_FRAC_MAX_RANGE && bs <= 16 && !(bs & 7), "unsupported fractional search\n");
+
+        /* temp row t holds source row y + t + baseDy - 3 */
+        const int baseDy = (cy - range) >> 4;
+        const int numRows = bs + 5 + ((cy + range) >> 4) - baseDy;
+        int tempArray[2 * MCSTF_FRAC_MAX_RANGE + 1][16 + 8][16];
+
+        for (int i = 0; i <= 2 * range; i++)
+        {
+            const int dx = cx - range + i;
+            const int* xFilter = s_interpolationFilter[dx & 0xF];
+
+            const __m128i xf12_128 = _mm_unpacklo_epi16(
+                _mm_set1_epi16((int16_t)xFilter[1]),
+                _mm_set1_epi16((int16_t)xFilter[2]));
+            const __m128i xf34_128 = _mm_unpacklo_epi16(
+                _mm_set1_epi16((int16_t)xFilter[3]),
+                _mm_set1_epi16((int16_t)xFilter[4]));
+            const __m128i xf56_128 = _mm_unpacklo_epi16(
+                _mm_set1_epi16((int16_t)xFilter[5]),
+                _mm_set1_epi16((int16_t)xFilter[6]));
+
+            const __m256i xf12 = _mm256_set_m128i(xf12_128, xf12_128);
+            const __m256i xf34 = _mm256_set_m128i(xf34_128, xf34_128);
+            const __m256i xf56 = _mm256_set_m128i(xf56_128, xf56_128);
+
+            for (int t = 1; t <= numRows; t++)
+            {
+                const pixel* rowStart0 = buffOrigin
+                    + (y + t + baseDy - 3) * buffStride
+                    + (x + (dx >> 4) - 3);
+
+                for (int x1 = 0; x1 < bs; x1 += 8)
+                {
+                    const pixel* rowStart = rowStart0 + x1;
+#if X265_DEPTH > 8
+                    __m128i s1 = _mm_loadu_si128((const __m128i*) & rowStart[1]);
+                    __m128i s2 = _mm_loadu_si128((const __m128i*) & rowStart[2]);
+                    __m128i s3 = _mm_loadu_si128((const __m128i*) & rowStart[3]);
+                    __m128i s4 = _mm_loadu_si128((const __m128i*) & rowStart[4]);
+                    __m128i s5 = _mm_loadu_si128((const __m128i*) & rowStart[5]);
+                    __m128i s6 = _mm_loadu_si128((const __m128i*) & rowStart[6]);
+#else
+                    __m128i s1 = _mm_cvtepu8_epi16(_mm_loadl_epi64(reinterpret_cast<const __m128i*>(&rowStart[1])));
+                    __m128i s2 = _mm_cvtepu8_epi16(_mm_loadl_epi64(reinterpret_cast<const __m128i*>(&rowStart[2])));
+                    __m128i s3 = _mm_cvtepu8_epi16(_mm_loadl_epi64(reinterpret_cast<const __m128i*>(&rowStart[3])));
+                    __m128i s4 = _mm_cvtepu8_epi16(_mm_loadl_epi64(reinterpret_cast<const __m128i*>(&rowStart[4])));
+                    __m128i s5 = _mm_cvtepu8_epi16(_mm_loadl_epi64(reinterpret_cast<const __m128i*>(&rowStart[5])));
+                    __m128i s6 = _mm_cvtepu8_epi16(_mm_loadl_epi64(reinterpret_cast<const __m128i*>(&rowStart[6])));
+#endif
+                    __m256i pairs12 = _mm256_set_m128i(
+                        _mm_unpackhi_epi16(s1, s2),
+                        _mm_unpacklo_epi16(s1, s2));
+                    __m256i pairs34 = _mm256_set_m128i(
+                        _mm_unpackhi_epi16(s3, s4),
+                        _mm_unpacklo_epi16(s3, s4));
+                    __m256i pairs56 = _mm256_set_m128i(
+                        _mm_unpackhi_epi16(s5, s6),
+                        _mm_unpacklo_epi16(s5, s6));
+
+                    __m256i h_out = _mm256_add_epi32(
+                        _mm256_add_epi32(
+                            _mm256_madd_epi16(pairs12, xf12),
+                            _mm256_madd_epi16(pairs34, xf34)),
+                        _mm256_madd_epi16(pairs56, xf56));
+
+                    _mm256_storeu_si256(reinterpret_cast<__m256i*>(&tempArray[i][t][x1]), h_out);
+                }
+            }
+        }
+
+        const __m256i vmax = _mm256_set1_epi32((1 << bitDepth) - 1);
+        const __m256i vmin = _mm256_setzero_si256();
+        const __m256i round_v = _mm256_set1_epi32(1 << 11);
+
+        for (int dy = cy - range; dy <= cy + range; dy++)
+        {
+            const int* yFilter = s_interpolationFilter[dy & 0xF];
+            const __m256i yt1 = _mm256_set1_epi32(yFilter[1]);
+            const __m256i yt2 = _mm256_set1_epi32(yFilter[2]);
+            const __m256i yt3 = _mm256_set1_epi32(yFilter[3]);
+            const __m256i yt4 = _mm256_set1_epi32(yFilter[4]);
+            const __m256i yt5 = _mm256_set1_epi32(yFilter[5]);
+            const __m256i yt6 = _mm256_set1_epi32(yFilter[6]);
+            const int rowOffset = (dy >> 4) - baseDy;
+
+            for (int i = 0; i <= 2 * range; i++)
+            {
+                int (*temp)[16] = tempArray[i] + rowOffset;
+                __m256i xerror = _mm256_setzero_si256();
+                int error = 0;
+
+                for (int outY = 0; outY < bs && error <= leastError; outY++)
+                {
+                    const pixel* origRowBase = origOrigin + (y + outY) * origStride + x;
+
+                    for (int x1 = 0; x1 < bs; x1 += 8)
+                    {
+                        __m256i t1 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&temp[outY + 1][x1]));
+                        __m256i t2 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&temp[outY + 2][x1]));
+                        __m256i t3 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&temp[outY + 3][x1]));
+                        __m256i t4 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&temp[outY + 4][x1]));
+                        __m256i t5 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&temp[outY + 5][x1]));
+                        __m256i t6 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&temp[outY + 6][x1]));
+
+                        __m256i v = _mm256_add_epi32(
+                            _mm256_add_epi32(
+                                _mm256_add_epi32(_mm256_mullo_epi32(t1, yt1),
+                                    _mm256_mullo_epi32(t2, yt2)),
+                                _mm256_add_epi32(_mm256_mullo_epi32(t3, yt3),
+                                    _mm256_mullo_epi32(t4, yt4))),
+                            _mm256_add_epi32(_mm256_mullo_epi32(t5, yt5),
+                                _mm256_mullo_epi32(t6, yt6)));
+
+                        v = _mm256_srai_epi32(_mm256_add_epi32(v, round_v), 12);
+                        v = _mm256_min_epi32(_mm256_max_epi32(v, vmin), vmax);
+
+#if X265_DEPTH > 8
+                        __m256i orig = _mm256_cvtepu16_epi32(
+                            _mm_loadu_si128((const __m128i*) & origRowBase[x1]));
+#else
+                        __m128i xorig = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(&origRowBase[x1]));
+                        __m256i orig = _mm256_set_m128i(
+                            _mm_cvtepu8_epi32(_mm_srli_si128(xorig, 4)),
+                            _mm_cvtepu8_epi32(xorig));
+#endif
+                        __m256i diff = _mm256_sub_epi32(v, orig);
+                        xerror = _mm256_add_epi32(xerror, _mm256_mullo_epi32(diff, diff));
+                    }
+
+                    error = hsum_epi32_avx(xerror);
+                }
+
+                if (error < leastError)
+                {
+                    bestMv->set(cx - range + i, dy);
+                    leastError = error;
+                }
+            }
+        }
+        return leastError;
+    }
+
     /* Per-block separable 6-tap filter worker */
     MCSTF_TARGET_AVX2
         static void applyMotionBlock_avx2(
@@ -652,6 +844,8 @@ namespace X265_NS {
     void setupIntrinsicMCSTF_avx2(MCSTFPrimitives & p)
     {
         p.motionErrorLumaFrac = motionErrorLumaFrac_avx2;
+        p.motionErrorLumaInt = motionErrorLumaInt_avx2;
+        p.motionSearchLumaFrac = motionSearchLumaFrac_avx2;
         p.applyMotion = applyMotion_avx2;
         p.computeBlockStats = computeBlockStats_avx2;
         p.bilateralFilter = bilateralFilter_avx2;
