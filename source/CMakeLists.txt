@@ -303,7 +303,7 @@ if(GCC)
     add_definitions(-Wall -Wextra -Wshadow)
     add_definitions(-D__STDC_LIMIT_MACROS=1)
     if(NOT INTEL_CXX AND NOT CLANG AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 8.0)
-        add_definitions(-Wno-class-memaccess)
+        add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wno-class-memaccess>)
     endif()
     if(ENABLE_PIC)
          add_definitions(-fPIC)
@@ -475,7 +475,7 @@ int main() { return 0; }")
         # is already the default in GCC builds).
         check_cxx_compiler_flag(-flax-vector-conversions=none CC_HAS_FLAX_VEC_CONV_NONE)
         if(CC_HAS_FLAX_VEC_CONV_NONE)
-            set(ARM_ARGS ${ARM_ARGS} -flax-vector-conversions=none)
+            add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-flax-vector-conversions=none>)
         endif()
     endif()
     if(RISCV64)
@@ -658,7 +658,7 @@ int main() {
     # Disable exceptions. Reduce executable size, increase compability.
     check_cxx_compiler_flag(-fno-exceptions CC_HAS_FNO_EXCEPTIONS_FLAG)
     if(CC_HAS_FNO_EXCEPTIONS_FLAG)
-        add_definitions(-fno-exceptions)
+        add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>)
     endif()
     set(FSANITIZE "" CACHE STRING "-fsanitize options for GCC/clang")
     if(FSANITIZE)
@@ -947,96 +947,30 @@ if((MSVC_IDE OR XCODE OR GCC) AND ENABLE_ASSEMBLY)
 
     if(ARM OR CROSS_COMPILE_ARM)
     # compile ARM arch asm files here
-        enable_language(ASM)
-        if(APPLE AND CMAKE_OSX_ARCHITECTURES)
-            set(ARM_ARGS ${ARM_ARGS} -arch ${CMAKE_OSX_ARCHITECTURES})
-        endif()
         foreach(ASM ${ARM_ASMS})
-			set(ASM_SRC ${CMAKE_CURRENT_SOURCE_DIR}/common/arm/${ASM})
-            list(APPEND ASM_SRCS ${ASM_SRC})
-            list(APPEND ASM_OBJS ${ASM}.${SUFFIX})
-            add_custom_command(
-                OUTPUT ${ASM}.${SUFFIX}
-                COMMAND ${CMAKE_CXX_COMPILER}
-                ARGS ${ARM_ARGS} -c ${ASM_SRC} -o ${ASM}.${SUFFIX}
-                DEPENDS ${ASM_SRC})
+            list(APPEND ASM_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/common/arm/${ASM})
         endforeach()
-	elseif(ARM64 OR CROSS_COMPILE_ARM64)
+    elseif(ARM64 OR CROSS_COMPILE_ARM64)
     # compile ARM64 arch asm files here
-        enable_language(ASM)
-        if(APPLE AND CMAKE_OSX_ARCHITECTURES)
-            set(ARM_ARGS ${ARM_ARGS} -arch ${CMAKE_OSX_ARCHITECTURES})
-        endif()
-        foreach(ASM ${ARM_ASMS})
-            set(ASM_SRC ${CMAKE_CURRENT_SOURCE_DIR}/common/aarch64/${ASM})
-            list(APPEND ASM_SRCS ${ASM_SRC})
-            list(APPEND ASM_OBJS ${ASM}.${SUFFIX})
-            add_custom_command(
-                OUTPUT ${ASM}.${SUFFIX}
-                COMMAND ${CMAKE_CXX_COMPILER}
-                ARGS ${ARM_ARGS} ${ASM_FLAGS} ${AARCH64_NEON_FLAG} -c ${ASM_SRC} -o ${ASM}.${SUFFIX}
-                DEPENDS ${ASM_SRC})
+        foreach(EXTENSION NEON NEON_DOTPROD SVE SVE2 SVE2_BITPERM)
+            if(EXTENSION STREQUAL "NEON")
+                set(EXTENSION_ASMS ${ARM_ASMS})
+            elseif(CPU_HAS_${EXTENSION})
+                set(EXTENSION_ASMS ${ARM_ASMS_${EXTENSION}})
+            else()
+                continue()
+            endif()
+            foreach(ASM ${EXTENSION_ASMS})
+                set(ASM_SRC ${CMAKE_CURRENT_SOURCE_DIR}/common/aarch64/${ASM})
+                list(APPEND ASM_SRCS ${ASM_SRC})
+                set_source_files_properties(${ASM_SRC} PROPERTIES
+                    COMPILE_FLAGS "${AARCH64_${EXTENSION}_FLAG}")
+            endforeach()
         endforeach()
-        if(CPU_HAS_NEON_DOTPROD)
-            foreach(ASM ${ARM_ASMS_NEON_DOTPROD})
-                set(ASM_SRC ${CMAKE_CURRENT_SOURCE_DIR}/common/aarch64/${ASM})
-                list(APPEND ASM_SRCS ${ASM_SRC})
-                list(APPEND ASM_OBJS ${ASM}.${SUFFIX})
-                add_custom_command(
-                    OUTPUT ${ASM}.${SUFFIX}
-                    COMMAND ${CMAKE_CXX_COMPILER}
-                    ARGS ${ARM_ARGS} ${ASM_FLAGS} ${AARCH64_NEON_DOTPROD_FLAG} -c ${ASM_SRC} -o ${ASM}.${SUFFIX}
-                    DEPENDS ${ASM_SRC})
-            endforeach()
-        endif()
-        if(CPU_HAS_SVE)
-            foreach(ASM ${ARM_ASMS_SVE})
-                set(ASM_SRC ${CMAKE_CURRENT_SOURCE_DIR}/common/aarch64/${ASM})
-                list(APPEND ASM_SRCS ${ASM_SRC})
-                list(APPEND ASM_OBJS ${ASM}.${SUFFIX})
-                add_custom_command(
-                    OUTPUT ${ASM}.${SUFFIX}
-                    COMMAND ${CMAKE_CXX_COMPILER}
-                    ARGS ${ARM_ARGS} ${ASM_FLAGS} ${AARCH64_SVE_FLAG} -c ${ASM_SRC} -o ${ASM}.${SUFFIX}
-                    DEPENDS ${ASM_SRC})
-            endforeach()
-        endif()
-        if(CPU_HAS_SVE2)
-            foreach(ASM ${ARM_ASMS_SVE2})
-                set(ASM_SRC ${CMAKE_CURRENT_SOURCE_DIR}/common/aarch64/${ASM})
-                list(APPEND ASM_SRCS ${ASM_SRC})
-                list(APPEND ASM_OBJS ${ASM}.${SUFFIX})
-                add_custom_command(
-                    OUTPUT ${ASM}.${SUFFIX}
-                    COMMAND ${CMAKE_CXX_COMPILER}
-                    ARGS ${ARM_ARGS} ${ASM_FLAGS} ${AARCH64_SVE2_FLAG} -c ${ASM_SRC} -o ${ASM}.${SUFFIX}
-                    DEPENDS ${ASM_SRC})
-            endforeach()
-        endif()
-        if(CPU_HAS_SVE2_BITPERM)
-            foreach(ASM ${ARM_ASMS_SVE2_BITPERM})
-                set(ASM_SRC ${CMAKE_CURRENT_SOURCE_DIR}/common/aarch64/${ASM})
-                list(APPEND ASM_SRCS ${ASM_SRC})
-                list(APPEND ASM_OBJS ${ASM}.${SUFFIX})
-                add_custom_command(
-                    OUTPUT ${ASM}.${SUFFIX}
-                    COMMAND ${CMAKE_CXX_COMPILER}
-                    ARGS ${ARM_ARGS} ${ASM_FLAGS} ${AARCH64_SVE2_BITPERM_FLAG} -c ${ASM_SRC} -o ${ASM}.${SUFFIX}
-                    DEPENDS ${ASM_SRC})
-            endforeach()
-        endif()
     elseif(RISCV64 OR CROSS_COMPILE_RISCV64)
     # compile RISCV64 arch asm files here
-        enable_language(ASM)
         foreach(ASM ${RISCV64_ASMS})
-            set(ASM_SRC ${CMAKE_CURRENT_SOURCE_DIR}/common/riscv64/${ASM})
-            list(APPEND ASM_SRCS ${ASM_SRC})
-            list(APPEND ASM_OBJS ${ASM}.${SUFFIX})
-            add_custom_command(
-                OUTPUT ${ASM}.${SUFFIX}
-                COMMAND ${CMAKE_CXX_COMPILER}
-                ARGS ${RISCV64_ARGS} ${ASM_FLAGS} -c ${ASM_SRC} -o ${ASM}.${SUFFIX}
-                DEPENDS ${ASM_SRC})
+            list(APPEND ASM_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/common/riscv64/${ASM})
         endforeach()
     elseif(X86)
     # compile X86 arch asm files here
@@ -1051,17 +985,22 @@ if((MSVC_IDE OR XCODE OR GCC) AND ENABLE_ASSEMBLY)
         endforeach()
     elseif(LOONGARCH64 AND NOT HIGH_BIT_DEPTH)
     # compile LOONGARCH arch asm files here
-        enable_language(ASM)
         foreach(ASM ${LOONGARCH64_ASMS})
-            set(ASM_SRC ${CMAKE_CURRENT_SOURCE_DIR}/common/loongarch64/${ASM})
-            list(APPEND ASM_SRCS ${ASM_SRC})
-            list(APPEND ASM_OBJS ${ASM}.${SUFFIX})
-            add_custom_command(
-                OUTPUT ${ASM}.${SUFFIX}
-                COMMAND ${CMAKE_CXX_COMPILER}
-                ARGS ${LOONGARCH64_ARGS} -c ${ASM_SRC} -o ${ASM}.${SUFFIX}
-                DEPENDS ${ASM_SRC})
+            list(APPEND ASM_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/common/loongarch64/${ASM})
         endforeach()
+    endif()
+    if(NOT X86 AND ASM_SRCS)
+        if(NOT CMAKE_ASM_COMPILER_TARGET)
+            if(CMAKE_C_COMPILER_TARGET)
+                set(CMAKE_ASM_COMPILER_TARGET "${CMAKE_C_COMPILER_TARGET}")
+            elseif(CMAKE_CXX_COMPILER_TARGET)
+                set(CMAKE_ASM_COMPILER_TARGET "${CMAKE_CXX_COMPILER_TARGET}")
+            endif()
+        endif()
+        enable_language(ASM)
+        add_library(x265_asm OBJECT ${ASM_SRCS})
+        target_compile_options(x265_asm PRIVATE ${ASM_FLAGS} ${RISCV64_ARGS})
+        set(ASM_OBJS $<TARGET_OBJECTS:x265_asm>)
     endif()
 endif()
 source_group(ASM FILES ${ASM_SRCS})
@@ -1072,7 +1011,12 @@ source_group(ASM FILES ${ASM_SRCS})
 # then reads a half written object. Generate them from a single target that the
 # consumers depend on, so they are complete before anything links them.
 if(ASM_OBJS)
-    add_custom_target(x265-asm DEPENDS ${ASM_OBJS})
+    if(TARGET x265_asm)
+        add_custom_target(x265-asm)
+        add_dependencies(x265-asm x265_asm)
+    else()
+        add_custom_target(x265-asm DEPENDS ${ASM_OBJS})
+    endif()
 endif()
 
 if(ENABLE_HDR10_PLUS)
