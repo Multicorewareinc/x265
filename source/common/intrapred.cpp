@@ -105,7 +105,7 @@ void intra_pred_ang_c(pixel* dst, intptr_t dstStride, const pixel *srcPix0, int 
     int width2 = width << 1;
     // Flip the neighbours in the horizontal case.
     int horMode = dirMode < 18;
-    pixel neighbourBuf[129];
+    pixel neighbourBuf[4 * width + 1];
     const pixel *srcPix = srcPix0;
 
     if (horMode)
@@ -144,7 +144,7 @@ void intra_pred_ang_c(pixel* dst, intptr_t dstStride, const pixel *srcPix0, int 
     else // Angular prediction.
     {
         // Get the reference pixels. The reference base is the first pixel to the top (neighbourBuf[1]).
-        pixel refBuf[64];
+        pixel refBuf[4 * width + 1];
         const pixel *ref;
 
         // Use the projected left neighbours and the top neighbours.
@@ -243,16 +243,19 @@ void setupIntraPrimitives_c(EncoderPrimitives& p)
     p.cu[BLOCK_8x8].intra_filter = intraFilter<8>;
     p.cu[BLOCK_16x16].intra_filter = intraFilter<16>;
     p.cu[BLOCK_32x32].intra_filter = intraFilter<32>;
+    p.cu[BLOCK_64x64].intra_filter = intraFilter<64>;
 
     p.cu[BLOCK_4x4].intra_pred[PLANAR_IDX] = planar_pred_c<2>;
     p.cu[BLOCK_8x8].intra_pred[PLANAR_IDX] = planar_pred_c<3>;
     p.cu[BLOCK_16x16].intra_pred[PLANAR_IDX] = planar_pred_c<4>;
     p.cu[BLOCK_32x32].intra_pred[PLANAR_IDX] = planar_pred_c<5>;
+    p.cu[BLOCK_64x64].intra_pred[PLANAR_IDX] = planar_pred_c<6>;
 
     p.cu[BLOCK_4x4].intra_pred[DC_IDX] = intra_pred_dc_c<4>;
     p.cu[BLOCK_8x8].intra_pred[DC_IDX] = intra_pred_dc_c<8>;
     p.cu[BLOCK_16x16].intra_pred[DC_IDX] = intra_pred_dc_c<16>;
     p.cu[BLOCK_32x32].intra_pred[DC_IDX] = intra_pred_dc_c<32>;
+    p.cu[BLOCK_64x64].intra_pred[DC_IDX] = intra_pred_dc_c<64>;
 
     for (int i = 2; i < NUM_INTRA_MODE; i++)
     {
@@ -260,11 +263,13 @@ void setupIntraPrimitives_c(EncoderPrimitives& p)
         p.cu[BLOCK_8x8].intra_pred[i] = intra_pred_ang_c<8>;
         p.cu[BLOCK_16x16].intra_pred[i] = intra_pred_ang_c<16>;
         p.cu[BLOCK_32x32].intra_pred[i] = intra_pred_ang_c<32>;
+        p.cu[BLOCK_64x64].intra_pred[i] = intra_pred_ang_c<64>;
     }
 
     p.cu[BLOCK_4x4].intra_pred_allangs = all_angs_pred_c<2>;
     p.cu[BLOCK_8x8].intra_pred_allangs = all_angs_pred_c<3>;
     p.cu[BLOCK_16x16].intra_pred_allangs = all_angs_pred_c<4>;
     p.cu[BLOCK_32x32].intra_pred_allangs = all_angs_pred_c<5>;
+    p.cu[BLOCK_64x64].intra_pred_allangs = all_angs_pred_c<6>;
 }
 }
