@@ -1109,10 +1109,22 @@ endif()
 if(NOT MSVC)
     set_target_properties(x265-static PROPERTIES OUTPUT_NAME x265)
 endif()
-if(EXTRA_LIB)
+# In the normal multilib configuration the merged static archive already has
+# the EXTRA_LIB members. Do not also propagate the original archives to every
+# consumer: linking both copies is redundant and can break MSVC debug links.
+if(EXTRA_LIB AND (NOT ENABLE_MULTILIB OR NOT "${EXTRA_LIB}" STREQUAL "${_multilib_extra_lib}"))
     target_link_libraries(x265-static ${EXTRA_LIB})
 endif()
 if(ENABLE_MULTILIB)
+    # Keep the combined archive in sync even when only high-bit-depth sources
+    # change. See the generated source's custom command in multilib.cmake.
+    target_sources(x265-static PRIVATE "${_multilib_link_anchor}")
+    # MSVC's librarian updates an existing /OUT archive instead of replacing
+    # it. Remove the previously merged library so a rebuild starts with only
+    # the current 8-bit objects rather than retaining stale members.
+    add_custom_command(TARGET x265-static PRE_LINK
+        COMMAND "${CMAKE_COMMAND}" -E remove -f "$<TARGET_FILE:x265-static>"
+        VERBATIM)
     # Statically merge the 10/12-bit archives into the 8-bit API archive so
     # that consumers only need to link against a single library. This runs
     # for shared builds as well: the static library is built and installed
@@ -1122,8 +1134,8 @@ if(ENABLE_MULTILIB)
         COMMAND "${CMAKE_COMMAND}"
             "-DOUTPUT=$<TARGET_FILE:x265-static>"
             "-DINPUT1=$<TARGET_FILE:x265-static>"
-            "-DINPUT2=${CMAKE_CURRENT_BINARY_DIR}/multilib/10bit/${_multilib_archive_name}"
-            "-DINPUT3=${CMAKE_CURRENT_BINARY_DIR}/multilib/12bit/${_multilib_archive_name}"
+            "-DINPUT2=${CMAKE_CURRENT_BINARY_DIR}/multilib/10bit/${_multilib_archive_subdir}${_multilib_archive_name}"
+            "-DINPUT3=${CMAKE_CURRENT_BINARY_DIR}/multilib/12bit/${_multilib_archive_subdir}${_multilib_archive_name}"
             "-DARCHIVER=${_multilib_archiver}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/x265-merge.cmake"
         VERBATIM)

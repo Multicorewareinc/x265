@@ -24,14 +24,14 @@ if(CMAKE_VERSION VERSION_LESS 3.10)
         "scripts to build the multi-bit-depth library with older CMake.")
 endif()
 
-# Append "-D<var>=<value>" to the argument list, escaping the list separator.
-# Semicolons cannot be stored in list elements, so a value containing a list
-# (e.g. CMAKE_OSX_ARCHITECTURES=arm64;x86_64 or ANDROID_ABI with several ABIs)
-# is escaped to "\;" here and arrives at the nested configure as a single
-# argument with the semicolons restored.
+# Append "-D<var>=<value>" to the argument list, preserving list values. A
+# backslash-escaped semicolon is unescaped again when the command is generated,
+# splitting CMAKE_OSX_ARCHITECTURES=arm64;x86_64 into two arguments. The
+# $<SEMICOLON> generator expression survives list processing and expands only
+# when the custom command argument is emitted.
 function(x265_multilib_append_d list_var var)
     if(DEFINED ${var} AND NOT "${${var}}" STREQUAL "")
-        string(REPLACE ";" "\\;" _value "${${var}}")
+        string(REPLACE ";" "$<SEMICOLON>" _value "${${var}}")
         list(APPEND ${list_var} "-D${var}=${_value}")
         set(${list_var} "${${list_var}}" PARENT_SCOPE)
     endif()
@@ -81,19 +81,27 @@ if(CMAKE_CROSSCOMPILING AND DEFINED CMAKE_SYSTEM_NAME)
     # cross-compiling mode
     list(APPEND _multilib_common_args "-DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}")
 endif()
-# Inherit this project's build options, including the CPU feature switches so
-# that all bit depths are compiled with the same instruction sets
-# (STATIC_LINK_CRT matters too: mixing /MT and /MD objects fails with LNK2038
-# on MSVC). The architecture-specific options are only declared on their
-# target platform, hence the DEFINED check.
+# Inherit this project's build options: the CPU feature switches and code
+# generation options so that all bit depths are compiled with the same
+# instruction sets and hardening, and the debugging/profiling switches so the
+# sub-builds match the parent (STATIC_LINK_CRT matters too: mixing /MT and /MD
+# objects fails with LNK2038 on MSVC). The architecture-specific options are
+# only declared on their target platform, hence the DEFINED check.
 foreach(_option IN ITEMS ENABLE_ASSEMBLY ENABLE_PIC ENABLE_LIBNUMA
                            STATIC_LINK_CRT ENABLE_HDR10_PLUS ENABLE_SVT_HEVC
                            ENABLE_LIBVMAF ENABLE_ALPHA ENABLE_MULTIVIEW
-                           ENABLE_SCC_EXT NATIVE_BUILD
-                           AARCH64_RUNTIME_CPU_DETECT ENABLE_NEON
+                           ENABLE_SCC_EXT CHECKED_BUILD
+                           ENABLE_AGGRESSIVE_CHECKS DETAILED_CU_STATS
+                           ENABLE_PPA ENABLE_VTUNE
+                           WARNINGS_AS_ERRORS FPROFILE_GENERATE FPROFILE_USE
+                           NATIVE_BUILD NO_ATOMICS WINXP_SUPPORT ENABLE_CET
+                           AARCH64_RUNTIME_CPU_DETECT
+                           AARCH64_WARNINGS_AS_ERRORS ENABLE_NEON
                            ENABLE_NEON_DOTPROD ENABLE_NEON_I8MM ENABLE_SVE
                            ENABLE_SVE2 ENABLE_SVE2_BITPERM
-                           RISCV64_RUNTIME_CPU_DETECT ENABLE_RVV)
+                           RISCV64_RUNTIME_CPU_DETECT ENABLE_RVV
+                           LOONGARCH64_RUNTIME_CPU_DETECT ENABLE_ALTIVEC
+                           CPU_POWER8)
     if(DEFINED ${_option})
         list(APPEND _multilib_common_args "-D${_option}=${${_option}}")
     endif()
@@ -102,6 +110,11 @@ endforeach()
 # the same settings as the parent
 x265_multilib_append_d(_multilib_common_args CMAKE_C_FLAGS)
 x265_multilib_append_d(_multilib_common_args CMAKE_CXX_FLAGS)
+x265_multilib_append_d(_multilib_common_args FSANITIZE)
+foreach(_config IN ITEMS DEBUG RELEASE MINSIZEREL RELWITHDEBINFO)
+    x265_multilib_append_d(_multilib_common_args CMAKE_C_FLAGS_${_config})
+    x265_multilib_append_d(_multilib_common_args CMAKE_CXX_FLAGS_${_config})
+endforeach()
 # The MSVC runtime selection must match the parent's (LNK2038 otherwise)
 if(MSVC)
     x265_multilib_append_d(_multilib_common_args CMAKE_MSVC_RUNTIME_LIBRARY)
@@ -183,16 +196,39 @@ endif()
 # are part of the glob and the configure step would re-run on every build, so
 # it is only used when the build tree is outside source/.
 string(FIND "${CMAKE_CURRENT_BINARY_DIR}/" "${CMAKE_CURRENT_SOURCE_DIR}/" _multilib_pos)
+set(_multilib_source_glob "${_multilib_source}/*")
+if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_CURRENT_BINARY_DIR)
+    # In a true in-source build every file starts with the build prefix. Track
+    # only source-like files and exclude the nested build trees below instead
+    # of filtering out all sources along with the generated files.
+    set(_multilib_source_glob
+        "${_multilib_source}/CMakeLists.txt"
+        "${_multilib_source}/*.c" "${_multilib_source}/*.cc"
+        "${_multilib_source}/*.cpp" "${_multilib_source}/*.cxx"
+        "${_multilib_source}/*.h" "${_multilib_source}/*.hh"
+        "${_multilib_source}/*.hpp" "${_multilib_source}/*.hxx"
+        "${_multilib_source}/*.asm" "${_multilib_source}/*.s"
+        "${_multilib_source}/*.S" "${_multilib_source}/*.cmake"
+        "${_multilib_source}/*.in")
+endif()
 if(CMAKE_VERSION VERSION_LESS 3.12 OR _multilib_pos EQUAL 0)
-    file(GLOB_RECURSE _multilib_depends "${_multilib_source}/*")
+    file(GLOB_RECURSE _multilib_depends ${_multilib_source_glob})
 else()
-    file(GLOB_RECURSE _multilib_depends CONFIGURE_DEPENDS "${_multilib_source}/*")
+    file(GLOB_RECURSE _multilib_depends CONFIGURE_DEPENDS ${_multilib_source_glob})
 endif()
 set(_multilib_build_prefix "${CMAKE_CURRENT_BINARY_DIR}/")
+set(_multilib_nested_prefix "${_multilib_root}/")
+set(_multilib_cmake_files_prefix "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/")
 set(_multilib_sources "")
 foreach(_dep IN LISTS _multilib_depends)
     string(FIND "${_dep}" "${_multilib_build_prefix}" _multilib_dep_pos)
-    if(NOT _multilib_dep_pos EQUAL 0)
+    string(FIND "${_dep}" "${_multilib_nested_prefix}" _multilib_nested_pos)
+    string(FIND "${_dep}" "${_multilib_cmake_files_prefix}" _multilib_cmake_files_pos)
+    if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_CURRENT_BINARY_DIR)
+        if(NOT _multilib_nested_pos EQUAL 0 AND NOT _multilib_cmake_files_pos EQUAL 0)
+            list(APPEND _multilib_sources "${_dep}")
+        endif()
+    elseif(NOT _multilib_dep_pos EQUAL 0)
         list(APPEND _multilib_sources "${_dep}")
     endif()
 endforeach()
@@ -223,23 +259,34 @@ else()
     set(_multilib_archiver "")
 endif()
 
-# Define the bit-depth sub-builds as regular targets that declare their
-# produced archive as an output, so that the build system knows how to build
-# the archives the main library links against; the main library targets depend
-# on them (see CMakeLists.txt).
+# Define the bit-depth sub-builds as regular targets; the main library targets
+# depend on them (see CMakeLists.txt). Single-config builds also declare the
+# produced archive as an output so source timestamps can skip the nested work.
 #
-# CMAKE_ARCHIVE_OUTPUT_DIRECTORY is forced so that the produced archive always
-# lands directly in the sub-build directory. Multi-config generators such as
-# Visual Studio additionally need the per-configuration variants, otherwise
-# they append a per-configuration subdirectory to the archive path.
+# CMAKE_ARCHIVE_OUTPUT_DIRECTORY is forced so that the produced archive is
+# independent of the library's install location. Multi-config generators append
+# their configuration name to this path; those per-configuration directories
+# are required to prevent Debug and Release builds from overwriting each other.
 function(x265_define_multilib_variant name dir archive)
-    set(_archive_dir_args "-DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=${dir}")
-    if(CMAKE_CONFIGURATION_TYPES)
-        # Multi-config generators (Visual Studio, Xcode) append a per-config
-        # subdirectory to the generic path unless the per-config path is set
-        foreach(_config IN ITEMS DEBUG RELEASE MINSIZEREL RELWITHDEBINFO)
-            list(APPEND _archive_dir_args "-DCMAKE_ARCHIVE_OUTPUT_DIRECTORY_${_config}=${dir}")
-        endforeach()
+    # -S/-B were added in CMake 3.13; the earlier releases support the
+    # long-standing (undocumented) -H/-B spelling
+    if(CMAKE_VERSION VERSION_LESS 3.13)
+        set(_multilib_source_args "-H${_multilib_source}" "-B${dir}")
+    else()
+        set(_multilib_source_args -S "${_multilib_source}" -B "${dir}")
+    endif()
+    # Remove stale per-config values from an earlier revision before setting
+    # the generic path; otherwise cached values suppress the config subdirs.
+    set(_archive_dir_args "-UCMAKE_ARCHIVE_OUTPUT_DIRECTORY_*"
+        "-DCMAKE_ARCHIVE_OUTPUT_DIRECTORY=${dir}")
+    # Unlike Ninja, Makefiles do not rebuild when only a custom command's
+    # command line changes. Keep a content-stable stamp for the configure
+    # arguments so changing a forwarded option also invalidates the archive.
+    string(SHA256 _multilib_args_hash
+        "${_multilib_source_args};${_multilib_common_args};${ARGN};${_archive_dir_args}")
+    set(_multilib_args_file "${dir}/x265-multilib-args.txt")
+    if(NOT CMAKE_CONFIGURATION_TYPES)
+        file(GENERATE OUTPUT "${_multilib_args_file}" CONTENT "${_multilib_args_hash}\n")
     endif()
     if(_multilib_native_build)
         set(_multilib_build_command "${CMAKE_MAKE_PROGRAM}" -C "${dir}")
@@ -250,32 +297,81 @@ function(x265_define_multilib_variant name dir archive)
         set(_multilib_build_command "${CMAKE_COMMAND}" --build "${dir}"
             --config "$<CONFIG>" ${_multilib_cmake_parallel_args})
     endif()
-    add_custom_command(
-        OUTPUT "${archive}"
-        # The nested configure is driven through the documented `cmake -E
-        # make_directory`/`-E chdir` tools with the source given as a
-        # positional argument instead of `cmake -S/-B`, which needs CMake 3.13;
-        # `cmake -E chdir` does not create the build directory, hence the
-        # explicit make_directory
-        COMMAND "${CMAKE_COMMAND}" -E make_directory "${dir}"
-        COMMAND "${CMAKE_COMMAND}" -E chdir "${dir}" "${CMAKE_COMMAND}"
-                ${_multilib_common_args} ${ARGN}
-                ${_archive_dir_args}
-                "${_multilib_source}"
-        # Run the nested build with an empty MAKEFLAGS so the nested make does
-        # not try to join the parent's jobserver ("resetting jobserver mode"
-        # warnings); the -j option gives it its own parallelism
-        COMMAND "${CMAKE_COMMAND}" -E env MAKEFLAGS= ${_multilib_build_command}
-        DEPENDS ${_multilib_depends}
-        COMMENT "Building the ${name} x265 sub-library"
-        VERBATIM)
-    add_custom_target(${name} DEPENDS "${archive}")
+    # The nested build tree is named with -S/-B on CMake 3.13+ and with the
+    # long-standing -H/-B on 3.10-3.12. A positional source argument is not
+    # used: when the source directory contains a CMakeCache.txt (in-source
+    # parent build), CMake mistakes it for an existing build directory and
+    # configures the parent tree instead of the sub-build.
+    set(_multilib_configure_command "${CMAKE_COMMAND}" ${_multilib_source_args}
+        ${_multilib_common_args} ${ARGN} ${_archive_dir_args})
+    # Run the nested build with an empty MAKEFLAGS so the nested make does not
+    # try to join the parent's jobserver ("resetting jobserver mode" warnings).
+    set(_multilib_run_build_command
+        "${CMAKE_COMMAND}" -E env MAKEFLAGS= ${_multilib_build_command})
+    if(CMAKE_CONFIGURATION_TYPES)
+        # A multi-config target cannot select its per-config archive through a
+        # single OUTPUT file (generator expressions in OUTPUT require a newer
+        # CMake than this project's minimum). Invoke the nested native build
+        # every time and let it do its own incremental up-to-date checks. This
+        # also handles switching configurations in either direction correctly.
+        # Concrete byproducts work on CMake 3.10+; $<CONFIG> is not allowed in
+        # BYPRODUCTS until 3.20. List every configuration so Ninja Multi-Config
+        # has a generating rule for whichever configuration is requested.
+        set(_multilib_byproducts "")
+        foreach(_multilib_config IN LISTS CMAKE_CONFIGURATION_TYPES)
+            list(APPEND _multilib_byproducts "${dir}/${_multilib_config}/${_multilib_archive_name}")
+        endforeach()
+        add_custom_target(${name}
+            BYPRODUCTS ${_multilib_byproducts}
+            COMMAND ${_multilib_configure_command}
+            COMMAND ${_multilib_run_build_command}
+            COMMENT "Building the ${name} x265 sub-library"
+            VERBATIM)
+    else()
+        add_custom_command(
+            OUTPUT "${archive}"
+            COMMAND ${_multilib_configure_command}
+            COMMAND ${_multilib_run_build_command}
+            # Keep the declared output newer than the source/config
+            # dependencies even if the nested build has nothing to recompile.
+            COMMAND "${CMAKE_COMMAND}" -E touch "${archive}"
+            DEPENDS "${_multilib_args_file}" ${_multilib_depends}
+            COMMENT "Building the ${name} x265 sub-library"
+            VERBATIM)
+        add_custom_target(${name} DEPENDS "${archive}")
+    endif()
 endfunction()
 
+set(_multilib_archive_subdir "")
+if(CMAKE_CONFIGURATION_TYPES)
+    set(_multilib_archive_subdir "$<CONFIG>/")
+endif()
 x265_define_multilib_variant(x265-multilib-10bit "${_multilib_root}/10bit"
-    "${_multilib_root}/10bit/${_multilib_archive_name}" "-DHIGH_BIT_DEPTH=ON")
+    "${_multilib_root}/10bit/${_multilib_archive_subdir}${_multilib_archive_name}" "-DHIGH_BIT_DEPTH=ON")
 x265_define_multilib_variant(x265-multilib-12bit "${_multilib_root}/12bit"
-    "${_multilib_root}/12bit/${_multilib_archive_name}" "-DHIGH_BIT_DEPTH=ON" "-DMAIN12=ON")
+    "${_multilib_root}/12bit/${_multilib_archive_subdir}${_multilib_archive_name}" "-DHIGH_BIT_DEPTH=ON" "-DMAIN12=ON")
+
+# target_link_libraries() only propagates static archives to consumers; it
+# does not make them inputs of another static archive. Generate one tiny anchor
+# source whenever a sub-archive changes, on every generator, so x265-static is
+# re-archived and runs its merge POST_BUILD step. OBJECT_DEPENDS alone cannot
+# provide this dependency for Visual Studio and Xcode.
+set(_multilib_link_anchor "${_multilib_root}/x265-multilib-link.cpp")
+set(_multilib_link_anchor_template "${_multilib_link_anchor}.in")
+file(GENERATE OUTPUT "${_multilib_link_anchor_template}" CONTENT
+    "// Generated by multilib.cmake.\nvoid x265_multilib_archive_dependency_anchor() {}\n")
+add_custom_command(
+    OUTPUT "${_multilib_link_anchor}"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${_multilib_link_anchor_template}" "${_multilib_link_anchor}"
+    COMMAND "${CMAKE_COMMAND}" -E touch "${_multilib_link_anchor}"
+    DEPENDS "${_multilib_root}/10bit/${_multilib_archive_subdir}${_multilib_archive_name}"
+            "${_multilib_root}/12bit/${_multilib_archive_subdir}${_multilib_archive_name}"
+            "${_multilib_link_anchor_template}"
+    COMMENT "Synchronizing the x265 multilib archive dependency"
+    VERBATIM)
+set_source_files_properties("${_multilib_link_anchor}" PROPERTIES GENERATED TRUE)
+
 # Build the bit-depth sub-libraries sequentially (like build/linux/multilib.sh)
 # so that a parallel parent build does not run two nested builds at once
 add_dependencies(x265-multilib-12bit x265-multilib-10bit)
@@ -286,7 +382,15 @@ add_dependencies(x265-multilib-12bit x265-multilib-10bit)
 # discarded; the cache entries are marked as owned so they can be cleared when
 # ENABLE_MULTILIB is turned back OFF in the same build tree.
 set(_multilib_extra_lib
+    "${_multilib_root}/10bit/${_multilib_archive_subdir}${_multilib_archive_name};${_multilib_root}/12bit/${_multilib_archive_subdir}${_multilib_archive_name}")
+# Migrate our own cache from the earlier layout without per-config subdirs.
+# Only an explicitly owned value may be replaced; a user-provided EXTRA_LIB
+# must still take the warning path below and remain untouched.
+set(_multilib_legacy_extra_lib
     "${_multilib_root}/10bit/${_multilib_archive_name};${_multilib_root}/12bit/${_multilib_archive_name}")
+if(X265_MULTILIB_CACHE_OWNED AND "${EXTRA_LIB}" STREQUAL "${_multilib_legacy_extra_lib}")
+    set(EXTRA_LIB "")
+endif()
 if(EXTRA_LIB AND NOT "${EXTRA_LIB}" STREQUAL "${_multilib_extra_lib}")
     message(WARNING "ENABLE_MULTILIB is enabled but EXTRA_LIB is already set; the multilib archives will not be linked automatically")
     if(X265_MULTILIB_CACHE_OWNED)
