@@ -470,7 +470,7 @@ void intra_pred_ang9_neon(pixel *dst, intptr_t dstStride, const pixel *srcPix0,
                           int /*dirMode*/, int /*bFilter*/)
 {
     const int width2 = width << 1;
-    const uint8_t *left = (const uint8_t *)(srcPix0 + width2 + 1);
+    const uint8_t *left = srcPix0 + width2 + 1;
 
     ALIGN_VAR_16(uint8_t, f0arr[32]);
     ALIGN_VAR_16(uint8_t, f1arr[32]);
@@ -548,7 +548,7 @@ void intra_pred_ang_hor_pos_neon(pixel *dst, intptr_t dstStride, const pixel *sr
                                  int /*dirMode*/, int /*bFilter*/)
 {
     const int width2 = width << 1;
-    const uint8_t *left = (const uint8_t *)(srcPix0 + width2 + 1);
+    const uint8_t *left = srcPix0 + width2 + 1;
 
     ALIGN_VAR_16(uint8_t, idx0[32]);
     ALIGN_VAR_16(uint8_t, idx1[32]);
@@ -664,7 +664,7 @@ void intra_pred_ang11_neon(pixel *dst, intptr_t dstStride, const pixel *srcPix0,
     pixel refBuf[33];
     refBuf[0] = srcPix0[0];
     memcpy(refBuf + 1, left, width * sizeof(pixel));
-    const uint8_t *ref = (const uint8_t *)refBuf;
+    const uint8_t *ref = refBuf;
 
     ALIGN_VAR_16(uint8_t, f0arr[32]);
     ALIGN_VAR_16(uint8_t, f1arr[32]);
@@ -788,7 +788,7 @@ void intra_pred_ang_hor8_neon(pixel *dst, intptr_t dstStride, const pixel *srcPi
         f1arr[x] = (uint8_t)frac;
     }
 
-    const uint8x16_t tbl = vld1q_u8((const uint8_t *)(ref_pix + minOffset));
+    const uint8x16_t tbl = vld1q_u8(ref_pix + minOffset);
     const uint8x8_t f0 = vld1_u8(f0arr);
     const uint8x8_t f1 = vld1_u8(f1arr);
     const uint8x8_t base = vld1_u8(idxBase);
@@ -832,8 +832,8 @@ void intra_pred_ang_hor16_neon(pixel *dst, intptr_t dstStride, const pixel *srcP
     for (int x = 0; x < 16; x++)
     {
         angleSum += angle;
-        ang_pred_row_u8_neon((const uint8_t *)(ref_pix + (angleSum >> 5)), angleSum & 31,
-                             (uint8_t *)(tmp + x * 16));
+        ang_pred_row_u8_neon(ref_pix + (angleSum >> 5), angleSum & 31,
+                             tmp + x * 16);
     }
     transpose16x16(dst, tmp, dstStride, 16);
 }
@@ -853,7 +853,7 @@ void intra_pred_ang18_neon(pixel *dst, intptr_t dstStride, const pixel *srcPix,
         ref_pix[-2 - i] = srcPix[width2 + 1 + i];
     memcpy(&ref_pix[-1], srcPix, (width + 1) * sizeof(pixel));
 
-    const uint8_t *ref = (const uint8_t *)ref_pix;
+    const uint8_t *ref = ref_pix;
     pixel *d = dst;
     for (int y = 0; y < width; y++, d += dstStride)
     {
@@ -900,7 +900,7 @@ void intra_pred_ang_vpos_t_neon(pixel *dst, intptr_t dstStride, const pixel *src
 {
     static_assert(width == 8, "unsupported intra prediction width");
 
-    const uint8_t *ref = (const uint8_t *)(srcPix + 1);
+    const uint8_t *ref = srcPix + 1;
     ALIGN_VAR_16(uint8_t, f0arr[8]);
     ALIGN_VAR_16(uint8_t, f1arr[8]);
     for (int y = 0; y < width; y++)
@@ -1004,7 +1004,7 @@ void intra_pred_ang_vneg_t_neon(pixel *dst, intptr_t dstStride, const pixel *src
         ref_pix[-2 - i] = srcPix[width2 + (invAngleSum >> 8)];
     }
     memcpy(&ref_pix[-1], srcPix, (width + 1) * sizeof(pixel));
-    const uint8_t *ref = (const uint8_t *)ref_pix;
+    const uint8_t *ref = ref_pix;
 
     ALIGN_VAR_16(uint8_t, f0arr[32]);
     ALIGN_VAR_16(uint8_t, f1arr[32]);
