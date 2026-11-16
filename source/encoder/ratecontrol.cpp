@@ -2044,8 +2044,8 @@ double RateControl::tuneQScaleForGrain(double rcOverflow)
 }
 
 /* QP offset of a B-pyramid layer above its anchors, derived from --pbratio
- * (pbOffset = 6 * log2(pbratio)): the deepest layer of the mini-GOP sits 2 * pbOffset
- * above the anchors and each shallower layer pbOffset / 2 less, down to 0. Layer 0
+ * (pbOffset = 6 * log2(pbratio)): layer 1 sits pbOffset / 2 above the anchors and
+ * each deeper layer pbOffset / 2 more, up to 2 * pbOffset at layer 4 and below. Layer 0
  * is an I/P anchor, all scaled by --b-pyramid-qp-scale. pbratio 1.0 (--tune grain,
  * --strict-cbr) or a scale of 0 keeps every layer at the anchor QP. */
 static double bPyramidQpOffset(double pbOffset, double scale, int maxLayer, int layer)

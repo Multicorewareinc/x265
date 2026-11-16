@@ -1709,12 +1709,15 @@ Slice decision options
 .. option:: --b-pyramid-qp-scale <float>
 
 	Scale the QP offsets of the B-pyramid layers over their anchors in every
-	rate control mode. 0 codes the B frames at the anchor QP, values between 0
-	and 1 flatten the pyramid, values above 1 make it steeper, and the B frames
-	never get a lower QP than their anchors while :option:`--pbratio` is at
-	least 1. Rate control's bit estimates for B frames (2-pass planning, VBV
-	lookahead) use the same scaled offsets. Only used with
-	:option:`--b-pyramid` 2. Range 0 to 2. Default 1.0
+	rate control mode. The offsets come from :option:`--pbratio`: layer 1 of
+	a mini-GOP sits 0.5 * 6 * log2(pbratio) above the anchors and each deeper
+	layer that much more, up to 2 * 6 * log2(pbratio) at layer 4, however
+	deep the mini-GOP's pyramid is; this value multiplies all of them. 0 codes
+	the B frames at the anchor QP, values between 0 and 1 flatten the pyramid,
+	values above 1 make it steeper, and the B frames never get a lower QP than
+	their anchors while :option:`--pbratio` is at least 1. Rate control's bit
+	estimates for B frames (2-pass planning, VBV lookahead) use the same scaled
+	offsets. Only used with :option:`--b-pyramid` 2. Range 0 to 2. Default 1.0
 
 .. option:: --force-flush <integer>
 
