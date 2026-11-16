@@ -1377,12 +1377,12 @@ void FrameEncoder::compressFrame(int layer)
 
     if (filler > 0)
     {
-        filler = (filler - FILLER_OVERHEAD * 8) >> 3;
+        filler -= FILLER_OVERHEAD * 8;
         m_bs.resetBits();
         while (filler > 0)
         {
             m_bs.write(0xff, 8);
-            filler--;
+            filler -= 8;
         }
         m_bs.writeByteAlignment();
         /* FD unit must carry the same temporalId as the associated frame */
