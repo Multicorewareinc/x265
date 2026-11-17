@@ -30,7 +30,7 @@ add_library(encoder OBJECT ../x265.h
     search.cpp search.h
     bitcost.cpp bitcost.h rdcost.h
     motion.cpp motion.h
-    slicetype.cpp slicetype.h
+    slicetype.cpp slicetype.h bpyramid.h
     frameencoder.cpp frameencoder.h
     framefilter.cpp framefilter.h
     level.cpp level.h

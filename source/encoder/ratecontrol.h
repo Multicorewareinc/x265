@@ -27,6 +27,7 @@
 #define X265_RATECONTROL_H
 
 #include "common.h"
+#include "bpyramid.h"
 #include "sei.h"
 #include "ringmem.h"
 #include "threading.h"
@@ -47,29 +48,6 @@ struct SPS;
 #define MIN_AMORTIZE_FRAME 10
 #define MIN_AMORTIZE_FRACTION 0.2
 #define CLIP_DURATION(f) x265_clip3(MIN_FRAME_DURATION, MAX_FRAME_DURATION, f)
-
-/* Deepest hierarchical B-pyramid layer of a mini-GOP of this length (POC distance between its
- * anchors), following the recursion of pushBPyramidRange(): 2 or 3 tops out at layer 1, 4 to 7
- * at layer 2, 8 to 15 at layer 3 */
-static inline int bPyramidMaxLayer(int span, int layer = 1)
-{
-    if (span <= 3)
-        return layer;
-    int mid = span / 2;
-    return X265_MAX(bPyramidMaxLayer(mid, layer + 1), bPyramidMaxLayer(span - mid, layer + 1));
-}
-
-/* Pyramid layer pushBPyramidRange() gives the B frame at list index idx of the
- * range [p0, p1), where list[p1 - 1] is the anchor closing the range */
-static inline int bPyramidLayerAt(int p0, int p1, int idx, int layer = 1)
-{
-    if (p1 - p0 <= 3)
-        return layer;
-    int mid = p0 + (p1 - p0) / 2;
-    if (idx == mid - 1)
-        return layer;
-    return idx < mid - 1 ? bPyramidLayerAt(p0, mid, idx, layer + 1) : bPyramidLayerAt(mid, p1, idx, layer + 1);
-}
 
 /* Exponent of --pbratio giving a B-pyramid layer's qscale relative to its anchors
  * (its QP offset is this times 6 * log2(pbratio)), anchored at the top of the pyramid:

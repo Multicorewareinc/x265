@@ -25,6 +25,7 @@
 #include "common.h"
 #include "slice.h"
 #include "level.h"
+#include "bpyramid.h"
 #include "svt.h"
 
 namespace X265_NS {
@@ -335,24 +336,6 @@ void determineLevel(const x265_param &param, VPS& vps)
              profbuf, levels[i].name, tiers[vps.ptl.tierFlag]);
 }
 
-/* Display indices (1..p1-1) of the B frames between anchors p0 and p1 in the coding order of
- * pushBPyramidRange() in slicetype.cpp: middle B-ref first, then both halves recursively */
-static void hierarchicalCodingOrder(int p0, int p1, int* order, int& count)
-{
-    if (p1 - p0 <= 1)
-        return;
-    if (p1 - p0 <= 3)
-    {
-        for (int i = p0 + 1; i < p1; i++)
-            order[count++] = i;
-        return;
-    }
-    int mid = p0 + (p1 - p0) / 2;
-    order[count++] = mid;
-    hierarchicalCodingOrder(p0, mid, order, count);
-    hierarchicalCodingOrder(mid, p1, order, count);
-}
-
 /* Largest number of pictures that precede a picture in decoding order and follow it in output
  * order, over every mini-GOP length the lookahead can choose with the hierarchical B-pyramid */
 uint32_t hierarchicalReorderPics(int bframes)
@@ -360,10 +343,14 @@ uint32_t hierarchicalReorderPics(int bframes)
     uint32_t maxReorder = 0;
     for (int numB = 1; numB <= bframes; numB++)
     {
+        /* display indices in coding order: the anchor first, then the B frames of the pyramid */
+        BPyramidNode plan[X265_BFRAME_MAX];
         int order[X265_BFRAME_MAX + 1];
         int count = 0;
-        order[count++] = numB + 1; // the anchor is coded first
-        hierarchicalCodingOrder(0, numB + 1, order, count);
+        order[count++] = numB + 1;
+        const int numNodes = bPyramidPlan(0, numB + 1, plan);
+        for (int k = 0; k < numNodes; k++)
+            order[count++] = plan[k].b;
         for (int i = 0; i < count; i++)
         {
             uint32_t reorder = 0;
