@@ -184,6 +184,7 @@ public:
     int           m_fullQueueSize;
     int64_t       m_lastKeyframe;
     int           m_lastKeyframeNum;
+    int           m_deferredKeyType;  // keyframe type moved off a second field, for the next picture to arrive
     int           m_8x8Width;
     int           m_8x8Height;
     int           m_8x8Blocks;

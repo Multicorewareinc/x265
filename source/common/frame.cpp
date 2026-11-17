@@ -203,6 +203,30 @@ fail:
     return false;
 }
 
+int Frame::fieldOfPair() const
+{
+    if (!m_param->interlaceMode)
+        return 0;
+
+    switch (m_picStruct)
+    {
+    case PIC_STRUCT_TOP_NEXTBOTTOM:
+    case PIC_STRUCT_BOTTOM_NEXTTOP:
+        return 1;
+    case PIC_STRUCT_TOP_PREVBOTTOM:
+    case PIC_STRUCT_BOTTOM_PREVTOP:
+        return 2;
+    case PIC_STRUCT_AUTO:
+        /* With --field, fieldNum 1 is the first field of the frame; with field
+         * input, or when a library caller leaves fieldNum at 0, the even POC is. */
+        if (m_fieldNum)
+            return m_fieldNum == 1 ? 1 : 2;
+        return (m_poc & 1) ? 2 : 1;
+    default:
+        return 0;
+    }
+}
+
 bool Frame::createSubSample()
 {
 

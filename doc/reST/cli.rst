@@ -580,6 +580,19 @@ frame counts) are only applicable to the CLI application.
 	interlaced content, not a progressive frame carried as two fields
 	(PsF), which would need source_scan_type 1.
 
+	Keyframes are placed on the first field of a frame only, so that a
+	decoder starting at a keyframe gets both fields of that frame: the
+	second field follows the keyframe in decoding and output order and is
+	predicted from it or from later pictures. :option:`--keyint` and
+	:option:`--min-keyint` still count fields, one clock tick each, but a
+	keyframe interval holds whole frames. An odd :option:`--keyint` gives
+	intervals one field shorter, and a scenecut or a forced frame type on
+	a second field moves the keyframe to the next field. With
+	:option:`--radl` the RADL pictures of an IDR are whole frames as well.
+	All-intra coding (:option:`--keyint` 1) is not affected, every field
+	is a keyframe there. :option:`--chunk-start`, :option:`--chunk-end`
+	and zone starts are used as given and should be first fields.
+
 .. option:: --frame-dup, --no-frame-dup
 
 	Enable Adaptive Frame duplication. Replaces 2-3 near-identical frames with one 
@@ -1542,6 +1555,8 @@ Slice decision options
 
 	A frame is a single clock tick in constant frame rate streams. With
 	:option:`--pic-struct`, :option:`--psfile` or :option:`--frame-dup`, a frame can last up to 3 clock ticks.
+	With :option:`--interlace` a field is a single clock tick and keyframes
+	are placed on the first field of a frame only.
 
 .. option:: --min-keyint, -i <integer>
 

@@ -170,6 +170,7 @@ vtc1nw_422_ntsc.y4m,--preset ultrafast --interlace bff --field
 cut_fox_1920x1080_30.yuv,--preset slow --interlace tff --field
 cut_fox_1920x1080_30.yuv,--preset fast --interlace tff --field --bframes 0
 cut_fox_1920x1080_30.yuv,--preset fast --interlace tff --field --keyint 25
+cut_fox_1920x1080_30.yuv,--preset fast --interlace tff --field --keyint 25 --no-open-gop --radl 3
 
 #SEA Implementation Test
 silent_cif_420.y4m,--preset veryslow --me sea
