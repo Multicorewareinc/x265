@@ -1169,9 +1169,11 @@ bool RateControl::initPass2()
     uint64_t allConstBits = 0;
     uint64_t allAvailableBits = uint64_t(m_param->rc.bitrate * 1000. * m_durationDone * m_timebase);
     int startIndex, endIndex;
-    int fps = X265_MIN(m_param->keyframeMax, (int)(m_fps + 0.5));
-    int distance = fps << 1;
-    distance = distance > m_param->keyframeMax ? (m_param->keyframeMax << 1) : m_param->keyframeMax;
+    /* the windows are expressed in ticks and resolved on the entries' actual durations */
+    const int64_t keyintTicks = m_param->keyframeMax;
+    const int64_t ticksPerSecond = (int64_t)(1.0 / m_timebase + 0.5);
+    const int64_t spanTicks = X265_MIN(keyintTicks, ticksPerSecond);   /* at most one second or a GOP */
+    const int64_t distanceTicks = 2 * spanTicks > keyintTicks ? 2 * keyintTicks : keyintTicks;
     startIndex = endIndex = 0;
     double targetBits = 0;
     double expectedBits = 0;
@@ -1204,10 +1206,13 @@ bool RateControl::initPass2()
         return true;
     }
 
-    if (m_start + (fps << 1) > m_numEntries)
-    {
+    /* less than two spans of content to analyse
+     * number of ticks covered by the entries [start, end) */
+    uint64_t ticks = 0;
+    for (int i = m_start; i < m_numEntries; i++)
+        ticks += m_rce2Pass[i].frameDuration;
+    if (ticks < (uint64_t)(2 * spanTicks))
         return true;
-    }
 
     for (startIndex = m_start, endIndex = m_numEntries - 1; startIndex < endIndex; startIndex++, endIndex--)
     {
@@ -1264,8 +1269,16 @@ bool RateControl::initPass2()
         m_isGopReEncoded = false;
     }
 
-    m_start = X265_MAX(m_start, m_numEntries - distance + m_param->keyframeMax);
+    /* highest index i <= end such that the entries [i, end) cover at least ticks (0 if they never do) */
+    int i = m_numEntries;
+    const uint64_t diff = (uint64_t)(distanceTicks - keyintTicks);
 
+    ticks = 0;
+    while (i > 0 && ticks < diff)
+        ticks += m_rce2Pass[--i].frameDuration;
+
+    /* keep the last (distance - keyint) ticks of entries for the next window */
+    m_start = X265_MAX(m_start, i);
     return true;
 }
 
