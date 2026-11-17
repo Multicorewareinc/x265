@@ -2192,8 +2192,9 @@ void Lookahead::slicetypeDecide()
                 x265_log(m_param, X265_LOG_WARNING, "B-ref at frame %d incompatible with B-pyramid and %d reference frames\n",
                     frm.sliceType, m_param->maxNumReferences);
             }
-            if (((!m_param->bIntraRefresh || frm.frameNum == 0) && !bSecondField && keyintFrameDelta > m_param->keyframeMax &&
-                (!m_extendGopBoundary || keyintFrameDelta > m_param->keyframeMax + m_param->gopLookahead)) ||
+            if (((!m_param->bIntraRefresh || frm.frameNum == 0) && !bSecondField &&
+                 keyintFrameDelta > m_param->keyframeMax &&
+                 (!m_extendGopBoundary || keyintFrameDelta > m_param->keyframeMax + m_param->gopLookahead)) ||
                 (frm.frameNum == (m_param->chunkStart - 1)) || (frm.frameNum == m_param->chunkEnd))
             {
                 if (frm.sliceType == X265_TYPE_AUTO || frm.sliceType == X265_TYPE_I)
@@ -2212,15 +2213,17 @@ void Lookahead::slicetypeDecide()
                 frm.sliceType = m_param->bOpenGOP && m_lastKeyframe >= 0 ? X265_TYPE_I : X265_TYPE_IDR;
             }
             if (bSecondField && frm.frameNum != (m_param->chunkStart - 1) && frm.frameNum != m_param->chunkEnd &&
-                (frm.sliceType == X265_TYPE_IDR || (frm.sliceType == X265_TYPE_I && keyintTicksDelta > m_param->keyframeMin)))
+                (frm.sliceType == X265_TYPE_IDR ||
+                 (frm.sliceType == X265_TYPE_I && keyintTicksDelta > m_param->keyframeMin)))
             {
                 /* An IRAP on the second field of a frame leaves its first field in the previous
                  * GOP, and an IDR restarts the POC in the middle of the frame. Code this field
                  * as an inter picture and move the keyframe to the next picture, the first
                  * field of the next frame. Chunk and zone boundaries stay where they were set. */
                 if (frm.sliceTypeReq != X265_TYPE_AUTO)
-                    x265_log(m_param, X265_LOG_WARNING, "specified frame type (%d) at %d is on a second field, keyframe moved to the next field\n",
-                        frm.sliceTypeReq, frm.frameNum);
+                    x265_log(m_param, X265_LOG_WARNING,
+                             "specified frame type (%d) at %d is on a second field, keyframe moved to the next field\n",
+                             frm.sliceTypeReq, frm.frameNum);
                 if (!list[bframes + 1])
                     m_deferredKeyType = frm.sliceType;
                 else if (list[bframes + 1]->m_lowres.sliceType != X265_TYPE_IDR)
@@ -3371,8 +3374,10 @@ void Lookahead::slicetypeAnalyse(Lowres **frames, bool bKeyframe)
             int64_t lastKeyDisp = 0;
             for (int j = keyintLimit + 1; j <= numFrames; ++j)
             {
-                if (j == keyintLimit + 1 || frames[j]->dispPicCount - lastKeyDisp + (int64_t)frames[j]->durationPicCount +
-                    (int64_t)frames[j]->pairPicCount > m_param->keyframeMax)
+                if (j == keyintLimit + 1 || frames[j]->dispPicCount - lastKeyDisp +
+                                                    (int64_t)frames[j]->durationPicCount +
+                                                    (int64_t)frames[j]->pairPicCount >
+                                                m_param->keyframeMax)
                 {
                     frames[j]->sliceType = X265_TYPE_I;
                     resetStart = X265_MIN(resetStart, j + 1);
