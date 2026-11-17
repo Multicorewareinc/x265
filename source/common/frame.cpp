@@ -203,6 +203,15 @@ fail:
     return false;
 }
 
+/* Position of an interlaced field in its frame: 1 for the first field, 2 for
+ * the second, 0 for a progressive frame or a field that is not part of a pair.
+ * The most precise information available decides, in this order:
+ *   1. a pic_struct given with the input picture: a field paired with the next
+ *      field is a first field, one paired with the previous field a second
+ *      field, and a lone top or bottom field is not part of a pair;
+ *   2. the fieldNum of the input picture, which the CLI sets with --field;
+ *   3. the POC parity: with field input, or when a library caller leaves
+ *      fieldNum at 0, pictures 2n and 2n+1 are taken as the fields of a frame. */
 int Frame::fieldOfPair() const
 {
     if (!m_param->interlaceMode)
@@ -217,8 +226,6 @@ int Frame::fieldOfPair() const
     case PIC_STRUCT_BOTTOM_PREVTOP:
         return 2;
     case PIC_STRUCT_AUTO:
-        /* With --field, fieldNum 1 is the first field of the frame; with field
-         * input, or when a library caller leaves fieldNum at 0, the even POC is. */
         if (m_fieldNum)
             return m_fieldNum == 1 ? 1 : 2;
         return (m_poc & 1) ? 2 : 1;
