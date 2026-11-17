@@ -467,6 +467,7 @@ bool RateControl::init(const SPS& sps)
     m_encodedSegmentBits = 0;
     m_framesDone = 0;
     m_durationDone = 0;
+    m_movingAvgFps = 0;
     m_segDur = 0;
     m_residualCost = 0;
     m_partialResidualCost = 0;
@@ -1431,6 +1432,22 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
     rce->bPyramidLayer = curFrame->m_bPyramidLayer;
     rce->bPyramidMaxLayer = x265_clip3(1, 5, bPyramidMaxLayer(m_lastMiniGopLen));
 
+    /* moving average of the frame rate. Averaged on durations (frames per elapsed time),
+     * each frame weighted by its duration over about FPS_AVERAGING_WINDOW seconds of content. */
+    const double frameSecs = rce->frameDuration * m_timebase;
+    if (m_movingAvgFps <= 0)
+        m_movingAvgFps = 1.0 / frameSecs;
+    else
+    {
+        double weight = X265_MIN(1.0, frameSecs / FPS_AVERAGING_WINDOW);
+        m_movingAvgFps = 1.0 / (weight * frameSecs + (1.0 - weight) / m_movingAvgFps);
+    }
+
+    /* m_wantedBitsWindow is initialized based on the VUI timebase. the actual
+     * first frame duration is only known at this stage */
+    if (m_isAbr && rce->encodeOrder == 0)
+        m_wantedBitsWindow = m_bitrate * m_timebase * rce->frameDuration;
+
     if (m_param->bEnableSBRC)
     {
         if (rce->poc == 0 || (m_framesDone % m_param->keyframeMax == 0))
@@ -2040,9 +2057,10 @@ double RateControl::tuneQScaleForGrain(double rcOverflow)
     double qScaleAvg = x265_qp2qScale(m_avgPFrameQp);
     double  q = m_lastQScaleFor[P_SLICE];
     int curQp = int (x265_qScale2qp(m_lastQScaleFor[P_SLICE]) + 0.5);
-    double curBitrate = m_qpToEncodedBits[curQp] * int(m_fps + 0.5);
+    const int roundedFps = int(m_movingAvgFps + 0.5);
+    double curBitrate = m_qpToEncodedBits[curQp] * roundedFps;
     int newQp = rcOverflow > 1.1 ? curQp + 2 : rcOverflow > 1 ? curQp + 1 : curQp - 1 ;
-    double projectedBitrate =  int(m_fps + 0.5) * m_qpToEncodedBits[newQp];
+    double projectedBitrate = m_qpToEncodedBits[newQp] * roundedFps;
     if (curBitrate > 0 && projectedBitrate > 0)
         q =  std::abs(projectedBitrate - m_bitrate) < std::abs (curBitrate - m_bitrate) ? x265_qp2qScale(newQp) : m_lastQScaleFor[P_SLICE];
     else
