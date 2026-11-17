@@ -202,7 +202,6 @@ RateControl::RateControl(x265_param& p, Encoder *top)
     m_rateFactorMaxIncrement = 0;
     m_rateFactorMaxDecrement = 0;
     m_timebase = (double)m_param->fpsDenom / m_param->fpsNum;
-    m_fps = (double)m_param->fpsNum / m_param->fpsDenom;
     m_startEndOrder.set(0);
     m_bTerminated = false;
     m_finalFrameCount.set(0);
@@ -885,8 +884,10 @@ void RateControl::reconfigureRC()
     {
         m_param->rc.vbvBufferSize = x265_clip3(0, 8000000, m_param->rc.vbvBufferSize);
         m_param->rc.vbvMaxBitrate = x265_clip3(0, 8000000, m_param->rc.vbvMaxBitrate);
-        if (m_param->reconfigWindowSize)
-            m_param->rc.vbvMaxBitrate = (int)(m_param->rc.vbvMaxBitrate * (double)(m_fps / m_param->reconfigWindowSize));
+        if (m_param->reconfigWindowSize) {
+            const double avgFps = m_movingAvgFps > 0 ? m_movingAvgFps : 1.0 / m_timebase; /* reconf prior to the first frame... */
+            m_param->rc.vbvMaxBitrate = (int)(m_param->rc.vbvMaxBitrate * (double)(avgFps / m_param->reconfigWindowSize));
+        }
         if (m_param->rc.vbvMaxBitrate < m_param->rc.bitrate &&
             m_param->rc.rateControlMode == X265_RC_ABR)
         {

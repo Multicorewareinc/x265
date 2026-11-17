@@ -209,7 +209,6 @@ public:
     double  m_movingSumComplexitySeg[3];
     int     m_frameCountSeg[3];
     double  m_segDur;
-    double  m_fps;              /* only a true framerate for CFR content */
     double  m_movingAvgFps;     /* moving average of the fps */
     double  m_timebase;
     int64_t m_satdCostWindow[50];
