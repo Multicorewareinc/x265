@@ -391,7 +391,8 @@ bool RateControl::initCUTreeSharedMem()
             itemSize += sizeof(uint16_t) * m_ncu;
         }
 
-        int32_t itemCnt = X265_MIN(m_param->keyframeMax, (int)(m_fps + 0.5));
+        int32_t maxFps = int(1.0 / m_timebase + 0.5);
+        int32_t itemCnt = X265_MIN(m_param->keyframeMax, maxFps);
         itemCnt *= GOP_CNT_CU_TREE;
 
         char shrname[MAX_SHR_NAME_LEN] = { 0 };
@@ -472,7 +473,10 @@ bool RateControl::init(const SPS& sps)
     m_amortizeFraction = 0.85;
     m_amortizeFrames = 75;
     m_bRcReConfig = false;
-    if (m_param->totalFrames && m_param->totalFrames <= 2 * m_fps && m_param->rc.bStrictCbr) /* Strict CBR segment encode */
+
+    /* Strict CBR segment encode: up to 2 seconds of frames. */
+    if (m_param->totalFrames && m_param->rc.bStrictCbr &&
+        (uint64_t)m_param->totalFrames * m_param->fpsDenom <= 2 * (uint64_t)m_param->fpsNum)
     {
         m_amortizeFraction = 0.85;
         m_amortizeFrames = m_param->totalFrames / 2;
@@ -1980,15 +1984,18 @@ fail:
 double RateControl::tuneAbrQScaleFromFeedback(double qScale)
 {
     double abrBuffer = 2 * m_rateTolerance * m_bitrate;
-    /* use framesDone instead of POC as poc count is not serial with bframes enabled */
     double overflow = 1.0;
-    /* approximate, assume the other threads have a frame duration of a single tick */
-    double timeDone = (double)((int64_t)m_durationDone - m_param->frameNumThreads + 1) * m_timebase;
+    /* average frame duration so far: 1 tick in CFR */
+    double avgTicks = m_framesDone ? (double)m_durationDone / m_framesDone : 1.0;
+    /* approximate: the frames still in flight on the other threads last avgTicks each */
+    double timeDone = ((double)m_durationDone - (m_param->frameNumThreads - 1) * avgTicks) * m_timebase;
     double wantedBits = timeDone * m_bitrate;
     int64_t encodedBits = m_totalBits;
-    if (m_param->totalFrames && m_param->totalFrames <= 2 * m_fps)
+
+    double totalSecs = m_param->totalFrames * avgTicks * m_timebase;
+    if (m_param->totalFrames && totalSecs <= 2.0)
     {
-        abrBuffer = m_param->totalFrames * (m_bitrate * m_timebase);
+        abrBuffer = totalSecs * m_bitrate;
         encodedBits = m_encodedBits;
     }
 
@@ -2460,7 +2467,8 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
                 q = (!m_partialResidualFrames) ? tunedQScale : initialQScale;
                 bool isEncodeEnd = (m_param->totalFrames &&
                     m_framesDone > 0.75 * m_param->totalFrames) ? 1 : 0;
-                bool isEncodeBeg = m_framesDone < (int)(m_fps + 0.5);
+                /* not one second of content encoded yet? */
+                bool isEncodeBeg = m_durationDone * m_param->fpsDenom < (uint64_t)m_param->fpsNum;
                 if (m_isGrainEnabled)
                 {
                     if(m_sliceType!= I_SLICE && m_framesDone && !isEncodeEnd &&
