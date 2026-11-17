@@ -930,7 +930,7 @@ void Entropy::codeHrdParameters(const HRDInfo& hrd, int maxSubTLayers)
          * Lower sub-layers follow the miniGOP structure, which keyframes,
          * lookahead decisions and the end of the stream can shorten, so no
          * fixed picture rate is signalled for them. */
-        bool bFixedPicRate = (i == maxSubTLayers - 1);
+        bool bFixedPicRate = hrd.fixedPicRateFlag && (i == maxSubTLayers - 1);
         WRITE_FLAG(bFixedPicRate, "fixed_pic_rate_general_flag");
         if (bFixedPicRate)
             WRITE_UVLC(0, "elemental_duration_in_tc_minus1");

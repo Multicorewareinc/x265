@@ -1025,6 +1025,7 @@ namespace X265_NS {
         }
 #endif
         InputFileInfo info[MAX_VIEWS];
+        memset(info, 0, sizeof(info));
         for (int i = 0; i < param->numViews - !!param->format; i++)
         {
             info[i].filename = inputfn[i];

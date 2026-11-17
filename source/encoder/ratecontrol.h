@@ -153,6 +153,7 @@ public:
     bool   m_isAbr;
     bool   m_isVbv;
     bool   m_isCbr;
+    bool   m_isVfr;
     bool   m_singleFrameVbv;
     bool   m_isGrainEnabled;
     bool   m_isAbrReset;

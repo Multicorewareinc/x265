@@ -438,6 +438,7 @@ RateControl::RateControl(x265_param& p, Encoder *top)
         m_param->rc.vbvMaxBitrate = 0;
     }
     m_isVbv = m_param->rc.vbvMaxBitrate > 0 && m_param->rc.vbvBufferSize > 0;
+    m_isVfr = m_param->rc.bVfrFlag;
     if (m_param->vbvBufferEnd && !m_isVbv)
     {
         x265_log(m_param, X265_LOG_WARNING, "vbv-end requires VBV parameters, ignored\n");
@@ -1117,6 +1118,10 @@ void RateControl::initHRD(SPS& sps)
     // Init HRD
     HRDInfo* hrd = &sps.vuiParameters.hrdParameters;
     hrd->cbrFlag = m_isCbr && m_param->rc.bStrictCbr;
+
+    /* temporal layers can still advertise a non-fixed pic rate, see codeHrdParameters */
+    hrd->fixedPicRateFlag = !m_isVfr;
+
     if (m_param->reconfigWindowSize) {
         hrd->cbrFlag = 0;
         vbvMaxBitrate = m_param->decoderVbvMaxRate * 1000;
@@ -1628,6 +1633,11 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
     const double decay = exp(-frameSecs / X265_MIN((15 * m_timebase), FPS_AVERAGING_WINDOW));
     m_fpsFrameSum = m_fpsFrameSum * decay + 1.0;
     m_fpsTimeSum  = m_fpsTimeSum  * decay + frameSecs;
+
+    /* m_wantedBitsWindow is initialized based on the VUI timebase. the actual
+     * first frame duration is only known at this stage */
+    if (m_isAbr && rce->encodeOrder == 0)
+        m_wantedBitsWindow = m_bitrate * m_timebase * rce->frameDuration;
 
     /* m_wantedBitsWindow is initialized based on the VUI timebase. the actual
      * first frame duration is only known at this stage */
@@ -2263,7 +2273,8 @@ double RateControl::tuneQScaleForGrain(double rcOverflow)
     double lastPqScale = getLastBaseQScale(P_SLICE);
     double q = lastPqScale;
     int curQp = x265_clip3(0, QP_MAX_MAX, int(x265_qScale2qp(lastPqScale) + 0.5));
-    /* use average fps in the last second */
+
+    /* use local FPS estimator */
     const int roundedFps = int((m_fpsFrameSum / m_fpsTimeSum) + 0.5);
     double curBitrate = m_qpToEncodedBits[curQp] * roundedFps;
     int newQp = x265_clip3(0, QP_MAX_MAX, rcOverflow > 1.1 ? curQp + 2 : rcOverflow > 1 ? curQp + 1 : curQp - 1);
