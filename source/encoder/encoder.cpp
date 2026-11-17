@@ -1825,13 +1825,17 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                 rcEntry = &(m_rateControl->m_rce2Pass[inFrame[layer]->m_poc]);
                 if (rcEntry->scenecut)
                 {
-                    int backwardWindow = X265_MIN(int((m_param->bwdMaxScenecutWindow / 1000.0) * (m_param->fpsNum / m_param->fpsDenom)), p->lookaheadDepth);
-                    for (int i = 1; i <= backwardWindow; i++)
+                    /* window in ticks, measured back from this frame's display tick (m_clockTickCount, not yet advanced) */
+                    int64_t backwardWindowTicks = (int64_t)((m_param->bwdMaxScenecutWindow / 1000.0) * ((double)m_param->fpsNum / m_param->fpsDenom));
+                    for (int i = 1; i <= p->lookaheadDepth; i++)
                     {
                         int frameNum = inFrame[layer]->m_poc - i;
                         Frame* frame = m_lookahead->m_inputQueue.getPOC(frameNum, 0);
-                        if (frame)
-                            frame->m_isInsideWindow = BACKWARD_WINDOW;
+                        if (!frame)
+                            continue;
+                        if ((int64_t)m_clockTickCount - frame->m_displayPicCount > backwardWindowTicks)
+                            break;
+                        frame->m_isInsideWindow = BACKWARD_WINDOW;
                     }
                 }
             }
@@ -2395,13 +2399,14 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
 
                 if (rcEntry->scenecut)
                 {
+                    /* positions and window in display ticks */
                     if (m_rateControl->m_lastScenecut == -1)
-                        m_rateControl->m_lastScenecut = frameEnc[0]->m_poc;
+                        m_rateControl->m_lastScenecut = frameEnc[0]->m_displayPicCount;
                     else
                     {
-                        int maxWindowSize = int((m_param->fwdMaxScenecutWindow / 1000.0) * (m_param->fpsNum / m_param->fpsDenom) + 0.5);
-                        if (frameEnc[0]->m_poc > (m_rateControl->m_lastScenecut + maxWindowSize))
-                            m_rateControl->m_lastScenecut = frameEnc[0]->m_poc;
+                        int64_t maxWindowTicks = (int64_t)((m_param->fwdMaxScenecutWindow / 1000.0) * ((double)m_param->fpsNum / m_param->fpsDenom) + 0.5);
+                        if (frameEnc[0]->m_displayPicCount > (m_rateControl->m_lastScenecut + maxWindowTicks))
+                            m_rateControl->m_lastScenecut = frameEnc[0]->m_displayPicCount;
                     }
                 }
             }

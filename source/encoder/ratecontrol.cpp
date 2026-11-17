@@ -3711,14 +3711,17 @@ void RateControl::splitbUsed(char bused[], RateControlEntry *rce)
 double RateControl::forwardMasking(Frame* curFrame, double q)
 {
     double qp = x265_qScale2qp(q);
-    uint32_t maxWindowSize = uint32_t((m_param->fwdMaxScenecutWindow / 1000.0) * m_fps + 0.5);
+    /* windows in ticks, positions in display ticks: exact with any frame durations */
+    const double ticksPerSec = 1.0 / m_timebase;
+    uint32_t maxWindowSize = uint32_t((m_param->fwdMaxScenecutWindow / 1000.0) * ticksPerSec + 0.5);
     uint32_t windowSize[6], prevWindow = 0;
-    int lastScenecut = m_top->m_rateControl->m_lastScenecut;
+    int64_t lastScenecut = m_top->m_rateControl->m_lastScenecut;
+    int64_t curPos = curFrame->m_displayPicCount;
 
     double fwdRefQpDelta[6], fwdNonRefQpDelta[6], sliceTypeDelta[6];
     for (int i = 0; i < 6; i++)
     {
-        windowSize[i] = prevWindow + (uint32_t((m_param->fwdScenecutWindow[i] / 1000.0) * m_fps + 0.5));
+        windowSize[i] = prevWindow + (uint32_t((m_param->fwdScenecutWindow[i] / 1000.0) * ticksPerSec + 0.5));
         fwdRefQpDelta[i] = double(m_param->fwdRefQpDelta[i]);
         fwdNonRefQpDelta[i] = double(m_param->fwdNonRefQpDelta[i]);
         sliceTypeDelta[i] = SLICE_TYPE_DELTA * fwdRefQpDelta[i];
@@ -3727,7 +3730,7 @@ double RateControl::forwardMasking(Frame* curFrame, double q)
 
 
     //Check whether the current frame is within the forward window
-    if (curFrame->m_poc > lastScenecut && curFrame->m_poc <= (lastScenecut + int(maxWindowSize)))
+    if (curPos > lastScenecut && curPos <= (lastScenecut + (int64_t)maxWindowSize))
         curFrame->m_isInsideWindow = FORWARD_WINDOW;
     if (curFrame->m_isInsideWindow == FORWARD_WINDOW)
     {
@@ -3738,49 +3741,49 @@ double RateControl::forwardMasking(Frame* curFrame, double q)
         else if (curFrame->m_lowres.sliceType == X265_TYPE_P)
         {
             //Add offsets corresponding to the window in which the P-frame occurs
-            if (curFrame->m_poc <= (lastScenecut + int(windowSize[0])))
+            if (curPos <= (lastScenecut + (int64_t)windowSize[0]))
                 qp += fwdRefQpDelta[0] - sliceTypeDelta[0];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[0]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[1]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[0])) && (curPos <= (lastScenecut + (int64_t)windowSize[1])))
                 qp += fwdRefQpDelta[1] - sliceTypeDelta[1];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[1]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[2]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[1])) && (curPos <= (lastScenecut + (int64_t)windowSize[2])))
                 qp += fwdRefQpDelta[2] - sliceTypeDelta[2];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[2]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[3]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[2])) && (curPos <= (lastScenecut + (int64_t)windowSize[3])))
                 qp += fwdRefQpDelta[3] - sliceTypeDelta[3];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[3]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[4]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[3])) && (curPos <= (lastScenecut + (int64_t)windowSize[4])))
                 qp += fwdRefQpDelta[4] - sliceTypeDelta[4];
-            else if (curFrame->m_poc > lastScenecut + int(windowSize[4]))
+            else if (curPos > lastScenecut + (int64_t)windowSize[4])
                 qp += fwdRefQpDelta[5] - sliceTypeDelta[5];
         }
         else if (curFrame->m_lowres.sliceType == X265_TYPE_BREF)
         {
             //Add offsets corresponding to the window in which the B-frame occurs
-            if (curFrame->m_poc <= (lastScenecut + int(windowSize[0])))
+            if (curPos <= (lastScenecut + (int64_t)windowSize[0]))
                 qp += fwdRefQpDelta[0];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[0]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[1]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[0])) && (curPos <= (lastScenecut + (int64_t)windowSize[1])))
                 qp += fwdRefQpDelta[1];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[1]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[2]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[1])) && (curPos <= (lastScenecut + (int64_t)windowSize[2])))
                 qp += fwdRefQpDelta[2];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[2]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[3]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[2])) && (curPos <= (lastScenecut + (int64_t)windowSize[3])))
                 qp += fwdRefQpDelta[3];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[3]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[4]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[3])) && (curPos <= (lastScenecut + (int64_t)windowSize[4])))
                 qp += fwdRefQpDelta[4];
-            else if (curFrame->m_poc > lastScenecut + int(windowSize[4]))
+            else if (curPos > lastScenecut + (int64_t)windowSize[4])
                 qp += fwdRefQpDelta[5];
         }
         else if (curFrame->m_lowres.sliceType == X265_TYPE_B)
         {
             //Add offsets corresponding to the window in which the b-frame occurs
-            if (curFrame->m_poc <= (lastScenecut + int(windowSize[0])))
+            if (curPos <= (lastScenecut + (int64_t)windowSize[0]))
                 qp += fwdNonRefQpDelta[0];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[0]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[1]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[0])) && (curPos <= (lastScenecut + (int64_t)windowSize[1])))
                 qp += fwdNonRefQpDelta[1];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[1]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[2]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[1])) && (curPos <= (lastScenecut + (int64_t)windowSize[2])))
                 qp += fwdNonRefQpDelta[2];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[2]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[3]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[2])) && (curPos <= (lastScenecut + (int64_t)windowSize[3])))
                 qp += fwdNonRefQpDelta[3];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[3]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[4]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[3])) && (curPos <= (lastScenecut + (int64_t)windowSize[4])))
                 qp += fwdNonRefQpDelta[4];
-            else if (curFrame->m_poc > lastScenecut + int(windowSize[4]))
+            else if (curPos > lastScenecut + (int64_t)windowSize[4])
                 qp += fwdNonRefQpDelta[5];
         }
     }
@@ -3790,13 +3793,16 @@ double RateControl::forwardMasking(Frame* curFrame, double q)
 double RateControl::backwardMasking(Frame* curFrame, double q)
 {
     double qp = x265_qScale2qp(q);
+    /* windows in ticks, positions in display ticks: exact with any frame durations */
+    const double ticksPerSec = 1.0 / m_timebase;
     uint32_t windowSize[6], prevWindow = 0;
-    int lastScenecut = m_top->m_rateControl->m_lastScenecut;
+    int64_t lastScenecut = m_top->m_rateControl->m_lastScenecut;
+    int64_t curPos = curFrame->m_displayPicCount;
 
     double bwdRefQpDelta[6], bwdNonRefQpDelta[6], sliceTypeDelta[6];
     for (int i = 0; i < 6; i++)
     {
-        windowSize[i] = prevWindow + (uint32_t((m_param->bwdScenecutWindow[i] / 1000.0) * (m_param->fpsNum / m_param->fpsDenom) + 0.5));
+        windowSize[i] = prevWindow + (uint32_t((m_param->bwdScenecutWindow[i] / 1000.0) * ticksPerSec + 0.5));
         prevWindow = windowSize[i];
         bwdRefQpDelta[i] = double(m_param->bwdRefQpDelta[i]);
         bwdNonRefQpDelta[i] = double(m_param->bwdNonRefQpDelta[i]);
@@ -3814,49 +3820,49 @@ double RateControl::backwardMasking(Frame* curFrame, double q)
         if (curFrame->m_lowres.sliceType == X265_TYPE_P)
         {
             //Add offsets corresponding to the window in which the P-frame occurs
-            if (curFrame->m_poc >= (lastScenecut - int(windowSize[0])))
+            if (curPos >= (lastScenecut - (int64_t)windowSize[0]))
                 qp += bwdRefQpDelta[0] - sliceTypeDelta[0];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[0]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[1]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[0])) && (curPos >= (lastScenecut - (int64_t)windowSize[1])))
                 qp += bwdRefQpDelta[1] - sliceTypeDelta[1];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[1]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[2]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[1])) && (curPos >= (lastScenecut - (int64_t)windowSize[2])))
                 qp += bwdRefQpDelta[2] - sliceTypeDelta[2];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[2]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[3]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[2])) && (curPos >= (lastScenecut - (int64_t)windowSize[3])))
                 qp += bwdRefQpDelta[3] - sliceTypeDelta[3];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[3]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[4]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[3])) && (curPos >= (lastScenecut - (int64_t)windowSize[4])))
                 qp += bwdRefQpDelta[4] - sliceTypeDelta[4];
-            else if (curFrame->m_poc < lastScenecut - int(windowSize[4]))
+            else if (curPos < lastScenecut - (int64_t)windowSize[4])
                 qp += bwdRefQpDelta[5] - sliceTypeDelta[5];
         }
         else if (curFrame->m_lowres.sliceType == X265_TYPE_BREF)
         {
             //Add offsets corresponding to the window in which the B-frame occurs
-            if (curFrame->m_poc >= (lastScenecut - int(windowSize[0])))
+            if (curPos >= (lastScenecut - (int64_t)windowSize[0]))
                 qp += bwdRefQpDelta[0];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[0]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[1]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[0])) && (curPos >= (lastScenecut - (int64_t)windowSize[1])))
                 qp += bwdRefQpDelta[1];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[1]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[2]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[1])) && (curPos >= (lastScenecut - (int64_t)windowSize[2])))
                 qp += bwdRefQpDelta[2];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[2]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[3]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[2])) && (curPos >= (lastScenecut - (int64_t)windowSize[3])))
                 qp += bwdRefQpDelta[3];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[3]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[4]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[3])) && (curPos >= (lastScenecut - (int64_t)windowSize[4])))
                 qp += bwdRefQpDelta[4];
-            else if (curFrame->m_poc < lastScenecut - int(windowSize[4]))
+            else if (curPos < lastScenecut - (int64_t)windowSize[4])
                 qp += bwdRefQpDelta[5];
         }
         else if (curFrame->m_lowres.sliceType == X265_TYPE_B)
         {
             //Add offsets corresponding to the window in which the b-frame occurs
-            if (curFrame->m_poc >= (lastScenecut - int(windowSize[0])))
+            if (curPos >= (lastScenecut - (int64_t)windowSize[0]))
                 qp += bwdNonRefQpDelta[0];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[0]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[1]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[0])) && (curPos >= (lastScenecut - (int64_t)windowSize[1])))
                 qp += bwdNonRefQpDelta[1];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[1]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[2]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[1])) && (curPos >= (lastScenecut - (int64_t)windowSize[2])))
                 qp += bwdNonRefQpDelta[2];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[2]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[3]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[2])) && (curPos >= (lastScenecut - (int64_t)windowSize[3])))
                 qp += bwdNonRefQpDelta[3];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[3]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[4]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[3])) && (curPos >= (lastScenecut - (int64_t)windowSize[4])))
                 qp += bwdNonRefQpDelta[4];
-            else if (curFrame->m_poc < lastScenecut - int(windowSize[4]))
+            else if (curPos < lastScenecut - (int64_t)windowSize[4])
                 qp += bwdNonRefQpDelta[5];
         }
     }
