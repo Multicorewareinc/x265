@@ -589,9 +589,17 @@ frame counts) are only applicable to the CLI application.
 	intervals one field shorter, and a scenecut or a forced frame type on
 	a second field moves the keyframe to the next field. With
 	:option:`--radl` the RADL pictures of an IDR are whole frames as well.
-	All-intra coding (:option:`--keyint` 1) is not affected, every field
-	is a keyframe there. :option:`--chunk-start`, :option:`--chunk-end`
-	and zone starts are used as given and should be first fields.
+	:option:`--chunk-start`, :option:`--chunk-end` and zone starts are
+	used as given and should be first fields.
+
+	All-intra coding (:option:`--keyint` 1) is the exception, and the
+	encoder warns about it. Every field is a keyframe there, as the intra
+	profiles require, so a decoder can start on the second field of a
+	frame. Every field is also an IDR that restarts the picture order
+	count, unless :option:`--cra-nal` is used. To get a keyframe in every
+	frame, on first fields only, use :option:`--keyint` 2 with
+	:option:`--bframes` 0 instead: the first field is intra coded and the
+	second field is a P picture predicted from it.
 
 .. option:: --frame-dup, --no-frame-dup
 
