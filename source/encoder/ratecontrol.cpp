@@ -1730,8 +1730,6 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
             m_qp = (m_qpConstant[B_SLICE] + m_qpConstant[P_SLICE]) / 2;
         else
             m_qp = m_qpConstant[m_sliceType];
-        curEncData.m_avgQpAq = curEncData.m_avgQpRc = m_qp;
-
         x265_zone* zone = getZone(curFrame->m_sourcePoc);
         if (zone)
         {
@@ -1741,10 +1739,8 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
                 m_qp -= (int)(6.0 * X265_LOG2(zone->bitrateFactor));
         }
         if (m_bRcReConfig)
-        {
             m_qp = curFrame->m_targetQp;
-            curEncData.m_avgQpAq = curEncData.m_avgQpRc = m_qp;
-        }
+        rce->qpaRc = curEncData.m_avgQpAq = curEncData.m_avgQpRc = m_qp;
     }
     if (m_sliceType != B_SLICE)
     {
