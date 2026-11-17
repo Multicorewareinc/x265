@@ -355,7 +355,7 @@ static void hierarchicalCodingOrder(int p0, int p1, int* order, int& count)
 
 /* Largest number of pictures that precede a picture in decoding order and follow it in output
  * order, over every mini-GOP length the lookahead can choose with the hierarchical B-pyramid */
-static uint32_t hierarchicalReorderPics(int bframes)
+uint32_t hierarchicalReorderPics(int bframes)
 {
     uint32_t maxReorder = 0;
     for (int numB = 1; numB <= bframes; numB++)
