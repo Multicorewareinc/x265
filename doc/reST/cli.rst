@@ -2035,18 +2035,19 @@ Quality, rate control and rate distortion options
 
 .. option:: --strict-cbr, --no-strict-cbr
 
-	Enables stricter conditions to control bitrate deviance from the 
-	target bitrate in ABR mode. Bit rate adherence is prioritised
-	over quality. Rate tolerance is reduced to 50%. Default disabled.
-	
-	This option is for use-cases which require the final average bitrate 
-	to be within very strict limits of the target; preventing overshoots, 
-	while keeping the bit rate within 5% of the target setting, 
-	especially in short segment encodes. Typically, the encoder stays 
-	conservative, waiting until there is enough feedback in terms of 
-	encoded frames to control QP. strict-cbr allows the encoder to be 
-	more aggressive in hitting the target bitrate even for short segment 
-	videos.
+	Enables strict constant bitrate mode. If enabled, the bitstream signals
+	constant bitrate to a decoder. Attaining the target rate is prioritised
+	over quality, and bitstream filler units may be inserted whenever needed.
+
+	For use-cases which require the final average bitrate to be within strict
+	limits of the rate, generally within 5% of the target rate. Typically, the
+	encoder stays conservative, waiting until there is enough feedback in terms
+	of encoded frames to control QP. strict-cbr allows the encoder to be more
+	aggressive in hitting the target, bitrate even for short segment videos.
+
+	Requires :option:`--hrd` and VBV configuration. Default disabled.
+	Without this flag, if :option:`--bitrate` is greater or equal to :option:`--vbv-maxrate`
+	then x265 tries to approach a CBR output in VBR mode.
 
 .. option:: --cbqpoffs <integer>
 
@@ -2828,6 +2829,7 @@ Bitstream options
 	Picture Timing SEI messages providing timing information to the
 	decoder. Default disabled
 
+	A VBV configuration is required with HRD.
 
 .. option:: --hrd-concat, --no-hrd-concat
 
