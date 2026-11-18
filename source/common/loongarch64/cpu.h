@@ -38,7 +38,7 @@
 static inline uint32_t loongarch64_get_cpu_flags()
 {
     uint32_t flags = 0;
-#if HAVE_LSX || HAVE_LSX
+#if HAVE_LSX || HAVE_LASX
     unsigned long hwcap = x265_getauxval(AT_HWCAP);
 #endif
 
