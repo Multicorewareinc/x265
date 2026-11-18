@@ -22,7 +22,12 @@ if(EXTRA_LIB)
         list(APPEND APIFLAGS "-DLINKED_12BIT=1")
     endif(LINKED_12BIT)
     string(REPLACE ";" " " APIFLAGSTR "${APIFLAGS}")
-    set_source_files_properties(api.cpp PROPERTIES COMPILE_FLAGS ${APIFLAGSTR})
+    if(APIFLAGSTR)
+        # Guard against an empty flag list: EXTRA_LIB may be set without any
+        # of the LINKED_* options, and COMPILE_FLAGS without a value is a
+        # configure error
+        set_source_files_properties(api.cpp PROPERTIES COMPILE_FLAGS ${APIFLAGSTR})
+    endif()
 endif(EXTRA_LIB)
 
 add_library(encoder OBJECT ../x265.h
