@@ -308,6 +308,15 @@ protected:
     /*Compute index for positioning B-Ref frames*/
     void     placeBref(Frame** frames, int start, int end, int num, int *brefs);
     void     compCostBref(Lowres **frame, int start, int end, int num);
+
+    struct SubGop
+    {
+        int    start;
+        int    end;
+        int8_t gopId;
+    };
+    enum { MAX_SUB_GOPS = X265_MAX_GOP_CONFIG };
+    int      splitMiniGop(int bframes, SubGop* subGops) const;
     /*Hierarchical B-pyramid used when the mini-GOP is not defined by temporal sub-layers*/
     void     placeHierarchicalBref(Frame** list, int bframes, int *brefs);
     void     compCostHierarchicalBref(Lowres **frames, int p0, int p1, bool bP0Avail);
