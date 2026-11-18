@@ -1934,8 +1934,7 @@ int RateControl::getPredictorType(int lowresSliceType, int sliceType)
 double RateControl::getDiffLimitedQScale(RateControlEntry *rce, double q)
 {
     // force I/B quants as a function of P quants
-    const double lastPqScale    = m_lastQScaleFor[P_SLICE];
-    const double lastNonBqScale = m_lastQScaleFor[m_lastNonBPictType];
+    const double lastPqScale = m_lastQScaleFor[P_SLICE];
     if (rce->sliceType == I_SLICE)
     {
         double iq = q;
@@ -1954,7 +1953,7 @@ double RateControl::getDiffLimitedQScale(RateControlEntry *rce, double q)
     else if (rce->sliceType == B_SLICE)
     {
         if (m_param->rc.pbFactor > 0)
-            q = lastNonBqScale;
+            q = m_lastQScaleFor[m_lastNonBPictType];
         /* with the B-pyramid every layer, B-refs included, sits its layer's offset above the anchors */
         if (m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL && rce->bPyramidMaxLayer)
             q *= bFrameQscaleRatio(rce);
