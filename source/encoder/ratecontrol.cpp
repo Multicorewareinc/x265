@@ -1780,7 +1780,8 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
         if (!m_param->rc.bEncFocusedFramesOnly)
         {
             rce->qpPrev = x265_qScale2qp(rce->qScale);
-            if (m_param->bEnableSceneCutAwareQp)
+            const x265_zone* statsZone = getStatsZone(curFrame->m_sourcePoc);
+            if (m_param->bEnableSceneCutAwareQp && !curFrame->m_forceqp && (!statsZone || !statsZone->bForceQp))
             {
                 double lqmin = m_lmin[m_sliceType];
                 double lqmax = m_lmax[m_sliceType];
@@ -1789,6 +1790,17 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
                 if (m_param->bEnableSceneCutAwareQp & BACKWARD)
                     rce->newQScale = backwardMasking(curFrame, rce->newQScale);
                 rce->newQScale = x265_clip3(lqmin, lqmax, rce->newQScale);
+            }
+            if (statsZone && statsZone->bForceQp)
+            {
+                rce->newQScale = x265_clip3(m_lmin[m_sliceType], m_lmax[m_sliceType], rce->newQScale);
+            }
+            if (curFrame->m_forceqp)
+            {
+                int qp = (int32_t)(curFrame->m_forceqp + 0.5) - 1;
+                qp = x265_clip3(m_param->rc.qpMin, m_param->rc.qpMax, qp);
+                rce->newQScale = x265_qp2qScale(qp);
+                rce->qpNoVbv = qp;
             }
             rce->qScale = rce->newQScale;
             rce->qpaRc = curEncData.m_avgQpRc = curEncData.m_avgQpAq = x265_qScale2qp(rce->newQScale);
