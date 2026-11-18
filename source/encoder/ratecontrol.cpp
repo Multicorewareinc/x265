@@ -183,6 +183,105 @@ x265_zone* RateControl::getZone(int frameNum)
     return NULL;
 }
 
+const x265_zone* RateControl::getStatsZone(int frameNum) const
+{
+    for (int i = m_statsZoneCount - 1; i >= 0; i--)
+    {
+        const x265_zone* zone = &m_statsZones[i];
+        if (frameNum >= zone->startFrame && frameNum <= zone->endFrame)
+            return zone;
+    }
+    return NULL;
+}
+
+bool RateControl::readStatsZones(const char *options)
+{
+    X265_FREE_ZERO(m_statsZones);
+    m_statsZoneCount = -1;
+    const char *cursor = strstr(options, " zone-count=");
+    long count = -1;
+    if (cursor)
+    {
+        cursor += strlen(" zone-count=");
+        char *end;
+        count = strtol(cursor, &end, 10);
+        if (cursor == end || (*end && *end != ' ') || count < 0 || count > INT_MAX ||
+            (size_t)count > strlen(options) / strlen(" zones:"))
+            count = -1;
+        cursor = end;
+    }
+
+    if (count >= 0)
+    {
+        if (count)
+        {
+            m_statsZones = X265_MALLOC(x265_zone, count);
+            if (!m_statsZones)
+                return false;
+            memset(m_statsZones, 0, sizeof(x265_zone) * count);
+        }
+        bool valid = true;
+        for (int i = 0; i < count && valid; i++)
+        {
+            x265_zone* zone = &m_statsZones[i];
+            int length = 0;
+            if (sscanf(cursor, " zones: start-frame=%d end-frame=%d%n",
+                       &zone->startFrame, &zone->endFrame, &length) != 2 || !length)
+            {
+                valid = false;
+                break;
+            }
+            cursor += length;
+            length = 0;
+            if (sscanf(cursor, " qp=%d%n", &zone->qp, &length) == 1 && length)
+                zone->bForceQp = 1;
+            else if (sscanf(cursor, " bitrate-factor=%f%n", &zone->bitrateFactor, &length) != 1 || !length)
+            {
+                valid = false;
+                break;
+            }
+            cursor += length;
+            valid = !*cursor || *cursor == ' ';
+        }
+        if (valid && strncmp(cursor, " zones:", strlen(" zones:")))
+            m_statsZoneCount = (int)count;
+        else
+            X265_FREE_ZERO(m_statsZones);
+    }
+
+    if (m_statsZoneCount < 0)
+    {
+        x265_log(m_param, X265_LOG_WARNING,
+                 "CRF stats have no valid zone metadata; zone changes cannot be checked and saved frame QPs will be "
+                 "reused\n");
+        return true;
+    }
+
+    bool mismatch = m_statsZoneCount != m_param->rc.zoneCount;
+    for (int i = 0; i < m_statsZoneCount && !mismatch; i++)
+    {
+        const x265_zone& saved = m_statsZones[i];
+        const x265_zone& current = m_param->rc.zones[i];
+        mismatch = saved.startFrame != current.startFrame || saved.endFrame != current.endFrame ||
+                   saved.bForceQp != !!current.bForceQp;
+        if (mismatch)
+            break;
+        if (saved.bForceQp)
+            mismatch |= saved.qp != current.qp;
+        else
+        {
+            char savedFactor[64], currentFactor[64];
+            snprintf(savedFactor, sizeof(savedFactor), "%f", saved.bitrateFactor);
+            snprintf(currentFactor, sizeof(currentFactor), "%f", current.bitrateFactor);
+            mismatch |= strcmp(savedFactor, currentFactor) != 0;
+        }
+    }
+    if (mismatch)
+        x265_log(m_param, X265_LOG_WARNING,
+                 "zones differ from the CRF stats; zone changes will be ignored and saved frame QPs will be reused\n");
+    return true;
+}
+
 double RateControl::applyZone(Frame* frame, double qScale)
 {
     if (frame->m_forceqp)
@@ -233,6 +332,8 @@ RateControl::RateControl(x265_param& p, Encoder *top)
     m_partialResidualFrames = 0;
     m_residualCost = 0;
     m_partialResidualCost = 0;
+    m_statsZones = NULL;
+    m_statsZoneCount = -1;
     m_rateFactorMaxIncrement = 0;
     m_rateFactorMaxDecrement = 0;
     m_timebase = (double)m_param->fpsDenom / m_param->fpsNum;
@@ -603,6 +704,12 @@ bool RateControl::init(const SPS& sps)
                     }
                     *statsIn = '\0';
                     statsIn++;
+                    if (m_param->rc.rateControlMode == X265_RC_CRF && !m_param->rc.bEncFocusedFramesOnly &&
+                        !readStatsZones(opts))
+                    {
+                        X265_FREE(statsBuf);
+                        return false;
+                    }
                     if ((p = strstr(opts, " input-res=")) == 0 || sscanf(p, " input-res=%dx%d", &i, &j) != 2)
                     {
                         x265_log(m_param, X265_LOG_ERROR, "Resolution specified in stats file not valid\n");
@@ -860,7 +967,22 @@ bool RateControl::init(const SPS& sps)
                 x265_log_file(m_param, X265_LOG_ERROR, "can't open stats file %s.temp\n", fileName);
                 return false;
             }
-            p = x265_param2string(m_param, sps.conformanceWindow.rightOffset, sps.conformanceWindow.bottomOffset);
+            x265_param statsParam = *m_param;
+            bool reuseCrfQp = m_param->rc.bStatRead && m_param->rc.rateControlMode == X265_RC_CRF &&
+                              !m_param->rc.bEncFocusedFramesOnly;
+            if (reuseCrfQp)
+            {
+                statsParam.rc.zoneCount = X265_MAX(0, m_statsZoneCount);
+                statsParam.rc.zones = m_statsZones;
+            }
+            p = x265_param2string(&statsParam, sps.conformanceWindow.rightOffset, sps.conformanceWindow.bottomOffset);
+            if (p && reuseCrfQp && m_statsZoneCount < 0)
+            {
+                char *zoneCount = strstr(p, " zone-count=0");
+                if (zoneCount)
+                    memmove(zoneCount, zoneCount + strlen(" zone-count=0"),
+                            strlen(zoneCount + strlen(" zone-count=0")) + 1);
+            }
             if (p)
                 fprintf(m_statFileOut, "#options: %s\n", p);
             X265_FREE(p);
@@ -3734,6 +3856,7 @@ void RateControl::destroy()
     X265_FREE(m_rce2Pass);
     X265_FREE(m_encOrder);
     X265_FREE(m_cuTreeRecordIdx);
+    X265_FREE(m_statsZones);
     for (int i = 0; i < X265_BFRAME_MAX + 2; i++)
         X265_FREE(m_cuTreeStats.qpBuffer[i]);
     
