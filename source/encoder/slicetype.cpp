@@ -47,6 +47,11 @@
 
 using namespace X265_NS;
 
+static inline int brefMidIdx(int start, int end)
+{
+    return (start + end) / 2;
+}
+
 namespace {
 
 /* Compute variance to derive AC energy of each block */
@@ -1894,7 +1899,7 @@ void PreLookaheadGroup::processTasks(int workerThreadID)
 /* B-ref placement of the temporal sub-layer mini-GOPs (--temporal-layers > 2) */
 void Lookahead::placeBref(Frame** frames, int start, int end, int num, int *brefs)
 {
-    int avg = (start + end) / 2;
+    int avg = brefMidIdx(start, end);
     if (m_param->bEnableTemporalSubLayers < 2)
     {
         (*frames[avg]).m_lowres.sliceType = X265_TYPE_BREF;
@@ -2369,8 +2374,8 @@ void Lookahead::slicetypeDecide()
         m_inputLock.acquire();
         Frame* frameEnc = m_inputQueue.first();
         const int gopLen = bframes + 1;   /* B-frames + the anchor that ends this mini-GOP */
-        /* index of the top B-ref, same formula as placeBref(list, 0, bframes + 1, ...) which runs later */
-        const int midIdx = (m_param->bBPyramid && bframes > 2) ? (bframes + 1) / 2 - 1 : -1;
+        const bool bSplitLater = m_param->bEnableTemporalSubLayers > 2 && bframes < m_param->bframes;
+        const int midIdx = (m_param->bBPyramid && bframes > 1 && !brefs && !bSplitLater) ? brefMidIdx(0, bframes) : -1;
         for (int b = 0; b < m_inputQueue.size(); b++)
         {
             /* Noise gate: re-evaluate at every GOP boundary (IDR/I/scenecut).
