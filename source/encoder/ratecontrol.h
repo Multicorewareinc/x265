@@ -196,6 +196,7 @@ public:
     double  m_accumPQp;          /* for determining I-frame quant */
     double  m_accumPNorm;
     double  m_lastQScaleFor[3];  /* last qscale for a specific pict type, used for max_diff & ipb factor stuff */
+    double  m_lastZoneQpOffset[3];
     double  m_lstep;
     double  m_lmin[3];
     double  m_lmax[3];
@@ -322,12 +323,15 @@ protected:
     int    m_partialResidualCost;
 
     x265_zone* getZone(int frameNum);
+    double applyZone(Frame* frame, double qScale);
+    double getZoneQpOffset(const Frame* frame, double qp) const;
+    double getLastBaseQScale(int sliceType) const;
     double getQScale(RateControlEntry *rce, double rateFactor);
     double rateEstimateQscale(Frame* pic, RateControlEntry *rce); // main logic for calculating QP based on ABR
     double tuneAbrQScaleFromFeedback(double qScale);
     double tuneQScaleForZone(RateControlEntry *rce, double qScale); // Tune qScale to adhere to zone budget
-    double tuneQscaleForSBRC(Frame* curFrame, double q); // Tune qScale to adhere to segment budget	
-    void   accumPQpUpdate();
+    double tuneQscaleForSBRC(Frame* curFrame, double q); // Tune qScale to adhere to segment budget
+    void   accumPQpUpdate(double qp);
 
     int    getPredictorType(int lowresSliceType, int sliceType);
     int    updateVbv(int64_t bits, RateControlEntry* rce);

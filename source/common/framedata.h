@@ -165,6 +165,8 @@ public:
     PeriodicIR     m_pir;
     double         m_avgQpRc;    /* avg QP as decided by rate-control */
     double         m_avgQpAq;    /* avg QP as decided by AQ in addition to rate-control */
+    double         m_zoneQpOffset;
+    double         m_zoneBaseQp;
     double         m_rateFactor; /* calculated based on the Frame QP */
     int            m_picCsp;
 
