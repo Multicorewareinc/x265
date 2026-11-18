@@ -2495,7 +2495,10 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
             }
             diff = m_predictedBits - (int64_t)rce->expectedBits;
             q = rce->newQScale;
-            q = applyZone(curFrame, q);
+            x265_zone* zone = getZone(curFrame->m_sourcePoc);
+            bool forceZoneQp = zone && zone->bForceQp && !curFrame->m_forceqp;
+            if (!forceZoneQp)
+                q = applyZone(curFrame, q);
             /*Existing ABR conformance check may not be valid with real time VBV*/
             if(!m_param->bliveVBV2pass)
                 q /= x265_clip3(0.5, 2.0, (double)(abrBuffer - diff) / abrBuffer);
@@ -2532,6 +2535,12 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
                     q = backwardMasking(curFrame, q);
 
                 q = x265_clip3(qmin, qmax, q);
+                rce->qpNoVbv = x265_qScale2qp(q);
+            }
+
+            if (forceZoneQp)
+            {
+                q = applyZone(curFrame, q);
                 rce->qpNoVbv = x265_qScale2qp(q);
             }
 
