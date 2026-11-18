@@ -1695,6 +1695,8 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
                 m_qp += zone->qp - m_qpConstant[P_SLICE];
             else
                 m_qp -= (int)(6.0 * X265_LOG2(zone->bitrateFactor));
+            if (zone->bForceQp || zone->bitrateFactor != 1)
+                m_qp = x265_clip3(m_param->rc.qpMin, m_param->rc.qpMax, m_qp);
         }
         if (m_bRcReConfig)
             m_qp = curFrame->m_targetQp;
