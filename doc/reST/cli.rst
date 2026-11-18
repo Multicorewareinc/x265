@@ -1701,23 +1701,17 @@ Slice decision options
 	**Values:** 0, 1, 2. Earlier versions took no value: use 1 for
 	:option:`--b-pyramid` and 0 for the removed ``--no-b-pyramid``.
 
-	With 2 the B frames of each layer of the pyramid get a QP offset over the
-	anchors from :option:`--pbratio`: the deepest layer of the mini-GOP
-	2 * 6 * log2(pbratio) and each shallower layer a quarter of that less,
-	down to 0.
+	With 2 the QP of a B frame comes from its layer in the pyramid instead of
+	from whether it is a reference: see :option:`--b-pyramid-qp-scale`.
 
 .. option:: --b-pyramid-qp-scale <float>
 
-	Scale the QP offsets of the B-pyramid layers over their anchors in every
-	rate control mode. The offsets come from :option:`--pbratio`: layer 1 of
-	a mini-GOP sits 0.5 * 6 * log2(pbratio) above the anchors and each deeper
-	layer that much more, up to 2 * 6 * log2(pbratio) at layer 4, however
-	deep the mini-GOP's pyramid is; this value multiplies all of them. 0 codes
-	the B frames at the anchor QP, values between 0 and 1 flatten the pyramid,
-	values above 1 make it steeper, and the B frames never get a lower QP than
-	their anchors while :option:`--pbratio` is at least 1. Rate control's bit
-	estimates for B frames (2-pass planning, VBV lookahead) use the same scaled
-	offsets. Only used with :option:`--b-pyramid` 2. Range 0 to 2. Default 1.0
+	Scale the QP offsets of the B-pyramid layers over their anchors. A B frame
+	at layer L sits scale * min(2, 0.5 * L) * 6 * log2(:option:`--pbratio`) QP
+	above its anchors, so at scale 1 layer 1 matches a B-ref of
+	:option:`--b-pyramid` 1 and layer 2 a non-reference B frame. 0 codes all
+	B frames at the anchor QP; values below 1 flatten the pyramid, above 1
+	steepen it. Only used with :option:`--b-pyramid` 2. Range 0 to 2. Default 1.0
 
 .. option:: --force-flush <integer>
 
@@ -2035,6 +2029,11 @@ Quality, rate control and rate distortion options
 	QP ratio factor between P and B slices. This ratio is used in all of
 	the rate control modes. Some :option:`--tune` options may change the
 	default value. It is not typically manually specified. Default 1.3
+
+	With :option:`--b-pyramid` 2 the B frames get a QP offset per pyramid layer
+	derived from this ratio: 6 * log2(pbratio) / 2 for each layer, up to twice
+	the offset of a non-reference B frame, scaled by
+	:option:`--b-pyramid-qp-scale`.
 
 .. option:: --qcomp <float>
 
