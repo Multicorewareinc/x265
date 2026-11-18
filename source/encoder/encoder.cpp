@@ -1985,7 +1985,10 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
             m_rateControl->m_accumPNorm = rc->cumulativePNorm;
             m_rateControl->m_isNextGop = true;
             for (int j = 0; j < 3; j++)
+            {
                 m_rateControl->m_lastQScaleFor[j] = rc->lastQScaleFor[j];
+                m_rateControl->m_lastZoneQpOffset[j] = rc->lastZoneQpOffset[j];
+            }
             m_rateControl->m_wantedBitsWindow = rc->wantedBitsWindow;
             m_rateControl->m_cplxrSum = rc->cplxrSum;
             m_rateControl->m_totalBits = rc->totalBits;
