@@ -317,7 +317,12 @@ protected:
     int    m_residualCost;
     int    m_partialResidualCost;
 
+    x265_zone* m_statsZones;
+    int        m_statsZoneCount;
+
     x265_zone* getZone(int frameNum);
+    const x265_zone* getStatsZone(int frameNum) const;
+    bool readStatsZones(const char *options);
     double applyZone(Frame* frame, double qScale);
     double getZoneQpOffset(const Frame* frame, double qp) const;
     double getLastBaseQScale(int sliceType) const;
