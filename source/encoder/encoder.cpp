@@ -1843,7 +1843,10 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
             inFrame[layer]->m_forceqp = inputPic[0]->forceqp;
             inFrame[layer]->m_param = (m_reconfigure || m_reconfigureRc || m_param->bConfigRCFrame) ? m_latestParam : m_param;
 
-            if (inFrame[layer]->m_param->pictureStructure >= 0)
+            /* picStruct is ignored in VFR: the durations are given by durationInTicks */
+            if (inFrame[layer]->m_param->rc.bVfrFlag)
+                inFrame[layer]->m_picStruct = PIC_STRUCT_AUTO;
+            else if (inFrame[layer]->m_param->pictureStructure >= 0)
                 inFrame[layer]->m_picStruct = inFrame[layer]->m_param->pictureStructure;
             else if (inFrame[layer]->m_param->bEmitFrameFieldInfo)
                 inFrame[layer]->m_picStruct = inputPic[0]->picStruct;
@@ -1860,7 +1863,6 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                 inFrame[layer]->m_timebase = ((double)inFrame[layer]->m_param->fpsDenom / (double)inFrame[layer]->m_param->fpsNum);
 
             inFrame[layer]->m_displayPicCount = m_clockTickCount;
-            inFrame[layer]->m_duration = g_deltaToDivisor[inFrame[layer]->m_picStruct];
 
             /*Copy reconfigured RC parameters to frame*/
             if (m_param->rc.rateControlMode == X265_RC_ABR)
@@ -1876,6 +1878,14 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
             /* Encoder holds a reference count until stats collection is finished */
             ATOMIC_INC(&inFrame[layer]->m_countRefEncoders);
         }
+
+        if (m_param->rc.bVfrFlag)
+            inFrame[0]->m_duration = X265_MAX(1u, inputPic[0]->durationInTicks); /* a duration is never zero */
+        else
+            inFrame[0]->m_duration = g_deltaToDivisor[inFrame[0]->m_picStruct];
+
+        for (int layer = 1; layer < m_param->numLayers; layer++)
+            inFrame[layer]->m_duration = inFrame[0]->m_duration;
 
         /* update presentation tick count */
         m_clockTickCount += inFrame[0]->m_duration;
@@ -4727,6 +4737,22 @@ void Encoder::configure(x265_param *p)
     {
         x265_log(p, X265_LOG_WARNING, "Cannot enforce a picture structure with Frame-duplication, ignoring the user picstruct.\n");
         p->pictureStructure = -1;
+    }
+
+    if (p->rc.bVfrFlag && (p->bEnableFrameDuplication || p->pictureStructure >= 0))
+    {
+        x265_log(p, X265_LOG_WARNING, "Cannot use frame duplication or pic-struct with VFR. Disabling both.\n");
+        p->pictureStructure = -1;
+        p->bEnableFrameDuplication = 0;
+    }
+
+    if (p->rc.bVfrFlag && p->rc.bStrictCbr)
+    {
+        /* With CBR, the CPB fills non-stop at the maximum rate. Access units must come
+         * regularly to empty it which is not the case with VFR.
+         * we also don't know what the user prefer (CBR or VFR), so it's better to abort. */
+        x265_log(p, X265_LOG_ERROR, "Cannot use VFR with CBR.\n");
+        m_aborted = true;
     }
 
 #ifdef ENABLE_HDR10_PLUS

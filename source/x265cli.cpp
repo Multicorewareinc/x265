@@ -461,6 +461,10 @@ namespace X265_NS {
         H0("\nSEI Message Options\n");
         H0("   --film-grain <filename>       File containing Film Grain Characteristics to be written as a SEI Message\n");
         H0("   --aom-film-grain <filename>   File containing Aom Film Grain Characteristics to be written as a SEI Message\n");
+        H0("   --vfr-file <filename>         File containing timing information. Forces the VUI timescale to 1000/1 and enables VFR encoding.\n");
+        H0("                                  Two formats are supported: timescales v1 or timestamp v2. These have, per line:\n");
+        H0("                                  - timescale v1: specify the framerate from a frame onward: <source POC=int> <fps=int|num/den>\n");
+        H0("                                  - timestamp v2: specify each frame's presentation time: <duration_ms=int|float>\n");
         H0("   --[no-]frame-rc              Enable configuring Rate Control parameters(QP, CRF or Bitrate) at frame level.Default 0\n"
            "                                Enable this option only when planning to invoke the API function x265_encoder_reconfig to configure Rate Control parameters\n");
 #undef OPT
@@ -494,6 +498,8 @@ namespace X265_NS {
         if (psfile)
             fclose(psfile);
         psfile = NULL;
+        delete timeInput;
+        timeInput = NULL;
         if (qpfile)
             fclose(qpfile);
         qpfile = NULL;
@@ -835,6 +841,16 @@ namespace X265_NS {
                     this->pulldownFpsRatioNum = den;
                     this->pulldownFpsRatioDenom = num;
                 }
+                OPT("vfr-file")
+                {
+                    delete this->timeInput; /* last occurrence wins */
+                    this->timeInput = TimeInput::open(optarg);
+                    if (!this->timeInput || this->timeInput->isFail())
+                    {
+                        x265_log_file(param, X265_LOG_ERROR, "%s vfr file not found or failed to open\n", optarg);
+                        return true;
+                    }
+                }
                 OPT("psfile")
                 {
                     this->psfile = x265_fopen(optarg, "rb");
@@ -963,6 +979,28 @@ namespace X265_NS {
             return true;
         }
 
+        if (timeInput)
+        {
+            if (timeInput->isFail())
+                return true; /* reported when parsing --vfr-file */
+            if (param->interlaceMode)
+            {
+                /* the time file counts frames: per-field durations are undefined */
+                x265_log(param, X265_LOG_ERROR, "--vfr-file with interlacing not supported.\n");
+                return true;
+            }
+            if (!!psfile || this->pulldownFpsRatioNum > 0)
+            {
+                /* picStruct is ignored in VFR */
+                x265_log(param, X265_LOG_WARNING, "Picture structures are ignored with --vfr-file: disabling --psfile and --prepulldown-fps.\n");
+                if (psfile)
+                    fclose(psfile);
+                psfile = NULL;
+                this->pulldownFpsRatioNum = 0;
+            }
+            param->rc.bVfrFlag = 1;
+        }
+
         if (!!psfile)
         {
             param->bEmitFrameFieldInfo = 1;
@@ -1016,12 +1054,21 @@ namespace X265_NS {
             }
         }
 
-            //TODO:Validate info params of both the views to equal values
+        //TODO:Validate info params of both the views to equal values
         /* Unconditionally accept height/width/csp/bitDepth from file info */
-            param->sourceWidth = info[0].width;
-            param->sourceHeight = info[0].height;
-            param->internalCsp = info[0].csp;
-            param->sourceBitDepth = info[0].depth;
+        param->sourceWidth = info[0].width;
+        param->sourceHeight = info[0].height;
+        param->internalCsp = info[0].csp;
+        param->sourceBitDepth = info[0].depth;
+
+        if (timeInput && (param->fpsDenom == 0 || param->fpsNum == 0))
+        {
+            /* can be refined if not fine grained enough
+             * this must reside before info value override: we don't want to inherit the y4m value for VFR */
+            param->fpsNum = 1000;
+            param->fpsDenom = 1;
+            x265_log(param, X265_LOG_WARNING, "VFR: timescale unspecified, using default: %u/%u.\n", param->fpsNum, param->fpsDenom);
+        }
 
         /* Accept fps and sar from file info if not specified by user */
         if (param->fpsDenom == 0 || param->fpsNum == 0)
@@ -1029,6 +1076,14 @@ namespace X265_NS {
             param->fpsDenom = info[0].fpsDenom;
             param->fpsNum = info[0].fpsNum;
         }
+
+        /* durations are expressed in ticks of the final VUI timescale */
+        if (timeInput && !timeInput->setTimescale(param->fpsNum, param->fpsDenom))
+        {
+            x265_log(param, X265_LOG_ERROR, "Rejected %u/%u timescale for VFR.\n", param->fpsNum, param->fpsDenom);
+            return true;
+        }
+
         if (!param->vui.aspectRatioIdc && info[0].sarWidth && info[0].sarHeight)
             setParamAspectRatio(param, info[0].sarWidth, info[0].sarHeight);
         if (this->framesToBeEncoded == 0 && info[0].frameCount > (int)seek)

@@ -891,6 +891,15 @@ ret:
                         else /* copy the structure of the main view */
                             pic_orig[view].picStruct = pic_orig[0].picStruct;
                     }
+
+                    if (m_cliopt.timeInput && pic_in[view])
+                    {
+                        /* one duration per picture: read on the main view, shared by the others */
+                        if (view == 0)
+                            pic_orig[0].durationInTicks = m_cliopt.timeInput->getFrameTicksDuration(pic_orig[0].poc);
+                        else
+                            pic_orig[view].durationInTicks = pic_orig[0].durationInTicks;
+                    }
                 }
 
                 /* === FOVEATED ENCODING: inject per-frame quantOffsets ===
@@ -1384,6 +1393,7 @@ ret:
                     dest->userSEI = src->userSEI;
                     dest->rpu.payload = src->rpu.payload;
                     dest->picStruct = src->picStruct;
+                    dest->durationInTicks = src->durationInTicks;
                     dest->stride[0] = src->stride[0];
                     dest->stride[1] = src->stride[1];
                     dest->stride[2] = src->stride[2];

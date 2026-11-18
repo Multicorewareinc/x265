@@ -526,7 +526,7 @@ bool RateControl::initCUTreeSharedMem()
             itemSize += sizeof(uint16_t) * m_ncu;
         }
 
-        int32_t maxFps = int(1.0 / m_timebase + 0.5);
+        int32_t maxFps = m_isVfr ? MAX_FRAME_RATE : int(1.0 / m_timebase + 0.5);
         int32_t itemCnt = X265_MIN(m_param->keyframeMax, maxFps);
         itemCnt *= GOP_CNT_CU_TREE;
 
@@ -1041,6 +1041,9 @@ void RateControl::skipCUTreeSharedMemRead(int32_t cnt)
 }
 void RateControl::reconfigureRC()
 {
+    if (m_isVfr ^ !!m_param->rc.bVfrFlag)
+        x265_log(m_param, X265_LOG_WARNING, "Cannot switch between CFR and VFR at runtime, change not applied.");
+
     if (m_isVbv)
     {
         m_param->rc.vbvBufferSize = x265_clip3(0, 8000000, m_param->rc.vbvBufferSize);
