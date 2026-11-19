@@ -83,7 +83,7 @@ void intraFilter_neon(const pixel* samples, pixel* filtered) /* 1:2:1 filtering 
     filtered[tuSize2 + tuSize2] = leftLast;
 }
 
-template<int width, bool bTranspose>
+template<int width, bool bTranspose, bool neighboursSwapped = false>
 void intra_pred_ang_neon(pixel *dst, intptr_t dstStride, const pixel *srcPix0, int dirMode, int bFilter)
 {
     int width2 = width << 1;
@@ -92,7 +92,7 @@ void intra_pred_ang_neon(pixel *dst, intptr_t dstStride, const pixel *srcPix0, i
     pixel neighbourBuf[129];
     const pixel *srcPix = srcPix0;
 
-    if (horMode)
+    if (horMode && !neighboursSwapped)
     {
         neighbourBuf[0] = srcPix[0];
         //for (int i = 0; i < width << 1; i++)
@@ -838,12 +838,11 @@ void intra_pred_ang_hor16_neon(pixel *dst, intptr_t dstStride, const pixel *srcP
     transpose16x16(dst, tmp, dstStride, 16);
 }
 
+// Supported block widths: 8, 16, 32.
 template<int width>
 void intra_pred_ang18_neon(pixel *dst, intptr_t dstStride, const pixel *srcPix,
                            int /*dirMode*/, int /*bFilter*/)
 {
-    static_assert(width == 8 || width == 16 || width == 32,
-                  "unsupported intra prediction width");
     const int width2 = width << 1;
     pixel refBuf[2 * width + 2];
     pixel *ref_pix = refBuf + width;
@@ -894,11 +893,11 @@ static void intra_pred_ang_vpos16_direct_neon(pixel *dst, intptr_t stride, const
     }
 }
 
+// Supported block width: 8.
 template<int width, int angle>
 void intra_pred_ang_vpos_t_neon(pixel *dst, intptr_t dstStride, const pixel *srcPix,
                                 int /*dirMode*/, int /*bFilter*/)
 {
-    static_assert(width == 8, "unsupported intra prediction width");
 
     const uint8_t *ref = srcPix + 1;
     ALIGN_VAR_16(uint8_t, f0arr[8]);
@@ -947,11 +946,11 @@ static void intra_pred_ang25_16_neon(pixel *dst, intptr_t dstStride, const pixel
     vst1q_u8(dst, a);
 }
 
+// Supported block widths: 8, 16, 32.
 template<int width, int angle, int invAngle>
 void intra_pred_ang_vneg_t_neon(pixel *dst, intptr_t dstStride, const pixel *srcPix,
                                 int /*dirMode*/, int /*bFilter*/)
 {
-    static_assert(width == 8 || width == 16 || width == 32, "unsupported intra prediction width");
     if (width == 32)
     {
         // Calculate weights directly for each row of a 32x32 block.
@@ -1048,18 +1047,271 @@ void intra_pred_ang_vneg_t_neon(pixel *dst, intptr_t dstStride, const pixel *src
 #endif
 
 #endif
+
+#if !HIGH_BIT_DEPTH
+static inline uint8x16_t intra_interp_u8x16_neon(
+    uint8x16_t a,
+    uint8x16_t b,
+    uint8x16_t inv,
+    uint8x16_t frac)
+{
+    uint16x8_t lo = vmull_u8(vget_low_u8(a), vget_low_u8(inv));
+    uint16x8_t hi = vmull_high_u8(a, inv);
+    lo = vmlal_u8(lo, vget_low_u8(b), vget_low_u8(frac));
+    hi = vmlal_high_u8(hi, b, frac);
+    return vcombine_u8(vrshrn_n_u16(lo, 5), vrshrn_n_u16(hi, 5));
+}
+
+// Predict all 16 samples together for positive 4x4 angles.
+// Supported angles: 2, 5, 9, 13, 17, 21, 26.
+template<int angle>
+static inline void intra_pred_ang_vpos4_neon(pixel *dst, const pixel *ref)
+{
+
+#define POS4_IDX(y) ((y) * angle >> 5), (((y) * angle >> 5) + 1), (((y) * angle >> 5) + 2), (((y) * angle >> 5) + 3)
+#define POS4_NEXT(y) (((y) * angle >> 5) + 1), (((y) * angle >> 5) + 2), (((y) * angle >> 5) + 3), (((y) * angle >> 5) + 4)
+#define POS4_FRAC(y) (((y) * angle) & 31), (((y) * angle) & 31), (((y) * angle) & 31), (((y) * angle) & 31)
+    static const uint8_t indices[16] = { POS4_IDX(1), POS4_IDX(2), POS4_IDX(3), POS4_IDX(4) };
+    static const uint8_t nextIndices[16] = { POS4_NEXT(1), POS4_NEXT(2), POS4_NEXT(3), POS4_NEXT(4) };
+    static const uint8_t fractions[16] = { POS4_FRAC(1), POS4_FRAC(2), POS4_FRAC(3), POS4_FRAC(4) };
+#undef POS4_IDX
+#undef POS4_NEXT
+#undef POS4_FRAC
+    const uint8x16_t table = vcombine_u8(vld1_u8(ref), vdup_n_u8(0));
+    const uint8x16_t idx = vld1q_u8(indices);
+    const uint8x16_t frac = vld1q_u8(fractions);
+    const uint8x16_t a = vqtbl1q_u8(table, idx);
+    const uint8x16_t b = vqtbl1q_u8(table, vld1q_u8(nextIndices));
+    const uint8x16_t inv = vsubq_u8(vdupq_n_u8(32), frac);
+    vst1q_u8(dst, intra_interp_u8x16_neon(a, b, inv, frac));
+}
+
+// The all-angles output stores horizontal predictions in vertical layout.
+// Supported angles: -2, -5, -9, -13, -17, -21, -26, with matching inverse angles.
+template<int angle, int invAngle>
+static inline void intra_pred_ang_vneg4_neon(pixel *dst, const pixel *src, bool horizontal)
+{
+
+    const int projected = -((4 * angle) >> 5) - 1;
+    uint8_t storage[16] = {};
+    uint8_t *ref = storage + projected + 1;
+    int invSum = 128;
+    for (int i = 0; i < projected; i++)
+    {
+        invSum += invAngle;
+        ref[-2 - i] = src[(horizontal ? 0 : 8) + (invSum >> 8)];
+    }
+    ref[-1] = src[0];
+    memcpy(ref, src + (horizontal ? 9 : 1), 4);
+#define NEG4_IDX(y) (((y) * angle >> 5) + projected + 1), (((y) * angle >> 5) + projected + 2), (((y) * angle >> 5) + projected + 3), (((y) * angle >> 5) + projected + 4)
+#define NEG4_NEXT(y) (((y) * angle >> 5) + projected + 2), (((y) * angle >> 5) + projected + 3), (((y) * angle >> 5) + projected + 4), (((y) * angle >> 5) + projected + 5)
+#define NEG4_FRAC(y) (((y) * angle) & 31), (((y) * angle) & 31), (((y) * angle) & 31), (((y) * angle) & 31)
+    const uint8_t indices[16] = { NEG4_IDX(1), NEG4_IDX(2), NEG4_IDX(3), NEG4_IDX(4) };
+    const uint8_t nextIndices[16] = { NEG4_NEXT(1), NEG4_NEXT(2), NEG4_NEXT(3), NEG4_NEXT(4) };
+    const uint8_t fractions[16] = { NEG4_FRAC(1), NEG4_FRAC(2), NEG4_FRAC(3), NEG4_FRAC(4) };
+#undef NEG4_IDX
+#undef NEG4_NEXT
+#undef NEG4_FRAC
+    const uint8x16_t table = vld1q_u8(storage);
+    const uint8x16_t idx = vld1q_u8(indices);
+    const uint8x16_t frac = vld1q_u8(fractions);
+    const uint8x16_t a = vqtbl1q_u8(table, idx);
+    const uint8x16_t b = vqtbl1q_u8(table, vld1q_u8(nextIndices));
+    const uint8x16_t inv = vsubq_u8(vdupq_n_u8(32), frac);
+    vst1q_u8(dst, intra_interp_u8x16_neon(a, b, inv, frac));
+}
+
+// Positive 32x32 angles use the same vertical layout for both reference directions.
+// Supported angles: 2, 5, 9, 13, 17, 21, 26.
+template<int angle>
+static void intra_pred_ang_vpos32_neon(pixel *dst, intptr_t stride, const pixel *srcPix)
+{
+
+    const uint8_t *ref = srcPix + 1;
+    for (int y = 0; y < 31; y++, dst += stride)
+    {
+        const int angleSum = (y + 1) * angle;
+        const int fraction = angleSum & 31;
+        const uint8_t *r = ref + (angleSum >> 5);
+        const uint8x16_t a0 = vld1q_u8(r);
+        const uint8x16_t a1 = vld1q_u8(r + 1);
+        const uint8x16_t b0 = vld1q_u8(r + 16);
+        const uint8x16_t b1 = vld1q_u8(r + 17);
+        const uint8x16_t f0q = vdupq_n_u8(32 - fraction);
+        const uint8x16_t f1q = vdupq_n_u8(fraction);
+        vst1q_u8(dst, intra_interp_u8x16_neon(a0, a1, f0q, f1q));
+        vst1q_u8(dst + 16, intra_interp_u8x16_neon(b0, b1, f0q, f1q));
+    }
+    // The last row has an integer offset for every angle.
+    vst1q_u8(dst, vld1q_u8(ref + angle));
+    vst1q_u8(dst + 16, vld1q_u8(ref + angle + 16));
+}
+#endif
+
+// Supported block sizes: 4x4, 8x8, 16x16, 32x32.
 template<int log2Size>
 void all_angs_pred_neon(pixel *dest, pixel *refPix, pixel *filtPix, int bLuma)
 {
+
     const int size = 1 << log2Size;
+#if !HIGH_BIT_DEPTH
+    pixel swapped[2][129];
+    if (size == 8 || size == 16)
+    {
+        const pixel *refs[2] = { refPix, filtPix };
+        for (int i = 0; i < 2; i++)
+        {
+            swapped[i][0] = refs[i][0];
+            memcpy(swapped[i] + 1, refs[i] + 2 * size + 1, 2 * size * sizeof(pixel));
+            memcpy(swapped[i] + 2 * size + 1, refs[i] + 1, 2 * size * sizeof(pixel));
+        }
+    }
+    if (size == 32)
+    {
+        // All horizontal modes use the same exchanged reference neighbours.
+        const pixel *refs[2] = { refPix, filtPix };
+        for (int i = 0; i < 2; i++)
+        {
+            swapped[i][0] = refs[i][0];
+            memcpy(swapped[i] + 1, refs[i] + 65, 64 * sizeof(pixel));
+            memcpy(swapped[i] + 65, refs[i] + 1, 64 * sizeof(pixel));
+        }
+    }
+#endif
     for (int mode = 2; mode <= 34; mode++)
     {
         pixel *srcPix  = (g_intraFilterFlags[mode] & size ? filtPix  : refPix);
         pixel *out = dest + ((mode - 2) << (log2Size * 2));
 
 #if !HIGH_BIT_DEPTH
+        if (size == 4)
+        {
+            const pixel *positive = srcPix + (mode < 18 ? 9 : 1);
+            switch (mode)
+            {
+            case 3:
+            case 33:
+                intra_pred_ang_vpos4_neon<26>(out, positive);
+                continue;
+
+            case 4:
+            case 32:
+                intra_pred_ang_vpos4_neon<21>(out, positive);
+                continue;
+
+            case 5:
+            case 31:
+                intra_pred_ang_vpos4_neon<17>(out, positive);
+                continue;
+
+            case 6:
+            case 30:
+                intra_pred_ang_vpos4_neon<13>(out, positive);
+                continue;
+
+            case 7:
+            case 29:
+                intra_pred_ang_vpos4_neon<9>(out, positive);
+                continue;
+
+            case 8:
+            case 28:
+                intra_pred_ang_vpos4_neon<5>(out, positive);
+                continue;
+
+            case 9:
+            case 27:
+                intra_pred_ang_vpos4_neon<2>(out, positive);
+                continue;
+
+            case 11:
+            case 25:
+                intra_pred_ang_vneg4_neon<-2, 4096>(out, srcPix, mode < 18);
+                continue;
+
+            case 12:
+            case 24:
+                intra_pred_ang_vneg4_neon<-5, 1638>(out, srcPix, mode < 18);
+                continue;
+
+            case 13:
+            case 23:
+                intra_pred_ang_vneg4_neon<-9, 910>(out, srcPix, mode < 18);
+                continue;
+
+            case 14:
+            case 22:
+                intra_pred_ang_vneg4_neon<-13, 630>(out, srcPix, mode < 18);
+                continue;
+
+            case 15:
+            case 21:
+                intra_pred_ang_vneg4_neon<-17, 482>(out, srcPix, mode < 18);
+                continue;
+
+            case 16:
+            case 20:
+                intra_pred_ang_vneg4_neon<-21, 390>(out, srcPix, mode < 18);
+                continue;
+
+            case 17:
+            case 19:
+                intra_pred_ang_vneg4_neon<-26, 315>(out, srcPix, mode < 18);
+                continue;
+            }
+        }
+        if ((size == 8 || size == 16) && mode < 18)
+        {
+            const int filtered = !!(g_intraFilterFlags[mode] & size);
+            intra_pred_ang_neon<size, false, true>(out, size, swapped[filtered], mode, bLuma);
+            continue;
+        }
         if (size == 32)
         {
+            const int filtered = !!(g_intraFilterFlags[mode] & size);
+            const pixel *positive = mode < 18 ? swapped[filtered] : srcPix;
+            switch (mode)
+            {
+            case 3:
+            case 33:
+                intra_pred_ang_vpos32_neon<26>(out, size, positive);
+                continue;
+
+            case 4:
+            case 32:
+                intra_pred_ang_vpos32_neon<21>(out, size, positive);
+                continue;
+
+            case 5:
+            case 31:
+                intra_pred_ang_vpos32_neon<17>(out, size, positive);
+                continue;
+
+            case 6:
+            case 30:
+                intra_pred_ang_vpos32_neon<13>(out, size, positive);
+                continue;
+
+            case 7:
+            case 29:
+                intra_pred_ang_vpos32_neon<9>(out, size, positive);
+                continue;
+
+            case 8:
+            case 28:
+                intra_pred_ang_vpos32_neon<5>(out, size, positive);
+                continue;
+
+            case 9:
+            case 27:
+                intra_pred_ang_vpos32_neon<2>(out, size, positive);
+                continue;
+            }
+            if (mode < 18)
+            {
+                intra_pred_ang_neon<32, false, true>(out, size, swapped[filtered], mode, bLuma);
+                continue;
+            }
             switch (mode)
             {
             case 19:
