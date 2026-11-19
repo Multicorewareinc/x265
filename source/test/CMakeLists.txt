@@ -56,7 +56,12 @@ add_executable(TestBench ${NASM_SRC}
     intrapredharness.cpp intrapredharness.h
     mcstfharness.cpp mcstfharness.h)
 
-target_link_libraries(TestBench x265-static ${PLATFORM_LIBS})
+if(TARGET x265-multilib-static)
+    target_link_libraries(TestBench x265-multilib-static ${PLATFORM_LIBS})
+    add_dependencies(TestBench x265-multilib-merged)
+else()
+    target_link_libraries(TestBench x265-static ${PLATFORM_LIBS})
+endif()
 if(LINKER_OPTIONS)
     if(EXTRA_LIB)
         list(APPEND LINKER_OPTIONS "-L..")

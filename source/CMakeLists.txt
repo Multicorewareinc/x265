@@ -1096,58 +1096,116 @@ if(ASM_OBJS)
     add_custom_target(x265-asm DEPENDS ${ASM_OBJS})
 endif()
 
+set(_x265_static_target "x265-static")
+if(ENABLE_MULTILIB)
+    # The 8-bit archive is an intermediate input. The user-facing
+    # x265-static target below is an imported target for the merged archive.
+    set(_x265_static_target "${_multilib_raw_static_target}")
+endif()
 if(ENABLE_HDR10_PLUS)
-    add_library(x265-static STATIC $<TARGET_OBJECTS:encoder> $<TARGET_OBJECTS:common> $<TARGET_OBJECTS:dynamicHDR10> ${ASM_OBJS})
+    add_library(${_x265_static_target} STATIC $<TARGET_OBJECTS:encoder> $<TARGET_OBJECTS:common> $<TARGET_OBJECTS:dynamicHDR10> ${ASM_OBJS})
     add_library(hdr10plus-static STATIC $<TARGET_OBJECTS:dynamicHDR10>)
     set_target_properties(hdr10plus-static PROPERTIES OUTPUT_NAME hdr10plus)
 else()
-    add_library(x265-static STATIC $<TARGET_OBJECTS:encoder> $<TARGET_OBJECTS:common> ${ASM_OBJS})
+    add_library(${_x265_static_target} STATIC $<TARGET_OBJECTS:encoder> $<TARGET_OBJECTS:common> ${ASM_OBJS})
 endif()
 if(TARGET x265-asm)
-    add_dependencies(x265-static x265-asm)
+    add_dependencies(${_x265_static_target} x265-asm)
 endif()
-if(NOT MSVC)
+if(ENABLE_MULTILIB)
+    set_target_properties(${_x265_static_target} PROPERTIES OUTPUT_NAME x265-8bit)
+elseif(NOT MSVC)
     set_target_properties(x265-static PROPERTIES OUTPUT_NAME x265)
 endif()
-# In the normal multilib configuration the merged static archive already has
-# the EXTRA_LIB members. Do not also propagate the original archives to every
+# In the normal multilib configuration the merged archive already has the
+# EXTRA_LIB members. Do not also propagate the original archives to every
 # consumer: linking both copies is redundant and can break MSVC debug links.
+set(_x265_static_interface_libs "")
 if(EXTRA_LIB AND (NOT ENABLE_MULTILIB OR NOT "${EXTRA_LIB}" STREQUAL "${_multilib_extra_lib}"))
-    target_link_libraries(x265-static ${EXTRA_LIB})
+    if(ENABLE_MULTILIB)
+        list(APPEND _x265_static_interface_libs ${EXTRA_LIB})
+    else()
+        target_link_libraries(x265-static ${EXTRA_LIB})
+    endif()
 endif()
 if(ENABLE_MULTILIB)
-    # Keep the combined archive in sync even when only high-bit-depth sources
-    # change. See the generated source's custom command in multilib.cmake.
-    target_sources(x265-static PRIVATE "${_multilib_link_anchor}")
-    # MSVC's librarian updates an existing /OUT archive instead of replacing
-    # it. Remove the previously merged library so a rebuild starts with only
-    # the current 8-bit objects rather than retaining stale members.
-    add_custom_command(TARGET x265-static PRE_LINK
-        COMMAND "${CMAKE_COMMAND}" -E remove -f "$<TARGET_FILE:x265-static>"
-        VERBATIM)
-    # Statically merge the 10/12-bit archives into the 8-bit API archive so
-    # that consumers only need to link against a single library. This runs
-    # for shared builds as well: the static library is built and installed
-    # either way, and without the merge it would lack the 10/12-bit objects
-    # (multilib.sh merges them in this case too)
-    add_custom_command(TARGET x265-static POST_BUILD
-        COMMAND "${CMAKE_COMMAND}"
-            "-DOUTPUT=$<TARGET_FILE:x265-static>"
-            "-DINPUT1=$<TARGET_FILE:x265-static>"
-            "-DINPUT2=${CMAKE_CURRENT_BINARY_DIR}/multilib/10bit/${_multilib_archive_subdir}${_multilib_archive_name}"
-            "-DINPUT3=${CMAKE_CURRENT_BINARY_DIR}/multilib/12bit/${_multilib_archive_subdir}${_multilib_archive_name}"
-            "-DARCHIVER=${_multilib_archiver}"
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/x265-merge.cmake"
-        VERBATIM)
+    # Merge the 8-bit archive and both bit-depth sub-archives into the final
+    # archive without adding an anchor object to it. Single-config generators
+    # get a normal OUTPUT rule. Multi-config generators cannot use $<CONFIG>
+    # in OUTPUT with CMake 3.10, so their merge target is scheduled every time
+    # and x265-merge.cmake skips the work when the output is already current.
+    if(NOT _multilib_generator_is_multi_config)
+        add_custom_command(
+            OUTPUT "${_multilib_final_archive}"
+            COMMAND "${CMAKE_COMMAND}"
+                "-DOUTPUT=${_multilib_final_archive}"
+                "-DINPUT1=${_multilib_raw_archive}"
+                "-DINPUT2=${CMAKE_CURRENT_BINARY_DIR}/multilib/10bit/${_multilib_archive_subdir}${_multilib_archive_name}"
+                "-DINPUT3=${CMAKE_CURRENT_BINARY_DIR}/multilib/12bit/${_multilib_archive_subdir}${_multilib_archive_name}"
+                "-DARCHIVER=${_multilib_archiver}"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/x265-merge.cmake"
+            DEPENDS "${_multilib_raw_archive}"
+                    "${CMAKE_CURRENT_BINARY_DIR}/multilib/10bit/${_multilib_archive_subdir}${_multilib_archive_name}"
+                    "${CMAKE_CURRENT_BINARY_DIR}/multilib/12bit/${_multilib_archive_subdir}${_multilib_archive_name}"
+                    "${_multilib_merge_stamp}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/x265-merge.cmake"
+            VERBATIM)
+        add_custom_target(x265-multilib-merged ALL DEPENDS "${_multilib_final_archive}")
+    else()
+        add_custom_target(x265-multilib-merged ALL
+            COMMAND "${CMAKE_COMMAND}"
+                "-DSKIP_UP_TO_DATE=ON"
+                "-DSTAMP=${_multilib_merge_stamp}"
+                "-DOUTPUT=${_multilib_final_archive}"
+                "-DINPUT1=${_multilib_raw_archive}"
+                "-DINPUT2=${CMAKE_CURRENT_BINARY_DIR}/multilib/10bit/${_multilib_archive_subdir}${_multilib_archive_name}"
+                "-DINPUT3=${CMAKE_CURRENT_BINARY_DIR}/multilib/12bit/${_multilib_archive_subdir}${_multilib_archive_name}"
+                "-DARCHIVER=${_multilib_archiver}"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/x265-merge.cmake"
+            DEPENDS "${_x265_static_target}"
+                    x265-multilib-10bit
+                    x265-multilib-12bit
+                    "${_multilib_merge_stamp}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/x265-merge.cmake"
+            COMMENT "Merging the x265 multilib static library"
+            VERBATIM)
+    endif()
+    add_dependencies(x265-multilib-merged
+        "${_x265_static_target}" x265-multilib-10bit x265-multilib-12bit)
+
+    add_library(x265-multilib-static STATIC IMPORTED GLOBAL)
+    if(_multilib_generator_is_multi_config)
+        foreach(_multilib_config IN LISTS CMAKE_CONFIGURATION_TYPES)
+            string(TOUPPER "${_multilib_config}" _multilib_config_upper)
+            set_target_properties(x265-multilib-static PROPERTIES
+                IMPORTED_LOCATION_${_multilib_config_upper}
+                "${CMAKE_CURRENT_BINARY_DIR}/${_multilib_config}/${_multilib_archive_name}")
+        endforeach()
+        set_target_properties(x265-multilib-static PROPERTIES
+            IMPORTED_CONFIGURATIONS "${CMAKE_CONFIGURATION_TYPES}")
+    else()
+        set_target_properties(x265-multilib-static PROPERTIES
+            IMPORTED_LOCATION "${_multilib_final_archive}")
+    endif()
+    # Consumers that link the imported target also wait for its generating
+    # target; add_dependencies follows this dependency transitively.
+    add_dependencies(x265-multilib-static x265-multilib-merged)
+    # install(FILES) has no build dependency. An installed INTERFACE target has
+    # no artifact, but gives the IDE INSTALL utility project a real target that
+    # transitively depends on the merge step.
+    add_library(x265-multilib-install INTERFACE)
+    add_dependencies(x265-multilib-install x265-multilib-merged)
+    # Keep x265-static as an explicit build target for build scripts and users.
+    # The imported target cannot serve that role because it has no build rule.
+    add_custom_target(x265-static DEPENDS x265-multilib-merged)
 endif()
 if(ENABLE_MULTILIB)
-    # Make sure the 10/12-bit sub-builds are done before this library is
-    # archived and merged
-    add_dependencies(x265-static x265-multilib-10bit x265-multilib-12bit)
-    # Run the sub-builds after the 8-bit objects have been compiled (the
-    # bit-depth libraries are also built one after another), like
-    # multilib.sh does: a parallel parent build would otherwise interleave
-    # the nested build logs with the main compile output
+    # Make sure the 10/12-bit sub-builds are done before the 8-bit archive is
+    # merged, and run them after the 8-bit objects have been compiled (the
+    # bit-depth libraries are also built one after another), like multilib.sh
+    # does: a parallel parent build would otherwise interleave the nested
+    # build logs with the main compile output
+    add_dependencies(${_x265_static_target} x265-multilib-10bit x265-multilib-12bit)
     foreach(_multilib_objects IN ITEMS encoder common dynamicHDR10 x265-asm)
         if(TARGET ${_multilib_objects})
             add_dependencies(x265-multilib-10bit ${_multilib_objects})
@@ -1155,14 +1213,39 @@ if(ENABLE_MULTILIB)
     endforeach()
 endif()
 if(ENABLE_LIBVMAF)
-    target_link_libraries(x265-static ${VMAF})
+    if(ENABLE_MULTILIB)
+        list(APPEND _x265_static_interface_libs ${VMAF})
+    else()
+        target_link_libraries(x265-static ${VMAF})
+    endif()
 endif()
 if(SVTHEVC_FOUND)
-    target_link_libraries(x265-static ${SVT_HEVC_LIBRARY})
+    if(ENABLE_MULTILIB)
+        list(APPEND _x265_static_interface_libs ${SVT_HEVC_LIBRARY})
+    else()
+        target_link_libraries(x265-static ${SVT_HEVC_LIBRARY})
+    endif()
 endif()
-install(TARGETS x265-static
-    LIBRARY DESTINATION ${LIB_INSTALL_DIR}
-    ARCHIVE DESTINATION ${LIB_INSTALL_DIR})
+if(ENABLE_MULTILIB AND _x265_static_interface_libs)
+    set_target_properties(x265-multilib-static PROPERTIES
+        INTERFACE_LINK_LIBRARIES "${_x265_static_interface_libs}")
+endif()
+if(ENABLE_MULTILIB)
+    install(TARGETS x265-multilib-install LIBRARY DESTINATION ${LIB_INSTALL_DIR})
+    if(_multilib_generator_is_multi_config)
+        foreach(_multilib_config IN LISTS CMAKE_CONFIGURATION_TYPES)
+            install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${_multilib_config}/${_multilib_archive_name}"
+                    DESTINATION ${LIB_INSTALL_DIR}
+                    CONFIGURATIONS ${_multilib_config})
+        endforeach()
+    else()
+        install(FILES "${_multilib_final_archive}" DESTINATION ${LIB_INSTALL_DIR})
+    endif()
+else()
+    install(TARGETS x265-static
+        LIBRARY DESTINATION ${LIB_INSTALL_DIR}
+        ARCHIVE DESTINATION ${LIB_INSTALL_DIR})
+endif()
 
 if(ENABLE_HDR10_PLUS)
     install(TARGETS hdr10plus-static
@@ -1361,7 +1444,12 @@ if(ENABLE_CLI)
         if(WIN32 OR NOT ENABLE_SHARED OR INTEL_CXX)
             # The CLI cannot link to the shared library on Windows, it
             # requires internal APIs not exported from the DLL
-            target_link_libraries(cli x265-static ${PLATFORM_LIBS})
+            if(ENABLE_MULTILIB)
+                target_link_libraries(cli x265-multilib-static ${PLATFORM_LIBS})
+                add_dependencies(cli x265-multilib-merged)
+            else()
+                target_link_libraries(cli x265-static ${PLATFORM_LIBS})
+            endif()
         else()
             target_link_libraries(cli x265-shared ${PLATFORM_LIBS})
         endif()

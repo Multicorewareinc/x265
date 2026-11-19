@@ -2,14 +2,45 @@
 #
 # Usage:
 #   cmake -DOUTPUT=<path> [-DINPUT1=<path>] [-DINPUT2=<path>] ...
-#         [-DARCHIVER=<path>] -P x265-merge.cmake
+#         [-DARCHIVER=<path>] [-DSKIP_UP_TO_DATE=ON] [-DSTAMP=<path>]
+#         -P x265-merge.cmake
 #
 # The merge is performed with GNU ar (MRI script) on Linux/MinGW, libtool on
 # macOS and lib.exe/llvm-lib on MSVC. When ARCHIVER is not given, the tool is
-# looked up on the system.
+# looked up on the system. SKIP_UP_TO_DATE lets an always-scheduled custom
+# target avoid the archive merge when OUTPUT is already newer than every
+# input, the optional STAMP and this script itself.
 
 if(NOT DEFINED OUTPUT)
     message(FATAL_ERROR "OUTPUT is required")
+endif()
+
+if(SKIP_UP_TO_DATE)
+    set(_merge_up_to_date TRUE)
+    if(NOT EXISTS "${OUTPUT}")
+        set(_merge_up_to_date FALSE)
+    endif()
+    set(_index 1)
+    while(DEFINED INPUT${_index})
+        set(_input "${INPUT${_index}}")
+        if(NOT EXISTS "${_input}")
+            message(FATAL_ERROR "Input archive does not exist: ${_input}")
+        endif()
+        if("${_input}" IS_NEWER_THAN "${OUTPUT}")
+            set(_merge_up_to_date FALSE)
+        endif()
+        math(EXPR _index "${_index} + 1")
+    endwhile()
+    if(DEFINED STAMP AND STAMP AND EXISTS "${STAMP}" AND
+       "${STAMP}" IS_NEWER_THAN "${OUTPUT}")
+        set(_merge_up_to_date FALSE)
+    endif()
+    if("${CMAKE_CURRENT_LIST_FILE}" IS_NEWER_THAN "${OUTPUT}")
+        set(_merge_up_to_date FALSE)
+    endif()
+    if(_merge_up_to_date)
+        return()
+    endif()
 endif()
 
 get_filename_component(_out_name "${OUTPUT}" NAME)

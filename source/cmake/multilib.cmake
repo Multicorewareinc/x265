@@ -24,6 +24,10 @@ if(CMAKE_VERSION VERSION_LESS 3.10)
         "scripts to build the multi-bit-depth library with older CMake.")
 endif()
 
+# CMAKE_CONFIGURATION_TYPES can be set by the user for a single-config
+# generator too. The generator property is the authoritative distinction.
+get_property(_multilib_generator_is_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+
 # Append "-D<var>=<value>" to the argument list, preserving list values. A
 # backslash-escaped semicolon is unescaped again when the command is generated,
 # splitting CMAKE_OSX_ARCHITECTURES=arm64;x86_64 into two arguments. The
@@ -219,13 +223,41 @@ endif()
 set(_multilib_build_prefix "${CMAKE_CURRENT_BINARY_DIR}/")
 set(_multilib_nested_prefix "${_multilib_root}/")
 set(_multilib_cmake_files_prefix "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/")
+set(_multilib_testing_prefix "${CMAKE_CURRENT_BINARY_DIR}/Testing/")
+set(_multilib_generated_depends
+    "${CMAKE_CURRENT_BINARY_DIR}/cmake_install.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/x265_config.h")
 set(_multilib_sources "")
 foreach(_dep IN LISTS _multilib_depends)
     string(FIND "${_dep}" "${_multilib_build_prefix}" _multilib_dep_pos)
     string(FIND "${_dep}" "${_multilib_nested_prefix}" _multilib_nested_pos)
     string(FIND "${_dep}" "${_multilib_cmake_files_prefix}" _multilib_cmake_files_pos)
+    string(FIND "${_dep}" "${_multilib_testing_prefix}" _multilib_testing_pos)
     if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_CURRENT_BINARY_DIR)
-        if(NOT _multilib_nested_pos EQUAL 0 AND NOT _multilib_cmake_files_pos EQUAL 0)
+        get_filename_component(_dep_name "${_dep}" NAME)
+        # add_subdirectory() writes cmake_install.cmake beside each source
+        # directory in an in-source build, and CTest can add test files there
+        # as well. They are refreshed on every configure and must not make the
+        # nested bit-depth archives dirty.
+        if(_dep_name MATCHES "^(cmake_install|cmake_uninstall|CTestTestfile)\\.cmake$")
+            continue()
+        endif()
+        list(FIND _multilib_generated_depends "${_dep}" _multilib_generated_pos)
+        if(NOT _multilib_generated_pos EQUAL -1)
+            continue()
+        endif()
+        get_filename_component(_dep_dir "${_dep}" DIRECTORY)
+        # CMake writes generated .cmake files directly into an in-source
+        # build root. The source tree keeps its CMake modules in cmake/, so
+        # direct-root .cmake files are generated dependencies and would make
+        # every reconfigure rebuild the sub-libraries.
+        if(_dep_dir STREQUAL "${CMAKE_CURRENT_BINARY_DIR}" AND _dep MATCHES "\\.cmake$")
+            continue()
+        endif()
+        if(NOT _multilib_nested_pos EQUAL 0 AND
+           NOT _multilib_cmake_files_pos EQUAL 0 AND
+           NOT _multilib_testing_pos EQUAL 0)
             list(APPEND _multilib_sources "${_dep}")
         endif()
     elseif(NOT _multilib_dep_pos EQUAL 0)
@@ -285,8 +317,14 @@ function(x265_define_multilib_variant name dir archive)
     string(SHA256 _multilib_args_hash
         "${_multilib_source_args};${_multilib_common_args};${ARGN};${_archive_dir_args}")
     set(_multilib_args_file "${dir}/x265-multilib-args.txt")
-    if(NOT CMAKE_CONFIGURATION_TYPES)
-        file(GENERATE OUTPUT "${_multilib_args_file}" CONTENT "${_multilib_args_hash}\n")
+    if(NOT _multilib_generator_is_multi_config)
+        # configure_file() updates the output only when its content changes.
+        # file(GENERATE) refreshes the timestamp on every configure, which
+        # would make an unchanged in-source reconfigure rebuild this archive.
+        set(_multilib_args_template
+            "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/x265-multilib-args-${name}.in")
+        file(WRITE "${_multilib_args_template}" "${_multilib_args_hash}\n")
+        configure_file("${_multilib_args_template}" "${_multilib_args_file}" COPYONLY)
     endif()
     if(_multilib_native_build)
         set(_multilib_build_command "${CMAKE_MAKE_PROGRAM}" -C "${dir}")
@@ -308,7 +346,7 @@ function(x265_define_multilib_variant name dir archive)
     # try to join the parent's jobserver ("resetting jobserver mode" warnings).
     set(_multilib_run_build_command
         "${CMAKE_COMMAND}" -E env MAKEFLAGS= ${_multilib_build_command})
-    if(CMAKE_CONFIGURATION_TYPES)
+    if(_multilib_generator_is_multi_config)
         # A multi-config target cannot select its per-config archive through a
         # single OUTPUT file (generator expressions in OUTPUT require a newer
         # CMake than this project's minimum). Invoke the nested native build
@@ -343,7 +381,7 @@ function(x265_define_multilib_variant name dir archive)
 endfunction()
 
 set(_multilib_archive_subdir "")
-if(CMAKE_CONFIGURATION_TYPES)
+if(_multilib_generator_is_multi_config)
     set(_multilib_archive_subdir "$<CONFIG>/")
 endif()
 x265_define_multilib_variant(x265-multilib-10bit "${_multilib_root}/10bit"
@@ -351,26 +389,21 @@ x265_define_multilib_variant(x265-multilib-10bit "${_multilib_root}/10bit"
 x265_define_multilib_variant(x265-multilib-12bit "${_multilib_root}/12bit"
     "${_multilib_root}/12bit/${_multilib_archive_subdir}${_multilib_archive_name}" "-DHIGH_BIT_DEPTH=ON" "-DMAIN12=ON")
 
-# target_link_libraries() only propagates static archives to consumers; it
-# does not make them inputs of another static archive. Generate one tiny anchor
-# source whenever a sub-archive changes, on every generator, so x265-static is
-# re-archived and runs its merge POST_BUILD step. OBJECT_DEPENDS alone cannot
-# provide this dependency for Visual Studio and Xcode.
-set(_multilib_link_anchor "${_multilib_root}/x265-multilib-link.cpp")
-set(_multilib_link_anchor_template "${_multilib_link_anchor}.in")
-file(GENERATE OUTPUT "${_multilib_link_anchor_template}" CONTENT
-    "// Generated by multilib.cmake.\nvoid x265_multilib_archive_dependency_anchor() {}\n")
-add_custom_command(
-    OUTPUT "${_multilib_link_anchor}"
-    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-            "${_multilib_link_anchor_template}" "${_multilib_link_anchor}"
-    COMMAND "${CMAKE_COMMAND}" -E touch "${_multilib_link_anchor}"
-    DEPENDS "${_multilib_root}/10bit/${_multilib_archive_subdir}${_multilib_archive_name}"
-            "${_multilib_root}/12bit/${_multilib_archive_subdir}${_multilib_archive_name}"
-            "${_multilib_link_anchor_template}"
-    COMMENT "Synchronizing the x265 multilib archive dependency"
-    VERBATIM)
-set_source_files_properties("${_multilib_link_anchor}" PROPERTIES GENERATED TRUE)
+# The parent's 8-bit archive is built as an intermediate target and merged
+# into the final x265-static archive by a dedicated rule (see CMakeLists.txt).
+# This keeps the sub-archives as file-level inputs on every generator without
+# adding a dependency-anchor object to the installed library.
+set(_multilib_raw_static_target "x265-8bit-static")
+set(_multilib_raw_archive "$<TARGET_FILE:${_multilib_raw_static_target}>")
+set(_multilib_final_archive
+    "${CMAKE_CURRENT_BINARY_DIR}/${_multilib_archive_subdir}${_multilib_archive_name}")
+set(_multilib_merge_stamp "${_multilib_root}/x265-merge-args.txt")
+string(SHA256 _multilib_merge_args_hash
+    "${_multilib_raw_archive};${_multilib_root}/10bit/${_multilib_archive_subdir}${_multilib_archive_name};${_multilib_root}/12bit/${_multilib_archive_subdir}${_multilib_archive_name};${_multilib_archiver};${CMAKE_CURRENT_SOURCE_DIR}/cmake/x265-merge.cmake")
+set(_multilib_merge_args_template
+    "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/x265-multilib-merge-args.in")
+file(WRITE "${_multilib_merge_args_template}" "${_multilib_merge_args_hash}\n")
+configure_file("${_multilib_merge_args_template}" "${_multilib_merge_stamp}" COPYONLY)
 
 # Build the bit-depth sub-libraries sequentially (like build/linux/multilib.sh)
 # so that a parallel parent build does not run two nested builds at once
