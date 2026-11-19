@@ -1899,7 +1899,7 @@ sse_t Search::estIntraPredQT(Mode &intraMode, const CUGeom& cuGeom, const uint32
     sse_t totalDistortion = 0;
 
     int checkTransformSkip = m_slice->m_pps->bTransformSkipEnabled && !cu.m_tqBypass[0] && cu.m_partSize[0] != SIZE_2Nx2N;
-    const bool bSplitCand = !!m_param->bEnableIntraTuSplitRefine;
+    const bool bSplitCand = !!m_param->bEnableIntraTuSplitRefine && !m_param->analysisSave[0] && !m_param->analysisLoad[0];
 
     // loop over partitions
     for (uint32_t puIdx = 0; puIdx < numPU; puIdx++, absPartIdx += qNumParts)

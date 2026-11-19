@@ -2993,7 +2993,8 @@ void Analysis::recodeCU(const CUData& parentCTU, const CUGeom& cuGeom, int32_t q
         PartSize size = (PartSize)parentCTU.m_partSize[cuGeom.absPartIdx];
         if (parentCTU.isIntra(cuGeom.absPartIdx) && m_refineLevel < 2)
         {
-            if (m_param->intraRefine == 4)
+            bool skipFullIntraRefine = m_param->bEnableIntra64x64 && m_param->bDynamicRefine && m_frame->m_classifyFrame;
+            if (m_param->intraRefine == 4 && !skipFullIntraRefine)
                 compressIntraCU(parentCTU, cuGeom, qp);
             else
             {
