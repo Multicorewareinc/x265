@@ -295,7 +295,7 @@ void intra_pred_ang26_neon(pixel *dst, intptr_t dstStride, const pixel *srcPix,
             const int16x8_t left =
                 vreinterpretq_s16_u16(vmovl_u8(vld1_u8(srcPix + width2 + 1)));
             uint8_t col[8];
-            vst1_u8(col, vqmovun_s16(vaddq_s16(t0, vshrq_n_s16(vsubq_s16(left, tl), 1))));
+            vst1_u8(col, vqmovun_s16(vaddq_s16(t0, vhsubq_s16(left, tl))));
             d = dst;
             for (int y = 0; y < 8; y++, d += dstStride)
                 d[0] = col[y];
@@ -317,8 +317,8 @@ void intra_pred_ang26_neon(pixel *dst, intptr_t dstStride, const pixel *srcPix,
             const int16x8_t left1 =
                 vreinterpretq_s16_u16(vmovl_u8(vld1_u8(srcPix + width2 + 9)));
             uint8_t col[16];
-            vst1_u8(col, vqmovun_s16(vaddq_s16(t0, vshrq_n_s16(vsubq_s16(left0, tl), 1))));
-            vst1_u8(col + 8, vqmovun_s16(vaddq_s16(t0, vshrq_n_s16(vsubq_s16(left1, tl), 1))));
+            vst1_u8(col, vqmovun_s16(vaddq_s16(t0, vhsubq_s16(left0, tl))));
+            vst1_u8(col + 8, vqmovun_s16(vaddq_s16(t0, vhsubq_s16(left1, tl))));
             d = dst;
             for (int y = 0; y < 16; y++, d += dstStride)
                 d[0] = col[y];
@@ -792,12 +792,12 @@ void intra_pred_ang_hor8_neon(pixel *dst, intptr_t dstStride, const pixel *srcPi
     const uint8x8_t f0 = vld1_u8(f0arr);
     const uint8x8_t f1 = vld1_u8(f1arr);
     const uint8x8_t base = vld1_u8(idxBase);
+    const uint8x16_t baseq = vcombine_u8(base, base);
 
     pixel *d = dst;
     for (int y = 0; y < 8; y++, d += dstStride)
     {
-        uint8x8_t vidx = vadd_u8(base, vdup_n_u8((uint8_t)y));
-        uint8x16_t idxq = vcombine_u8(vidx, vidx);
+        const uint8x16_t idxq = vaddq_u8(baseq, vdupq_n_u8((uint8_t)y));
         uint8x16_t in0 = vqtbl1q_u8(tbl, idxq);
         uint8x16_t in1 = vqtbl1q_u8(tbl, vaddq_u8(idxq, vdupq_n_u8(1)));
         uint16x8_t lo = vmlal_u8(vdupq_n_u16(16), vget_low_u8(in0), f0);
@@ -1429,8 +1429,8 @@ void intra_pred_dc_neon(pixel* dst, intptr_t dstStride, const pixel* srcPix, int
         const int dc = (16 + vaddlvq_u8(top) + vaddlvq_u8(left)) >> 5;
         const uint8x16_t fill = vdupq_n_u8((uint8_t)dc);
         const uint16x8_t bias = vdupq_n_u16((uint16_t)(3 * dc + 2));
-        const uint8x8_t top0 = vshrn_n_u16(vaddq_u16(vmovl_u8(vget_low_u8(top)), bias), 2);
-        const uint8x8_t top1 = vshrn_n_u16(vaddq_u16(vmovl_u8(vget_high_u8(top)), bias), 2);
+        const uint8x8_t top0 = vshrn_n_u16(vaddw_u8(bias, vget_low_u8(top)), 2);
+        const uint8x8_t top1 = vshrn_n_u16(vaddw_high_u8(bias, top), 2);
         vst1q_u8(dst, vcombine_u8(top0, top1));
         dst[0] = (pixel)((srcPix[1] + srcPix[33] + 2 * dc + 2) >> 2);
         for (int y = 1; y < 16; y++)
@@ -1448,7 +1448,7 @@ void intra_pred_dc_neon(pixel* dst, intptr_t dstStride, const pixel* srcPix, int
         const int dc = (8 + vaddlv_u8(top) + vaddlv_u8(left)) >> 4;
         const uint8x8_t fill = vdup_n_u8((uint8_t)dc);
         const uint16x8_t bias = vdupq_n_u16((uint16_t)(3 * dc + 2));
-        const uint8x8_t first = vshrn_n_u16(vaddq_u16(vmovl_u8(top), bias), 2);
+        const uint8x8_t first = vshrn_n_u16(vaddw_u8(bias, top), 2);
         vst1_u8(dst, first);
         dst[0] = (pixel)((srcPix[1] + srcPix[17] + 2 * dc + 2) >> 2);
         for (int y = 1; y < 8; y++)
