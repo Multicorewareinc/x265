@@ -1042,6 +1042,7 @@ if((MSVC_IDE OR XCODE OR GCC) AND ENABLE_ASSEMBLY)
         endforeach()
     elseif(X86)
     # compile X86 arch asm files here
+        include(X265NasmFlags)
         foreach(ASM ${MSVC_ASMS})
             set(ASM_SRC ${CMAKE_CURRENT_SOURCE_DIR}/common/x86/${ASM})
             list(APPEND ASM_SRCS ${ASM_SRC})
