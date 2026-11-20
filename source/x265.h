@@ -2432,6 +2432,12 @@ typedef struct x265_param
      * rejected. When disabled, x265 writes its own UUID in front of the payload.
      * Default 0 (disabled). */
     int      bUserSEIRaw;
+    int      bEnableIntra64x64;
+
+    /* Code every intra mode shortlisted for full RD with the recursive TU split, so the
+     * luma intra mode and its TU split are chosen jointly. When disabled only the chosen
+     * mode is re-measured with TU splits. Slower. Default disabled */
+    int      bEnableIntraTuSplitRefine;
 } x265_param;
 
 /* x265_param_alloc:
