@@ -1770,7 +1770,7 @@ Slice decision options
 
 .. option:: --fades, --no-fades
 
-	Detect and handle fade-in regions. Default disabled.
+	Detect and handle fade-in regions. Defaults disabled.
 
 .. option:: --cra-nal
 
