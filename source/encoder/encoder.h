@@ -186,7 +186,7 @@ public:
 
     int64_t            m_firstPts;
     int64_t            m_bframeDelayTime;
-    int64_t            m_prevReorderedPts[2];
+    int64_t            m_prevReorderedPts[X265_BFRAME_MAX];
     int64_t            m_encodeStartTime;
     uint64_t           m_clockTickCount;  /* Clock ticks elapsed since the first presentation */
     uint32_t           m_lastPirCpbDelay;

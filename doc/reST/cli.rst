@@ -1685,9 +1685,33 @@ Slice decision options
 	more likely x265 is to use B frames. Can be any value between -90
 	and 100 and is clipped to that range. Default 0
 
-.. option:: --b-pyramid, --no-b-pyramid
+.. option:: --b-pyramid <integer>
 
-	Use B-frames as references, when possible. Default enabled
+	Use B-frames as references, when possible. Default 1
+
+	0. No B frame is used as a reference
+	1. The middle B frame of each mini-GOP of more than 2 B frames is a
+	   reference for the other B frames of the mini-GOP
+	2. Hierarchical B-pyramid: the middle B frame of a mini-GOP is a B-ref
+	   from the two anchors, and each half is split the same way while it
+	   has more than two B frames, so the B frames are predicted from nearer
+	   references. With :option:`--temporal-layers` greater than 2 the
+	   mini-GOP is defined by the temporal sub-layers, as with 1
+
+	**Values:** 0, 1, 2. Earlier versions took no value: use 1 for
+	:option:`--b-pyramid` and 0 for the removed ``--no-b-pyramid``.
+
+	With 2 the QP of a B frame comes from its layer in the pyramid instead of
+	from whether it is a reference: see :option:`--b-pyramid-qp-scale`.
+
+.. option:: --b-pyramid-qp-scale <float>
+
+	Scale the QP offsets of the B-pyramid layers over their anchors. A B frame
+	at layer L sits scale * min(2, 0.5 * L) * 6 * log2(:option:`--pbratio`) QP
+	above its anchors, so at scale 1 layer 1 matches a B-ref of
+	:option:`--b-pyramid` 1 and layer 2 a non-reference B frame. 0 codes all
+	B frames at the anchor QP; values below 1 flatten the pyramid, above 1
+	steepen it. Only used with :option:`--b-pyramid` 2. Range 0 to 2. Default 1.0
 
 .. option:: --force-flush <integer>
 
@@ -2005,6 +2029,11 @@ Quality, rate control and rate distortion options
 	QP ratio factor between P and B slices. This ratio is used in all of
 	the rate control modes. Some :option:`--tune` options may change the
 	default value. It is not typically manually specified. Default 1.3
+
+	With :option:`--b-pyramid` 2 the B frames get a QP offset per pyramid layer
+	derived from this ratio: 6 * log2(pbratio) / 2 for each layer, up to twice
+	the offset of a non-reference B frame, scaled by
+	:option:`--b-pyramid-qp-scale`.
 
 .. option:: --qcomp <float>
 

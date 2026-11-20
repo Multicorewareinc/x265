@@ -38,6 +38,7 @@
 #include "frameencoder.h"
 #include "ratecontrol.h"
 #include "dpb.h"
+#include "level.h"
 #include "nal.h"
 #include "threadedme.h"
 #include "ratecontrol.h"
@@ -134,7 +135,7 @@ Encoder::Encoder()
     m_clockTickCount = 0;
     m_lastPirCpbDelay = 0;
     m_bframeDelayTime = 0;
-    m_prevReorderedPts[0] = m_prevReorderedPts[1] = 0;
+    memset(m_prevReorderedPts, 0, sizeof(m_prevReorderedPts));
     m_curEncoder = 0;
     m_numLumaWPFrames = 0;
     m_numChromaWPFrames = 0;
@@ -1703,6 +1704,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                 inFrame[layer]->m_lowresInit = false;
                 inFrame[layer]->m_isInsideWindow = 0;
                 inFrame[layer]->m_tempLayer = 0;
+                inFrame[layer]->m_bPyramidLayer = 0;
                 inFrame[layer]->m_sameLayerRefPic = 0;
 #if ENABLE_MULTIVIEW
                 inFrame[layer]->m_viewId = m_param->numViews > 1 ? layer : 0;
@@ -1906,6 +1908,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                     {
                         inFrame[0]->m_lowres.plannedSatd[index] = inFrame[0]->m_analysisData.lookahead.plannedSatd[index];
                         inFrame[0]->m_lowres.plannedType[index] = inFrame[0]->m_analysisData.lookahead.plannedType[index];
+                        inFrame[0]->m_lowres.plannedBQpCoef[index] = -1; /* not in the analysis data */
                     }
                 }
             }
@@ -2316,6 +2319,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                     frameEnc[layer]->m_lowres.sliceType = IS_X265_TYPE_I(baseViewType) ? X265_TYPE_P : baseViewType;
                 frameEnc[layer]->m_lowres.bKeyframe = frameEnc[0]->m_lowres.bKeyframe;
                 frameEnc[layer]->m_tempLayer = frameEnc[0]->m_tempLayer;
+                frameEnc[layer]->m_bPyramidLayer = frameEnc[0]->m_bPyramidLayer;
             }
 #endif
 
@@ -2538,6 +2542,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                     if ((frameEnc[layer]->m_poc == (m_param->totalFrames - 1)) || (frameEnc[layer]->m_lowres.sliceType == X265_TYPE_I) || (frameEnc[layer]->m_lowres.sliceType == X265_TYPE_IDR))
                     {
                         frameEnc[layer]->m_tempLayer = (int8_t)0;
+                        frameEnc[layer]->m_bPyramidLayer = 0;
                     }
                 }
             }
@@ -4386,6 +4391,10 @@ void Encoder::configure(x265_param *p)
     }
 
     m_bframeDelay = p->bframes ? (p->bBPyramid ? 2 : 1) : 0;
+    /* the DTS delay must cover the deepest reorder, or DTS ends up after PTS: the hierarchical
+     * B-pyramid reorders more than 2 pictures from 7 B-frames on */
+    if (X265_HIERARCHICAL_BPYRAMID(p) && p->bframes > 1)
+        m_bframeDelay = X265_MAX(m_bframeDelay, (int)hierarchicalReorderPics(p->bframes));
 
     p->bFrameBias = X265_MIN(X265_MAX(-90, p->bFrameBias), 100);
     p->scenecutBias = (double)(p->scenecutBias / 100);
