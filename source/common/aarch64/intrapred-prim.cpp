@@ -1683,14 +1683,20 @@ void intra_pred_dc_neon(pixel* dst, intptr_t dstStride, const pixel* srcPix, int
         const uint16x8_t bias = vdupq_n_u16((uint16_t)(3 * dc + 2));
         const uint8x8_t top0 = vshrn_n_u16(vaddw_u8(bias, vget_low_u8(top)), 2);
         const uint8x8_t top1 = vshrn_n_u16(vaddw_high_u8(bias, top), 2);
-        vst1q_u8(dst, vcombine_u8(top0, top1));
-        dst[0] = (pixel)((srcPix[1] + srcPix[33] + 2 * dc + 2) >> 2);
-        for (int y = 1; y < 16; y++)
-        {
-            pixel *row = dst + y * dstStride;
-            vst1q_u8(row, fill);
-            row[0] = (pixel)((srcPix[33 + y] + 3 * dc + 2) >> 2);
-        }
+        const uint8x8_t left0 = vshrn_n_u16(vaddw_u8(bias, vget_low_u8(left)), 2);
+        const uint8x8_t left1 = vshrn_n_u16(vaddw_high_u8(bias, left), 2);
+        const uint8x16_t filteredLeft = vcombine_u8(left0, left1);
+        const uint8_t corner = (uint8_t)((srcPix[1] + srcPix[33] + 2 * dc + 2) >> 2);
+        vst1q_u8(dst, vsetq_lane_u8(corner, vcombine_u8(top0, top1), 0));
+
+        // Each row is stored once, including its filtered left boundary pixel.
+#define STORE_DC16_ROW(y) vst1q_u8(dst + (y) * dstStride, vcopyq_laneq_u8(fill, 0, filteredLeft, (y)))
+        STORE_DC16_ROW(1);  STORE_DC16_ROW(2);  STORE_DC16_ROW(3);
+        STORE_DC16_ROW(4);  STORE_DC16_ROW(5);  STORE_DC16_ROW(6);
+        STORE_DC16_ROW(7);  STORE_DC16_ROW(8);  STORE_DC16_ROW(9);
+        STORE_DC16_ROW(10); STORE_DC16_ROW(11); STORE_DC16_ROW(12);
+        STORE_DC16_ROW(13); STORE_DC16_ROW(14); STORE_DC16_ROW(15);
+#undef STORE_DC16_ROW
         return;
     }
     if (width == 8 && bFilter)
