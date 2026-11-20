@@ -35,13 +35,6 @@
     ret PFX(name ## _32_ ## cpu(__VA_ARGS__)); \
     ret PFX(name ## _64_ ## cpu(__VA_ARGS__))
 
-#define FUNCDEF_TU_S2(ret, name, cpu, ...) \
-    ret PFX(name ## 4_ ## cpu(__VA_ARGS__)); \
-    ret PFX(name ## 8_ ## cpu(__VA_ARGS__)); \
-    ret PFX(name ## 16_ ## cpu(__VA_ARGS__)); \
-    ret PFX(name ## 32_ ## cpu(__VA_ARGS__)); \
-    ret PFX(name ## 64_ ## cpu(__VA_ARGS__))
-
 #define FUNCDEF_PU(ret, name, cpu, ...) \
     ret PFX(name ## _4x4_   ## cpu)(__VA_ARGS__); \
     ret PFX(name ## _8x8_   ## cpu)(__VA_ARGS__); \
@@ -149,9 +142,7 @@
     FUNCDEF_PU(void, pixel_sub_ps, cpu, int16_t* a, intptr_t dstride, const pixel* b0, const pixel* b1, intptr_t sstride0, intptr_t sstride1); \
     FUNCDEF_PU(void, pixel_add_ps, cpu, pixel* a, intptr_t dstride, const pixel* b0, const int16_t* b1, intptr_t sstride0, intptr_t sstride1); \
     FUNCDEF_PU(void, pixel_add_ps_aligned, cpu, pixel* a, intptr_t dstride, const pixel* b0, const int16_t* b1, intptr_t sstride0, intptr_t sstride1); \
-    FUNCDEF_CHROMA_PU(int, pixel_satd, cpu, const pixel*, intptr_t, const pixel*, intptr_t); \
-    FUNCDEF_TU_S2(void, ssimDist, cpu, const pixel *fenc, uint32_t fStride, const pixel *recon, intptr_t rstride, uint64_t *ssBlock, int shift, uint64_t *ac_k); \
-    FUNCDEF_TU_S2(void, normFact, cpu, const pixel *src, uint32_t blockSize, int shift, uint64_t *z_k)
+    FUNCDEF_CHROMA_PU(int, pixel_satd, cpu, const pixel*, intptr_t, const pixel*, intptr_t)
 
 DECLS(neon);
 DECLS(sve);

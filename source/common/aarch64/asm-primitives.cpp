@@ -503,19 +503,6 @@ void setupNeonPrimitives(EncoderPrimitives &p)
     // ssim_4x4x2_core
     p.ssim_4x4x2_core = PFX(ssim_4x4x2_core_neon);
 
-    // ssimDist
-    p.cu[BLOCK_4x4].ssimDist = PFX(ssimDist4_neon);
-    p.cu[BLOCK_8x8].ssimDist = PFX(ssimDist8_neon);
-    p.cu[BLOCK_16x16].ssimDist = PFX(ssimDist16_neon);
-    p.cu[BLOCK_32x32].ssimDist = PFX(ssimDist32_neon);
-    p.cu[BLOCK_64x64].ssimDist = PFX(ssimDist64_neon);
-
-    // normFact
-    p.cu[BLOCK_8x8].normFact = PFX(normFact8_neon);
-    p.cu[BLOCK_16x16].normFact = PFX(normFact16_neon);
-    p.cu[BLOCK_32x32].normFact = PFX(normFact32_neon);
-    p.cu[BLOCK_64x64].normFact = PFX(normFact64_neon);
-
     p.scanPosLast = PFX(scanPosLast_neon);
 
     p.costCoeffNxN = PFX(costCoeffNxN_neon);
@@ -610,19 +597,6 @@ void setupSve2Primitives(EncoderPrimitives &p)
 
     // ssim_4x4x2_core
     p.ssim_4x4x2_core = PFX(ssim_4x4x2_core_sve2);
-
-    // ssimDist
-    p.cu[BLOCK_4x4].ssimDist = PFX(ssimDist4_sve2);
-    p.cu[BLOCK_8x8].ssimDist = PFX(ssimDist8_sve2);
-    p.cu[BLOCK_16x16].ssimDist = PFX(ssimDist16_sve2);
-    p.cu[BLOCK_32x32].ssimDist = PFX(ssimDist32_sve2);
-    p.cu[BLOCK_64x64].ssimDist = PFX(ssimDist64_sve2);
-
-    // normFact
-    p.cu[BLOCK_8x8].normFact = PFX(normFact8_sve2);
-    p.cu[BLOCK_16x16].normFact = PFX(normFact16_sve2);
-    p.cu[BLOCK_32x32].normFact = PFX(normFact32_sve2);
-    p.cu[BLOCK_64x64].normFact = PFX(normFact64_sve2);
 #endif // !HIGH_BIT_DEPTH
 
     p.dequant_normal = PFX(dequant_normal_sve2);

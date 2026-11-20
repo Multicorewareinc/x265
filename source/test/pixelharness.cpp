@@ -2564,9 +2564,16 @@ bool PixelHarness::check_ssimDist(ssimDistortion_t ref, ssimDistortion_t opt)
         int index2 = (i + 10) % TEST_CASES;
         int k1 = rand() % 5, k2 = rand() % 5;
         ref(pixel_test_buff[index] + j, srcStride[k1], pixel_test_buff[index2] + j, dstStride[k2], &ref_dest1, shift, &ref_dest2);
+#if X265_ARCH_ARM64
+        checked(opt, pixel_test_buff[index] + j, srcStride[k1], pixel_test_buff[index2] + j, dstStride[k2], &opt_dest1, shift, &opt_dest2);
+
+        if (opt_dest1 != ref_dest1 || opt_dest2 != ref_dest2)
+#else
+        // Other architectures need assembly review as they fail checked(); one output may also differ.
         opt(pixel_test_buff[index] + j, srcStride[k1], pixel_test_buff[index2] + j, dstStride[k2], &opt_dest1, shift, &opt_dest2);
 
         if (opt_dest1 != ref_dest1 && opt_dest2 != ref_dest2)
+#endif
         {
             return false;
         }
@@ -2588,7 +2595,11 @@ bool PixelHarness::check_normFact(normFactor_t ref, normFactor_t opt, int block)
     {
         int index = i % TEST_CASES;
         ref(pixel_test_buff[index] + j, blockSize, shift, &ref_dest);
+#if X265_ARCH_ARM64
+        checked(opt, pixel_test_buff[index] + j, blockSize, shift, &opt_dest);
+#else
         opt(pixel_test_buff[index] + j, blockSize, shift, &opt_dest);
+#endif
 
         if (opt_dest != ref_dest)
         {
@@ -3694,12 +3705,12 @@ void PixelHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimi
         if (opt.cu[i].blockfill_s[NONALIGNED])
         {
             HEADER("blkfill[%dx%d]", 4 << i, 4 << i);
-            REPORT_SPEEDUP(opt.cu[i].blockfill_s[NONALIGNED], ref.cu[i].blockfill_s[NONALIGNED], sbuf1, 64, SHORT_MAX);
+            REPORT_SPEEDUP(opt.cu[i].blockfill_s[NONALIGNED], ref.cu[i].blockfill_s[NONALIGNED], sbuf1, 64, static_cast<int16_t>(SHORT_MAX));
         }
         if (opt.cu[i].blockfill_s[ALIGNED])
         {
             HEADER("blkfill_aligned[%dx%d]", 4 << i, 4 << i);
-            REPORT_SPEEDUP(opt.cu[i].blockfill_s[ALIGNED], ref.cu[i].blockfill_s[ALIGNED], sbuf1, 64, SHORT_MAX);
+            REPORT_SPEEDUP(opt.cu[i].blockfill_s[ALIGNED], ref.cu[i].blockfill_s[ALIGNED], sbuf1, 64, static_cast<int16_t>(SHORT_MAX));
         }
 
         if (opt.cu[i].transpose)
@@ -3921,13 +3932,13 @@ void PixelHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimi
     if (opt.planecopy_sp)
     {
         HEADER0("planecopy_sp");
-        REPORT_SPEEDUP(opt.planecopy_sp, ref.planecopy_sp, ushort_test_buff[0], 64, pbuf1, 64, 64, 64, 8, 255);
+        REPORT_SPEEDUP(opt.planecopy_sp, ref.planecopy_sp, ushort_test_buff[0], 64, pbuf1, 64, 64, 64, 8, static_cast<uint16_t>(255));
     }
 
     if (opt.planecopy_sp_shl)
     {
         HEADER0("planecopy_sp_shl");
-        REPORT_SPEEDUP(opt.planecopy_sp_shl, ref.planecopy_sp_shl, ushort_test_buff[0], 64, pbuf1, 64, 64, 64, 8, 255);
+        REPORT_SPEEDUP(opt.planecopy_sp_shl, ref.planecopy_sp_shl, ushort_test_buff[0], 64, pbuf1, 64, 64, 64, 8, static_cast<uint16_t>(255));
     }
 
     if (opt.planecopy_cp)
