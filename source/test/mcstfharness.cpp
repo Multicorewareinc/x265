@@ -76,6 +76,7 @@ bool MCSTFHarness::check_motionErrorLumaFrac(const MCSTFPrimitives& ref, const M
     return true;
 }
 
+// cppcheck-suppress functionStatic
 bool MCSTFHarness::check_motionErrorLumaInt(const MCSTFPrimitives& ref, const MCSTFPrimitives& opt)
 {
     const int bsValues[] = { 8, 16 };
@@ -105,6 +106,7 @@ bool MCSTFHarness::check_motionErrorLumaInt(const MCSTFPrimitives& ref, const MC
     return true;
 }
 
+// cppcheck-suppress functionStatic
 bool MCSTFHarness::check_motionSearchLumaFrac(const MCSTFPrimitives& ref, const MCSTFPrimitives& opt)
 {
     const int bsValues[] = { 8, 16 };
