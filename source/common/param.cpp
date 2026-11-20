@@ -240,6 +240,8 @@ void x265_param_default(x265_param* param)
     param->limitModes = 0;
     param->bEnableWeightedPred = 1;
     param->bEnableWeightedBiPred = 0;
+    param->bEnableWeightedAllRef = 0;
+    param->bEnableWpAdaptivePPS = 0;
     param->bEnableEarlySkip = 1;
     param->recursionSkipMode = 1;
     param->edgeVarThreshold = 0.05f;
@@ -1128,6 +1130,8 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     OPT("limit-modes") p->limitModes = atobool(value);
     OPT("weightp") p->bEnableWeightedPred = atobool(value);
     OPT("weightb") p->bEnableWeightedBiPred = atobool(value);
+    OPT("wp-allref") p->bEnableWeightedAllRef = atobool(value);
+    OPT("wp-adaptive-pps") p->bEnableWpAdaptivePPS = atobool(value);
     OPT("cbqpoffs") p->cbQpOffset = atoi(value);
     OPT("crqpoffs") p->crQpOffset = atoi(value);
     OPT("rd") p->rdLevel = atoi(value);
@@ -2391,6 +2395,8 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     }
     BOOL(p->bEnableWeightedPred, "weightp");
     BOOL(p->bEnableWeightedBiPred, "weightb");
+    BOOL(p->bEnableWeightedAllRef, "wp-allref");
+    BOOL(p->bEnableWpAdaptivePPS, "wp-adaptive-pps");
     BOOL(p->bSourceReferenceEstimation, "analyze-src-pics");
     BOOL(p->bEnableLoopFilter, "deblock");
     if (p->bEnableLoopFilter)
@@ -2879,6 +2885,8 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     }
     dst->bEnableWeightedBiPred = src->bEnableWeightedBiPred;
     dst->bEnableWeightedPred = src->bEnableWeightedPred;
+    dst->bEnableWeightedAllRef = src->bEnableWeightedAllRef;
+    dst->bEnableWpAdaptivePPS = src->bEnableWpAdaptivePPS;
     dst->bSourceReferenceEstimation = src->bSourceReferenceEstimation;
     dst->bEnableLoopFilter = src->bEnableLoopFilter;
     dst->deblockingFilterBetaOffset = src->deblockingFilterBetaOffset;
