@@ -76,6 +76,7 @@ Frame::Frame()
     m_prevMCSTF = NULL;
 
     m_tempLayer = 0;
+    m_bPyramidLayer = 0;
     m_sameLayerRefPic = false;
 
     m_viewId = 0;

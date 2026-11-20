@@ -1888,6 +1888,7 @@ void PreLookaheadGroup::processTasks(int workerThreadID)
 }
 
 
+/* B-ref placement of the temporal sub-layer mini-GOPs (--temporal-layers > 2) */
 void Lookahead::placeBref(Frame** frames, int start, int end, int num, int *brefs)
 {
     int avg = (start + end) / 2;
@@ -1909,6 +1910,46 @@ void Lookahead::placeBref(Frame** frames, int start, int end, int num, int *bref
             placeBref(frames, avg + 1, end, end - avg, brefs);
             return;
         }
+    }
+}
+
+/* Hierarchical B-ref placement: list[bframes] closes a mini-GOP of bframes B frames (list[i] is
+ * the frame at distance i + 1 from the previous anchor); the B-refs of its bPyramidPlan() */
+void Lookahead::placeHierarchicalBref(Frame** list, int bframes, int *brefs)
+{
+    BPyramidNode plan[X265_BPYRAMID_MAX_NODES];
+    const int count = bPyramidPlan(0, bframes + 1, plan);
+    for (int k = 0; k < count; k++)
+    {
+        if (plan[k].bRef)
+        {
+            list[plan[k].b - 1]->m_lowres.sliceType = X265_TYPE_BREF;
+            (*brefs)++;
+        }
+    }
+}
+
+/* Estimate the costs of the B frames between anchors frames[p0] and frames[p1] with the references
+ * they are encoded with, those of bPyramidPlan(). A planned B-ref that is not one (B-refs given by
+ * the first pass or forced by the user) leaves the B frames of its range on its anchors. Without a
+ * usable p0 (leading pictures of an IDR) the frames referencing p0 are costed from L1 only */
+void Lookahead::compCostHierarchicalBref(Lowres **frames, int p0, int p1, bool bP0Avail)
+{
+    BPyramidNode plan[X265_BPYRAMID_MAX_NODES];
+    const int count = bPyramidPlan(p0, p1, plan);
+    CostEstimateGroup estGroup(*this, frames);
+    for (int k = 0; k < count;)
+    {
+        const BPyramidNode& node = plan[k];
+        if (node.bRef && frames[node.b]->sliceType != X265_TYPE_BREF)
+        {
+            for (int b = node.p0 + 1; b < node.p1; b++)
+                estGroup.singleCost(bP0Avail || node.p0 != p0 ? node.p0 : b, node.p1, b);
+            k = node.end;
+            continue;
+        }
+        estGroup.singleCost(bPyramidRef0(node, p0, bP0Avail), node.p1, node.b);
+        k++;
     }
 }
 
@@ -2003,6 +2044,24 @@ bool Lookahead::generatemcstf(Frame * frameEnc, PicList refPic, int poclast)
     }
 
     return true;
+}
+
+/* Pushes the B frames list[0..bframes-1] of a mini-GOP in the coding order of bPyramidPlan() and
+ * stores the pyramid layer of each frame. The layer is used by rate control and reference selection
+ * only, the signalled TemporalId (m_tempLayer) is not touched */
+static void pushBPyramid(Frame** list, int bframes, const int64_t* pts, int& idx, int* codedFrameOrderedIndex,
+    PicList& outputQueue)
+{
+    BPyramidNode plan[X265_BPYRAMID_MAX_NODES];
+    const int count = bPyramidPlan(0, bframes + 1, plan);
+    for (int k = 0; k < count; k++)
+    {
+        Frame* f = list[plan[k].b - 1];
+        codedFrameOrderedIndex[idx] = plan[k].b - 1;
+        f->m_reorderedPts = pts[idx++];
+        f->m_bPyramidLayer = (uint8_t)plan[k].layer;
+        outputQueue.pushBack(*f);
+    }
 }
 
 /* called by API thread or worker thread with inputQueueLock acquired */
@@ -2160,21 +2219,25 @@ void Lookahead::slicetypeDecide()
 
             if (frm.sliceTypeReq != X265_TYPE_AUTO && frm.sliceTypeReq != frm.sliceType)
                 frm.sliceType = frm.sliceTypeReq;
-            if (frm.sliceType == X265_TYPE_BREF && !m_param->bBPyramid && brefs == m_param->bBPyramid)
+            /* the B-refs of a second pass with --b-pyramid 2 are the pyramid of the first one */
+            if (!m_param->rc.bStatRead || m_param->bBPyramid != X265_B_PYRAMID_HIERARCHICAL)
             {
-                frm.sliceType = X265_TYPE_B;
-                x265_log(m_param, X265_LOG_WARNING, "B-ref at frame %d incompatible with B-pyramid\n",
-                    frm.frameNum);
-            }
+                if (frm.sliceType == X265_TYPE_BREF && !m_param->bBPyramid && brefs == m_param->bBPyramid)
+                {
+                    frm.sliceType = X265_TYPE_B;
+                    x265_log(m_param, X265_LOG_WARNING, "B-ref at frame %d incompatible with B-pyramid\n",
+                        frm.frameNum);
+                }
 
-            /* pyramid with multiple B-refs needs a big enough dpb that the preceding P-frame stays available.
-             * smaller dpb could be supported by smart enough use of mmco, but it's easier just to forbid it. */
-            else if (frm.sliceType == X265_TYPE_BREF && m_param->bBPyramid && brefs &&
-                m_param->maxNumReferences <= (brefs + 3))
-            {
-                frm.sliceType = X265_TYPE_B;
-                x265_log(m_param, X265_LOG_WARNING, "B-ref at frame %d incompatible with B-pyramid and %d reference frames\n",
-                    frm.sliceType, m_param->maxNumReferences);
+                /* pyramid with multiple B-refs needs a big enough dpb that the preceding P-frame stays available.
+                 * smaller dpb could be supported by smart enough use of mmco, but it's easier just to forbid it. */
+                else if (frm.sliceType == X265_TYPE_BREF && m_param->bBPyramid && brefs &&
+                    m_param->maxNumReferences <= (brefs + 3))
+                {
+                    frm.sliceType = X265_TYPE_B;
+                    x265_log(m_param, X265_LOG_WARNING, "B-ref at frame %d incompatible with B-pyramid and %d reference frames\n",
+                        frm.frameNum, m_param->maxNumReferences);
+                }
             }
             if (((!m_param->bIntraRefresh || frm.frameNum == 0) && keyintTicksDelta > m_param->keyframeMax &&
                 (!m_extendGopBoundary || keyintTicksDelta > m_param->keyframeMax + m_param->gopLookahead)) ||
@@ -2440,7 +2503,7 @@ void Lookahead::slicetypeDecide()
                     list[newbFrames]->m_reorderedPts = pts[idx++];
                     list[newbFrames]->m_gopOffset = 0;
                     list[newbFrames]->m_gopId = gopId;
-                    list[newbFrames]->m_tempLayer = x265_gop_ra[gopId][0].layer;
+                    list[newbFrames]->m_bPyramidLayer = list[newbFrames]->m_tempLayer = x265_gop_ra[gopId][0].layer;
                     m_outputQueue.pushBack(*list[newbFrames]);
 
                     /* add B frames to output queue */
@@ -2455,7 +2518,7 @@ void Lookahead::slicetypeDecide()
                         codedFrameOrderedIndex[codedCount++] = offset;
                         list[offset]->m_gopOffset = j;
                         list[offset]->m_gopId = gopId;
-                        list[offset]->m_tempLayer = x265_gop_ra[gopId][j++].layer;
+                        list[offset]->m_bPyramidLayer = list[offset]->m_tempLayer = x265_gop_ra[gopId][j++].layer;
                         list[offset]->m_reorderedPts = pts[idx++];
                         m_outputQueue.pushBack(*list[offset]);
                         i++;
@@ -2524,7 +2587,7 @@ void Lookahead::slicetypeDecide()
                 list[newbFrames]->m_reorderedPts = pts[idx++];
                 list[newbFrames]->m_gopOffset = 0;
                 list[newbFrames]->m_gopId = -1;
-                list[newbFrames]->m_tempLayer = 0;
+                list[newbFrames]->m_bPyramidLayer = list[newbFrames]->m_tempLayer = 0;
                 m_outputQueue.pushBack(*list[newbFrames]);
                 if (brefs)
                 {
@@ -2536,7 +2599,7 @@ void Lookahead::slicetypeDecide()
                             list[i]->m_reorderedPts = pts[idx++];
                             list[i]->m_gopOffset = 0;
                             list[i]->m_gopId = -1;
-                            list[i]->m_tempLayer = 0;
+                            list[i]->m_bPyramidLayer = list[i]->m_tempLayer = 0;
                             m_outputQueue.pushBack(*list[i]);
                         }
                     }
@@ -2552,7 +2615,7 @@ void Lookahead::slicetypeDecide()
                         list[i]->m_reorderedPts = pts[idx++];
                         list[i]->m_gopOffset = 0;
                         list[i]->m_gopId = -1;
-                        list[i]->m_tempLayer = 1;
+                        list[i]->m_bPyramidLayer = list[i]->m_tempLayer = 1;
                         m_outputQueue.pushBack(*list[i]);
                     }
                 }
@@ -2615,7 +2678,7 @@ void Lookahead::slicetypeDecide()
             list[bframes]->m_reorderedPts = pts[idx++];
             list[bframes]->m_gopOffset = 0;
             list[bframes]->m_gopId = m_gopId;
-            list[bframes]->m_tempLayer = x265_gop_ra[m_gopId][0].layer;
+            list[bframes]->m_bPyramidLayer = list[bframes]->m_tempLayer = x265_gop_ra[m_gopId][0].layer;
             m_outputQueue.pushBack(*list[bframes]);
 
             int i = 1, j = 1;
@@ -2628,7 +2691,7 @@ void Lookahead::slicetypeDecide()
                 // Assign gop offset and temporal layer of frames
                 list[offset]->m_gopOffset = j;
                 list[offset]->m_gopId = m_gopId;
-                list[offset]->m_tempLayer = x265_gop_ra[m_gopId][j++].layer;
+                list[offset]->m_bPyramidLayer = list[offset]->m_tempLayer = x265_gop_ra[m_gopId][j++].layer;
 
                 /* add B frames to output queue */
                 codedFrameOrderedIndex[codedCount++] = offset;
@@ -2692,10 +2755,13 @@ void Lookahead::slicetypeDecide()
         list[bframes]->m_lowres.leadingBframes = bframes;
         m_lastNonB = &list[bframes]->m_lowres;
 
-        /* insert a bref into the sequence */
+        /* insert a bref into the sequence, or the B-refs of the hierarchical B-pyramid */
         if (m_param->bBPyramid && bframes > 1 && !brefs)
         {
-            placeBref(list, 0, bframes, bframes + 1, &brefs);
+            if (m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL)
+                placeHierarchicalBref(list, bframes, &brefs);
+            else
+                placeBref(list, 0, bframes, bframes + 1, &brefs);
         }
         /* calculate the frame costs ahead of time for estimateFrameCost while we still have lowres */
         if (m_param->rc.rateControlMode != X265_RC_CQP)
@@ -2715,7 +2781,13 @@ void Lookahead::slicetypeDecide()
             CostEstimateGroup estGroup(*this, frames);
             estGroup.singleCost(p0, p1, b);
 
-            if (m_param->bEnableTemporalSubLayers > 1 && bframes)
+            if (m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL)
+            {
+                /* B frame costs follow the B-pyramid, the same for --temporal-layers 2 and without temporal layers */
+                if (bframes)
+                    compCostHierarchicalBref(frames, 0, bframes + 1, frames[bframes + 1]->sliceType != X265_TYPE_IDR);
+            }
+            else if (m_param->bEnableTemporalSubLayers > 1 && bframes)
             {
                 compCostBref(frames, 0, bframes, bframes + 1);
             }
@@ -2770,31 +2842,42 @@ void Lookahead::slicetypeDecide()
         /* add non-B to output queue */
         codedFrameOrderedIndex[idx] = bframes;
         list[bframes]->m_reorderedPts = pts[idx++];
+        list[bframes]->m_bPyramidLayer = 0;
         m_outputQueue.pushBack(*list[bframes]);
 
-        /* Add B-ref frame next to P frame in output queue, the B-ref encode before non B-ref frame */
-        if (brefs)
+        /* add the B frames to the output queue in the coding order of the hierarchical B-pyramid:
+         * each B-ref before the B frames that reference it. codedFrameOrderedIndex is populated in
+         * coded order so the duration calc below stays correct. */
+        if (m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL)
+            pushBPyramid(list, bframes, pts, idx, codedFrameOrderedIndex, m_outputQueue);
+        else
         {
+            /* Add B-ref frame next to P frame in output queue, the B-ref encode before non B-ref frame */
+            if (brefs)
+            {
+                for (int i = 0; i < bframes; i++)
+                {
+                    if (list[i]->m_lowres.sliceType == X265_TYPE_BREF)
+                    {
+                        codedFrameOrderedIndex[idx] = i;
+                        list[i]->m_reorderedPts = pts[idx++];
+                        list[i]->m_bPyramidLayer = 1;
+                        m_outputQueue.pushBack(*list[i]);
+                    }
+                }
+            }
+
+            /* add B frames to output queue */
             for (int i = 0; i < bframes; i++)
             {
-                if (list[i]->m_lowres.sliceType == X265_TYPE_BREF)
+                /* push all the B frames into output queue except B-ref, which already pushed into output queue */
+                if (list[i]->m_lowres.sliceType != X265_TYPE_BREF)
                 {
                     codedFrameOrderedIndex[idx] = i;
                     list[i]->m_reorderedPts = pts[idx++];
+                    list[i]->m_bPyramidLayer = 1;
                     m_outputQueue.pushBack(*list[i]);
                 }
-            }
-        }
-
-        /* add B frames to output queue */
-        for (int i = 0; i < bframes; i++)
-        {
-            /* push all the B frames into output queue except B-ref, which already pushed into output queue */
-            if (list[i]->m_lowres.sliceType != X265_TYPE_BREF)
-            {
-                codedFrameOrderedIndex[idx] = i;
-                list[i]->m_reorderedPts = pts[idx++];
-                m_outputQueue.pushBack(*list[i]);
             }
         }
 
@@ -2899,6 +2982,8 @@ void Lookahead::setDurationsToLowres(Frame *frame)
 
 void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
 {
+    /* the hierarchical B-pyramid (used unless temporal sub-layers define the mini-GOP) */
+    const bool bHierarchical = X265_HIERARCHICAL_BPYRAMID(m_param);
     int prevNonB = 0, curNonB = 1, idx = 0;
     while (curNonB < numFrames && IS_X265_TYPE_B(frames[curNonB]->sliceType))
         curNonB++;
@@ -2916,6 +3001,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
             int p0 = IS_X265_TYPE_I(frames[curNonB]->sliceType) ? curNonB : prevNonB;
             frames[nextNonB]->plannedSatd[idx] = vbvFrameCost(frames, p0, curNonB, curNonB);
             frames[nextNonB]->plannedType[idx] = frames[curNonB]->sliceType;
+            frames[nextNonB]->plannedBQpCoef[idx] = 0;
             frames[nextNonB]->plannedCpbDuration[idx] = frames[curNonB]->cpbDurationSecs;
 
             /* Save the nextNonB Cost in each B frame of the current miniGop */
@@ -2925,6 +3011,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
                 {
                     frames[j]->plannedSatd[frames[j]->indB] = frames[nextNonB]->plannedSatd[idx];
                     frames[j]->plannedType[frames[j]->indB] = frames[nextNonB]->plannedType[idx];
+                    frames[j]->plannedBQpCoef[frames[j]->indB] = 0;
                     frames[j]->plannedCpbDuration[frames[j]->indB++] = frames[nextNonB]->cpbDurationSecs;
                 }
             }
@@ -2932,6 +3019,48 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
         }
 
         /* Handle the B-frames: coded order */
+        if (bHierarchical)
+        {
+            /* the B-refs, references, coding order and QPs the pyramid is encoded with */
+            BPyramidNode plan[X265_BPYRAMID_MAX_NODES];
+            const int count = bPyramidPlan(prevNonB, curNonB, plan);
+            const bool bP0Avail = frames[curNonB]->sliceType != X265_TYPE_IDR;
+            const int maxLayer = x265_clip3(1, 5, bPyramidMaxLayer(curNonB - prevNonB));
+            for (int k = 0; k < count; k++, idx++)
+            {
+                const BPyramidNode& cur = plan[k];
+                const int64_t satdCost = vbvFrameCost(frames, bPyramidRef0(cur, prevNonB, bP0Avail), cur.p1, cur.b);
+                const int type = cur.bRef ? X265_TYPE_BREF : X265_TYPE_B;
+                const double bQpCoef = bPyramidQpCoef(maxLayer, cur.layer, m_param->bPyramidQpScale);
+                frames[nextNonB]->plannedSatd[idx] = satdCost;
+                frames[nextNonB]->plannedType[idx] = type;
+                frames[nextNonB]->plannedBQpCoef[idx] = bQpCoef;
+                frames[nextNonB]->plannedCpbDuration[idx] = frames[cur.b]->cpbDurationSecs;
+
+                /* Save the cost in each B frame of the current miniGop coded before this one */
+                for (int j = nextB; j < miniGopEnd; j++)
+                {
+                    if (curNonB == miniGopEnd)
+                    {
+                        bool bCodedBefore = false;
+                        for (int c = 0; c < k && !bCodedBefore; c++)
+                            bCodedBefore = plan[c].b == j;
+                        if (!bCodedBefore)
+                            continue;
+                    }
+                    frames[j]->plannedSatd[frames[j]->indB] = satdCost;
+                    frames[j]->plannedType[frames[j]->indB] = type;
+                    frames[j]->plannedBQpCoef[frames[j]->indB] = bQpCoef;
+                    frames[j]->plannedCpbDuration[frames[j]->indB++] = frames[cur.b]->cpbDurationSecs;
+                }
+            }
+            prevNonB = curNonB;
+            curNonB++;
+            while (curNonB <= numFrames && IS_X265_TYPE_B(frames[curNonB]->sliceType))
+                curNonB++;
+            continue;
+        }
+
         if (m_param->bBPyramid && curNonB - prevNonB > 1)
             nextBRef = (prevNonB + curNonB + 1) / 2;
 
@@ -2953,8 +3082,15 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
             }
             else
                 satdCost = vbvFrameCost(frames, prevNonB, curNonB, i);
+            /* the QP rate control will give this B frame; with temporal sub-layers its layer
+             * is approximated by the layer bPyramidPlan() gives it in the mini-GOP */
+            const int span = curNonB - prevNonB;
+            const double bQpCoef = m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL
+                ? bPyramidQpCoef(x265_clip3(1, 5, bPyramidMaxLayer(span)), bPyramidLayerOf(span, i - prevNonB), m_param->bPyramidQpScale)
+                : 1.0;
             frames[nextNonB]->plannedSatd[idx] = satdCost;
             frames[nextNonB]->plannedType[idx] = type;
+            frames[nextNonB]->plannedBQpCoef[idx] = bQpCoef;
             frames[nextNonB]->plannedCpbDuration[idx] = frames[i]->cpbDurationSecs;
 
             /* Save the nextB Cost in each B frame of the current miniGop */
@@ -2966,6 +3102,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
                     continue;
                 frames[j]->plannedSatd[frames[j]->indB] = satdCost;
                 frames[j]->plannedType[frames[j]->indB] = type;
+                frames[j]->plannedBQpCoef[frames[j]->indB] = bQpCoef;
                 frames[j]->plannedCpbDuration[frames[j]->indB++] = frames[nextB]->cpbDurationSecs;
             }
         }
@@ -3712,6 +3849,19 @@ int Lookahead::findSliceType(int poc)
     return out_slicetype;
 }
 
+/* Cost of the B frames between anchors cur_p and next_p with the references of the hierarchical
+ * B-pyramid of bPyramidPlan(), in coding order; stops once it reaches threshold */
+int64_t Lookahead::slicetypePathCostBPyramid(Lowres **frames, int cur_p, int next_p, int64_t threshold)
+{
+    CostEstimateGroup estGroup(*this, frames);
+    BPyramidNode plan[X265_BPYRAMID_MAX_NODES];
+    const int count = bPyramidPlan(cur_p, next_p, plan);
+    int64_t cost = 0;
+    for (int k = 0; k < count && cost < threshold; k++)
+        cost += estGroup.singleCost(plan[k].p0, plan[k].p1, plan[k].b);
+    return cost;
+}
+
 int64_t Lookahead::slicetypePathCost(Lowres **frames, char *path, int64_t threshold)
 {
     int64_t cost = 0;
@@ -3735,7 +3885,9 @@ int64_t Lookahead::slicetypePathCost(Lowres **frames, char *path, int64_t thresh
         if (cost > threshold)
             break;
 
-        if (m_param->bBPyramid && next_p - cur_p > 2)
+        if (X265_HIERARCHICAL_BPYRAMID(m_param))
+            cost += slicetypePathCostBPyramid(frames, cur_p, next_p, threshold - cost);
+        else if (m_param->bBPyramid && next_p - cur_p > 2)
         {
             int middle = cur_p + (next_p - cur_p) / 2;
             cost += estGroup.singleCost(cur_p, next_p, middle);
@@ -3768,7 +3920,18 @@ void Lookahead::aqMotion(Lowres **frames, bool bIntra)
         while (frames[lastnonb]->sliceType != X265_TYPE_P)
             lastnonb++;
         bframes = lastnonb - 1;
-        if (m_param->bBPyramid && bframes > 1)
+        if (X265_HIERARCHICAL_BPYRAMID(m_param))
+        {
+            if (bframes > 2)
+            {
+                CostEstimateGroup estGroup(*this, frames);
+                aqMotionBPyramid(frames, estGroup, curnonb, lastnonb);
+            }
+            else
+                for (i = 1; i < lastnonb; i++)
+                    calcMotionAdaptiveQuantFrame(frames, curnonb, lastnonb, i);
+        }
+        else if (m_param->bBPyramid && bframes > 1)
         {
             int middle = (bframes + 1) / 2;
             for (i = 1; i < lastnonb; i++)
@@ -3784,6 +3947,19 @@ void Lookahead::aqMotion(Lowres **frames, bool bIntra)
             for (i = 1; i < lastnonb; i++)
                 calcMotionAdaptiveQuantFrame(frames, curnonb, lastnonb, i);
         calcMotionAdaptiveQuantFrame(frames, curnonb, lastnonb, lastnonb);
+    }
+}
+
+/* Motion AQ of the B frames between anchors p0 and p1 with the references of the hierarchical
+ * B-pyramid of bPyramidPlan(), in coding order */
+void Lookahead::aqMotionBPyramid(Lowres **frames, CostEstimateGroup& estGroup, int p0, int p1)
+{
+    BPyramidNode plan[X265_BPYRAMID_MAX_NODES];
+    const int count = bPyramidPlan(p0, p1, plan);
+    for (int k = 0; k < count; k++)
+    {
+        estGroup.singleCost(plan[k].p0, plan[k].p1, plan[k].b);
+        calcMotionAdaptiveQuantFrame(frames, plan[k].p0, plan[k].p1, plan[k].b);
     }
 }
 
@@ -3902,7 +4078,12 @@ void Lookahead::cuTree(Lowres **frames, int numframes, bool bIntra)
 
         memset(frames[curnonb]->propagateCost, 0, m_cuCount * sizeof(uint16_t));
         bframes = lastnonb - curnonb - 1;
-        if (m_param->bBPyramid && bframes > 1)
+        if (X265_HIERARCHICAL_BPYRAMID(m_param) && bframes > 2)
+        {
+            cuTreeBPyramid(frames, estGroup, averageDuration, curnonb, lastnonb);
+            i = curnonb;
+        }
+        else if (m_param->bBPyramid && !X265_HIERARCHICAL_BPYRAMID(m_param) && bframes > 1)
         {
             int middle = (bframes + 1) / 2 + curnonb;
             estGroup.singleCost(curnonb, lastnonb, middle);
@@ -3942,8 +4123,49 @@ void Lookahead::cuTree(Lowres **frames, int numframes, bool bIntra)
     }
 
     cuTreeFinish(frames[lastnonb], averageDuration, lastnonb);
-    if (m_param->bBPyramid && bframes > 1 && !m_param->rc.vbvBufferSize)
+    if (X265_HIERARCHICAL_BPYRAMID(m_param))
+    {
+        if (bframes > 2 && !m_param->rc.vbvBufferSize)
+            cuTreeFinishBPyramid(frames, averageDuration, lastnonb, lastnonb + bframes + 1);
+    }
+    else if (m_param->bBPyramid && bframes > 1 && !m_param->rc.vbvBufferSize)
         cuTreeFinish(frames[lastnonb + (bframes + 1) / 2], averageDuration, 0);
+}
+
+/* Propagates the B frames between anchors p0 and p1 along the hierarchical B-pyramid of
+ * bPyramidPlan(): each B-ref collects the propagate cost of the frames referencing it before
+ * passing its own on to its references */
+void Lookahead::cuTreeBPyramid(Lowres **frames, CostEstimateGroup& estGroup, double averageDuration, int p0, int p1)
+{
+    BPyramidNode plan[X265_BPYRAMID_MAX_NODES];
+    const int count = bPyramidPlan(p0, p1, plan);
+    cuTreePropagateBPyramid(frames, estGroup, averageDuration, plan, 0, count);
+}
+
+/* Propagates the sibling subtrees plan[first..end) of the pyramid, the last one first (later
+ * frames first, as without the pyramid) */
+void Lookahead::cuTreePropagateBPyramid(Lowres **frames, CostEstimateGroup& estGroup, double averageDuration,
+    const BPyramidNode* plan, int first, int end)
+{
+    if (first >= end)
+        return;
+
+    const BPyramidNode& node = plan[first];
+    cuTreePropagateBPyramid(frames, estGroup, averageDuration, plan, node.end, end);
+    estGroup.singleCost(node.p0, node.p1, node.b);
+    if (node.bRef)
+        memset(frames[node.b]->propagateCost, 0, m_cuCount * sizeof(uint16_t));
+    cuTreePropagateBPyramid(frames, estGroup, averageDuration, plan, first + 1, node.end);
+    estimateCUPropagate(frames, averageDuration, node.p0, node.p1, node.b, node.bRef);
+}
+
+void Lookahead::cuTreeFinishBPyramid(Lowres **frames, double averageDuration, int p0, int p1)
+{
+    BPyramidNode plan[X265_BPYRAMID_MAX_NODES];
+    const int count = bPyramidPlan(p0, p1, plan);
+    for (int k = 0; k < count; k++)
+        if (plan[k].bRef)
+            cuTreeFinish(frames[plan[k].b], averageDuration, 0);
 }
 
 void Lookahead::estimateCUPropagate(Lowres **frames, double averageDuration, int p0, int p1, int b, int referenced)
@@ -4586,6 +4808,8 @@ void CostEstimateGroup::estimateCUCost(LookaheadTLD& tld, int cuX, int cuY, int 
     const int widthInCU = hme ? m_lookahead.m_4x4Width : m_lookahead.m_8x8Width;
     const int heightInCU = hme ? m_lookahead.m_4x4Height : m_lookahead.m_8x8Height;
     const int bBidir = (b < p1);
+    /* with the hierarchical B-pyramid the zero-MV skip cost is also used for P frames */
+    const bool bSkipCost = bBidir || m_lookahead.m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL;
     const int cuXY = cuX + cuY * widthInCU;
     const int cuXY_4x4 = (cuX / 2) + (cuY / 2) * widthInCU / 2;
     const int cuSize = X265_LOWRES_CU_SIZE;
@@ -4663,7 +4887,7 @@ void CostEstimateGroup::estimateCUCost(LookaheadTLD& tld, int cuX, int cuY, int 
                 int cost = tld.me.bufSATD(src, stride);
                 COPY2_IF_LT(mvpcost, cost, mvp, mvc[idx]);
                 /* Except for mv0 case, everyting else is likely to have enough residual to not trigger the skip. */
-                if (!mvp.notZero() && bBidir)
+                if (!mvp.notZero() && bSkipCost)
                     skipCost = cost;
             }
         }
@@ -4675,7 +4899,7 @@ void CostEstimateGroup::estimateCUCost(LookaheadTLD& tld, int cuX, int cuY, int 
             fencCost = tld.me.motionEstimate(fref, mvmin, mvmax, mvp, 0, NULL, searchRange, *fencMV, m_lookahead.m_param->maxSlices, 0);
         else
             fencCost = tld.me.motionEstimate(fref, mvmin, mvmax, mvp, 0, NULL, searchRange, *fencMV, m_lookahead.m_param->maxSlices, 0, fref->lowerResPlane[0]);
-        if (skipCost < 64 && skipCost < fencCost && bBidir)
+        if (skipCost < 64 && skipCost < fencCost && bSkipCost)
         {
             fencCost = skipCost;
             *fencMV = 0;

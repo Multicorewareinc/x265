@@ -27,6 +27,7 @@
 #define X265_RATECONTROL_H
 
 #include "common.h"
+#include "bpyramid.h"
 #include "sei.h"
 #include "ringmem.h"
 #include "threading.h"
@@ -47,6 +48,18 @@ struct SPS;
 #define MIN_AMORTIZE_FRAME 10
 #define MIN_AMORTIZE_FRACTION 0.2
 #define CLIP_DURATION(f) x265_clip3(MIN_FRAME_DURATION, MAX_FRAME_DURATION, f)
+
+/* Exponent of --pbratio giving a B-pyramid layer's qscale relative to its anchors
+ * (its QP offset is this times 6 * log2(pbratio)), anchored at the top of the pyramid:
+ * 0.5 for layer 1 and 0.5 more for each deeper layer, up to 2 at layer 4 and below,
+ * times scale (--b-pyramid-qp-scale). A layer's offset does not depend on how deep its
+ * mini-GOP's pyramid is, so maxLayer is unused. Layer 0 is an I/P anchor. */
+static inline double bPyramidQpCoef(int /* maxLayer */, int layer, double scale)
+{
+    if (layer <= 0)
+        return 0;
+    return scale * X265_MIN(2.0, 0.5 * layer);
+}
 
 struct Predictor
 {
@@ -106,6 +119,8 @@ struct RateControlEntry
     int      miscBits;
     int      coeffBits;
     bool     keptAsRef;
+    int      bPyramidLayer;     /* B-pyramid layer, 0 for I/P */
+    int      bPyramidMaxLayer;  /* deepest layer of its mini-GOP; 0 if unknown (older 2-pass stats) */
     bool     scenecut;
     bool     isIdr;
     SEIPictureTiming *picTimingSEI;
@@ -200,6 +215,10 @@ public:
     double  m_movingAvgSum;
     int     m_totalframesInSegment;
 
+    /* length of the current mini-GOP, from the POCs of its anchors, for the B-pyramid layer offsets */
+    int     m_lastAnchorPoc;
+    int     m_lastMiniGopLen;
+
     /* To detect a pattern of low detailed static frames in single pass ABR using satdcosts */
     int64_t m_lastBsliceSatdCost;
     int     m_numBframesInPattern;
@@ -243,6 +262,7 @@ public:
     double  m_expectedBitsSum;   /* sum of qscale2bits after rceq, ratefactor, and overflow, only includes finished frames */
     int64_t m_predictedBits;
     int     *m_encOrder;
+    int     *m_cuTreeRecordIdx;  /* file mode: CU-tree record of each 1st pass entry, -1 for frames without one */
     RateControlEntry* m_rce2Pass;
     Encoder* m_top;
 
@@ -250,9 +270,11 @@ public:
 
     struct
     {
-        uint16_t *qpBuffer[2]; /* Global buffers for converting MB-tree quantizer data. */
-        int qpBufPos;          /* In order to handle pyramid reordering, QP buffer acts as a stack.
-                                * This value is the current position (0 or 1). */
+        uint16_t *qpBuffer[X265_BFRAME_MAX + 2]; /* Global buffers for converting MB-tree quantizer data. */
+        int qpBufPos;    /* In order to handle pyramid reordering, QP buffer acts as a stack.
+                          * This value is the current position (0 .. qpBufDepth - 1). */
+        int qpBufDepth;  /* number of qpBuffer[] slots allocated: the reordering of the hierarchical
+                          * B-pyramid is bounded by --bframes */
     } m_cuTreeStats;
 
     RateControl(x265_param& p, Encoder *enc);
@@ -313,6 +335,8 @@ protected:
     bool   analyseABR2Pass(uint64_t allAvailableBits);
     void   initFramePredictors();
     double getDiffLimitedQScale(RateControlEntry *rce, double q);
+    double bFrameQpOffset(const Frame* frame, int maxLayer) const;
+    double bFrameQscaleRatio(const RateControlEntry* rce) const;
     double countExpectedBits(int startPos, int framesCount);
     bool   vbv2Pass(uint64_t allAvailableBits, int frameCount, int startPos);
     bool   findUnderflow(double *fills, int *t0, int *t1, int over, int framesCount);
