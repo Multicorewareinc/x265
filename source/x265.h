@@ -2441,6 +2441,14 @@ typedef struct x265_param
      * Default 0 (disabled). */
     int      bUserSEIRaw;
 
+    /* Enable ML-based CTU partition prediction on I-frames. Requires a build
+     * with ENABLE_MLCTUPRED and a CTU size of 64 or 32. Default disabled */
+    int     bEnableMLCTUPred;
+
+    /* Directory containing the ML CTU partition prediction models. If empty,
+     * default locations are searched, see --ml-model-dir. Default empty */
+    char    mlModelDir[X265_MAX_STRING_SIZE];
+
     /* Scales the QP offsets of the hierarchical B-pyramid layers over their anchors (their
      * pbratio exponents), in every rate control mode: 0 codes the B frames at the anchor
      * QP, 1 keeps the offsets derived from --pbratio, above 1 makes them steeper. Range

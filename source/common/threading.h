@@ -188,6 +188,11 @@ public:
         SetEvent(this->handle);
     }
 
+    void reset()
+    {
+        ResetEvent(this->handle);
+    }
+
 protected:
 
     HANDLE handle;
@@ -427,6 +432,13 @@ public:
             m_counter++;
         /* Signal a single blocking thread */
         pthread_cond_signal(&m_cond);
+        pthread_mutex_unlock(&m_mutex);
+    }
+
+    void reset()
+    {
+        pthread_mutex_lock(&m_mutex);
+        m_counter = 0;
         pthread_mutex_unlock(&m_mutex);
     }
 
