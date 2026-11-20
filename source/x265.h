@@ -1576,6 +1576,15 @@ typedef struct x265_param
 
     /* Enable weighted prediction in B slices. Default is disabled */
     int       bEnableWeightedBiPred;
+    /* --wp-allref: analyse WP weights for all references in L0 and L1 instead
+     * of only the first reference. Default 0. */
+    int       bEnableWeightedAllRef;
+
+    /* --wp-adaptive-pps: emit two PPSs when WP is enabled (pps_id 0 with WP
+     * flags cleared, pps_id 1 with them set) and pick pps_id 1 per slice only
+     * when at least one of its references carries a non-trivial weight.
+     * Default 0. */
+    int       bEnableWpAdaptivePPS;
     /* Enable source pixels in motion estimation. Default is disabled */
     int       bSourceReferenceEstimation;
     /*== Loop Filters ==*/

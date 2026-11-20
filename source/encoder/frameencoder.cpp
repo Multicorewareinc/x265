@@ -545,13 +545,32 @@ void FrameEncoder::compressFrame(int layer)
 #endif
         if (strlen(m_param->analysisLoad))
         {
-            for (int list = 0; list < slice->isInterB() + 1; list++) 
+            if (m_param->bEnableWeightedAllRef)
             {
-                for (int plane = 0; plane < (m_param->internalCsp != X265_CSP_I400 ? 3 : 1); plane++)
+                int numPlanes = m_param->internalCsp != X265_CSP_I400 ? 3 : 1;
+                for (int list = 0; list < slice->isInterB() + 1; list++)
                 {
-                    for (int ref = 1; ref < slice->m_numRefIdx[list]; ref++)
-                        SET_WEIGHT(slice->m_weightPredTable[list][ref][plane], false, 1 << reuseWP->log2WeightDenom, reuseWP->log2WeightDenom, 0);
-                    slice->m_weightPredTable[list][0][plane] = *(reuseWP++);
+                    for (int ref = 0; ref < m_param->maxNumReferences; ref++)
+                    {
+                        for (int plane = 0; plane < numPlanes; plane++)
+                        {
+                            if (ref < slice->m_numRefIdx[list])
+                                slice->m_weightPredTable[list][ref][plane] = *reuseWP;
+                            reuseWP++;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                for (int list = 0; list < slice->isInterB() + 1; list++)
+                {
+                    for (int plane = 0; plane < (m_param->internalCsp != X265_CSP_I400 ? 3 : 1); plane++)
+                    {
+                        for (int ref = 1; ref < slice->m_numRefIdx[list]; ref++)
+                            SET_WEIGHT(slice->m_weightPredTable[list][ref][plane], false, 1 << reuseWP->log2WeightDenom, reuseWP->log2WeightDenom, 0);
+                        slice->m_weightPredTable[list][0][plane] = *(reuseWP++);
+                    }
                 }
             }
         }
@@ -584,10 +603,46 @@ void FrameEncoder::compressFrame(int layer)
         }
         if (strlen(m_param->analysisSave) && (bUseWeightP || bUseWeightB))
         {
-            for (int i = 0; i < (m_param->internalCsp != X265_CSP_I400 ? 3 : 1); i++)
-                *(reuseWP++) = slice->m_weightPredTable[l][0][i];
+            if (m_param->bEnableWeightedAllRef)
+            {
+                int numPlanes = m_param->internalCsp != X265_CSP_I400 ? 3 : 1;
+                for (int ref = 0; ref < m_param->maxNumReferences; ref++)
+                    for (int i = 0; i < numPlanes; i++)
+                    {
+                        if (ref < slice->m_numRefIdx[l])
+                            *(reuseWP++) = slice->m_weightPredTable[l][ref][i];
+                        else
+                        {
+                            WeightParam wpDisabled;
+                            SET_WEIGHT(wpDisabled, false, 1, 0, 0);
+                            *(reuseWP++) = wpDisabled;
+                        }
+                    }
+            }
+            else
+            {
+                for (int i = 0; i < (m_param->internalCsp != X265_CSP_I400 ? 3 : 1); i++)
+                    *(reuseWP++) = slice->m_weightPredTable[l][0][i];
+            }
         }
 
+    }
+
+    slice->m_ppsId = -1;
+    slice->m_bWPPPS = true;
+    if ((m_param->bEnableWeightedPred || m_param->bEnableWeightedBiPred) && m_param->numLayers == 1 && m_param->bEnableWpAdaptivePPS)
+    {
+        bool bAnyWeight = false;
+        if (bUseWeightP || bUseWeightB)
+        {
+            int numPlanes = m_param->internalCsp != X265_CSP_I400 ? 3 : 1;
+            for (int l = 0; l < numPredDir && !bAnyWeight; l++)
+                for (int ref = 0; ref < slice->m_numRefIdx[l] && !bAnyWeight; ref++)
+                    for (int plane = 0; plane < numPlanes; plane++)
+                        bAnyWeight |= !!slice->m_weightPredTable[l][ref][plane].wtPresent;
+        }
+        slice->m_bWPPPS = bAnyWeight;
+        slice->m_ppsId = bAnyWeight ? 1 : 0;
     }
 
     int numTLD;
