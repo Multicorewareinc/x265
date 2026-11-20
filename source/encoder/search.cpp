@@ -1899,6 +1899,7 @@ sse_t Search::estIntraPredQT(Mode &intraMode, const CUGeom& cuGeom, const uint32
     sse_t totalDistortion = 0;
 
     int checkTransformSkip = m_slice->m_pps->bTransformSkipEnabled && !cu.m_tqBypass[0] && cu.m_partSize[0] != SIZE_2Nx2N;
+    const bool bSplitCand = !!m_param->bEnableIntraTuSplitRefine;
 
     // loop over partitions
     for (uint32_t puIdx = 0; puIdx < numPU; puIdx++, absPartIdx += qNumParts)
@@ -2028,10 +2029,23 @@ sse_t Search::estIntraPredQT(Mode &intraMode, const CUGeom& cuGeom, const uint32
                 cu.setLumaIntraDirSubParts(rdModeList[i], absPartIdx, depth + initTuDepth);
 
                 Cost icosts;
+
+                if (bSplitCand && bUseCachedIntraData)
+                {
+                    IntraNeighbors cachedNeighbors;
+                    initIntraNeighbors(cu, absPartIdx, initTuDepth, true, &cachedNeighbors);
+                    initAdiPattern(cu, cuGeom, absPartIdx, cachedNeighbors, ALL_IDX);
+                    if (m_param->rdoqLevel)
+                    {
+                        m_entropyCoder.load(m_rqt[depth].cur);
+                        m_entropyCoder.estBit(m_entropyCoder.m_estBitsSbac, log2TrSize, true);
+                    }
+                }
+
                 if (checkTransformSkip)
                     codeIntraLumaTSkip(intraMode, cuGeom, initTuDepth, absPartIdx, bUseCachedIntraData, icosts);
                 else
-                    codeIntraLumaQT(intraMode, cuGeom, initTuDepth, absPartIdx, false, bUseCachedIntraData, NULL, icosts, depthRange);
+                    codeIntraLumaQT(intraMode, cuGeom, initTuDepth, absPartIdx, bSplitCand, bUseCachedIntraData, NULL, icosts, depthRange);
 
                 if (icosts.rdcost < bcost)
                 {
@@ -2056,6 +2070,19 @@ sse_t Search::estIntraPredQT(Mode &intraMode, const CUGeom& cuGeom, const uint32
         m_entropyCoder.load(m_rqt[depth].cur);
 
         Cost icosts;
+
+        if (bSplitCand && bUseCachedIntraData)
+        {
+            IntraNeighbors cachedNeighbors;
+            initIntraNeighbors(cu, absPartIdx, initTuDepth, true, &cachedNeighbors);
+            initAdiPattern(cu, cuGeom, absPartIdx, cachedNeighbors, ALL_IDX);
+            if (m_param->rdoqLevel)
+            {
+                m_entropyCoder.load(m_rqt[depth].cur);
+                m_entropyCoder.estBit(m_entropyCoder.m_estBitsSbac, log2TrSize, true);
+            }
+        }
+
         if (checkTransformSkip)
             codeIntraLumaTSkip(intraMode, cuGeom, initTuDepth, absPartIdx, bUseCachedIntraData, icosts);
         else

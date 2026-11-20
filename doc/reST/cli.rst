@@ -976,6 +976,15 @@ the prediction quad-tree.
 	smaller intra CU sizes. Improves intra compression on large flat
 	regions at the cost of extra analysis. Default disabled
 
+.. option:: --intra-tu-split-refine, --no-intra-tu-split-refine
+
+	Code every luma intra mode shortlisted for full RD with the recursive
+	TU split, up to :option:`--tu-intra-depth`, so that the intra mode and
+	its TU split are chosen jointly. When disabled the shortlisted modes are
+	compared without TU splits and only the chosen mode is re-measured with
+	them. Considerably slower, mostly at high :option:`--tu-intra-depth`.
+	Default disabled
+
 .. option:: --b-intra, --no-b-intra
 
 	Enables the evaluation of intra modes in B slices. Default enabled.
