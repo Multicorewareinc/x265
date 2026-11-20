@@ -200,6 +200,12 @@ public:
     int                m_numTmePools;
     int                m_curEncoder;
 
+    /* Per-depth SAO-off rates (luma depths 0..3, chroma depths 0..3) of the most
+     * recently finished frame at each depth, in encode order. Gathered and handed to
+     * frame encoders on the API thread, so SAO auto-off is deterministic with frame
+     * threads. Size: 2 planes x SAO::SAO_DEPTHRATE_SIZE (sao.h is not included here). */
+    double             m_saoDepthRate[2 * 4];
+
     // weighted prediction
     int                m_numLumaWPFrames;    // number of P frames with weighted luma reference
     int                m_numChromaWPFrames;  // number of P frames with weighted chroma reference

@@ -254,12 +254,20 @@ void SAO::startSlice(Frame* frame, Entropy& initState)
     m_numNoSao[0] = 0; // Luma
     m_numNoSao[1] = 0; // Chroma
 
-    // NOTE: Allow SAO automatic turn-off only when frame parallelism is disabled.
-    if (m_param->frameNumThreads == 1)
+    // SAO automatic turn-off, for non-referenced frames only (depth 3). Their SAO
+    // affects only their own distortion, so the share of CTUs that SAO RDO left off in
+    // the most recently finished referenced B frame (depth 2) predicts whether SAO pays
+    // for its syntax here. Referenced frames always run SAO: its benefit carries over to
+    // every frame that predicts from them, which the per-CTU RDO does not see. Depth 2
+    // is therefore always measured, and a decision never feeds on an earlier decision.
+    // With frame parallelism, the Encoder hands each frame encoder the rates of the
+    // frames finished before this frame was started, so the decision does not depend
+    // on thread timing.
+    if (m_refDepth == 3)
     {
-        if (m_refDepth > 0 && m_depthSaoRate[0 * SAO_DEPTHRATE_SIZE + m_refDepth - 1] > SAO_ENCODING_RATE)
+        if (m_depthSaoRate[0 * SAO_DEPTHRATE_SIZE + 2] > SAO_ENCODING_RATE)
             saoParam->bSaoFlag[0] = false;
-        if (m_refDepth > 0 && m_depthSaoRate[1 * SAO_DEPTHRATE_SIZE + m_refDepth - 1] > SAO_ENCODING_RATE_CHROMA)
+        if (m_depthSaoRate[1 * SAO_DEPTHRATE_SIZE + 2] > SAO_ENCODING_RATE_CHROMA)
             saoParam->bSaoFlag[1] = false;
     }
 }
