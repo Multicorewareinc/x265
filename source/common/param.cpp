@@ -1971,6 +1971,9 @@ int x265_check_params(x265_param* param)
         "Invalid refine-inter value, refine-inter levels 0 to 3 supported");
     CHECK(param->intraRefine > 4 || param->intraRefine < 0,
         "Invalid refine-intra value, refine-intra levels 0 to 3 supported");
+    if (param->bEnableIntra64x64 && param->bDynamicRefine && param->intraRefine == 4)
+        x265_log(param, X265_LOG_WARNING,
+            "intra-64x64 with dynamic-refine and refine-intra 4: the exhaustive intra re-search is skipped on classify frames to keep the 64x64 reconstruction consistent with the bitstream\n");
     CHECK(param->ctuDistortionRefine < 0 || param->ctuDistortionRefine > 1,
         "Invalid refine-ctu-distortion value, must be either 0 or 1");
     CHECK(param->maxAUSizeFactor < 0.5 || param->maxAUSizeFactor > 1.0,
