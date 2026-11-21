@@ -229,6 +229,7 @@ struct Lowres : public ReferencePlanes
     double   dispDurationSecs;
     int64_t  dispPicCount;
     uint32_t durationPicCount;
+    uint32_t pairPicCount; // duration of the second field, when this is the first field of an interlaced frame
 
     /* cutree intermediate data */
     PicQPAdaptationLayer* pAQLayer;

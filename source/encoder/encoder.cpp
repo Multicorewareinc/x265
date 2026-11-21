@@ -4314,6 +4314,10 @@ void Encoder::configure(x265_param *p)
 
     if (p->interlaceMode)
         x265_log(p, X265_LOG_WARNING, "Support for interlaced video is experimental\n");
+    if (p->interlaceMode && p->keyframeMax <= 1)
+        x265_log(p, X265_LOG_WARNING,
+                 "interlace with keyint 1 makes every field a keyframe, also the second field of a frame. "
+                 "Use keyint 2 and bframes 0 for an intra first field and a P second field\n");
 
     if (p->rc.rfConstantMin > p->rc.rfConstant)
     {
