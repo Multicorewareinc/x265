@@ -181,6 +181,7 @@ public:
     pixel*        m_noiseBlurBuf;    // persistent blur buffer for estimateNoise() fallback path
     int32_t*      m_gradMagBuf;      // persistent gradient-magnitude buffer for estimateNoise()
     bool          m_filterThisGOP;  // noise gate decision for the GOP currently being dispatched
+    int           m_lastMcstfAnchorPoc; // POC of the last non-I anchor frame that MCSTF was applied to
 
     /* pre-lookahead */
     int           m_fullQueueSize;
@@ -261,7 +262,7 @@ public:
     void    getEstimatedPictureCost(Frame *pic);
     void    setLookaheadQueue();
     int     findSliceType(int poc);
-    bool    generatemcstf(Frame * frame, PicList refPic, int poclast);
+    bool    generatemcstf(Frame* frameEnc, PicList refPic, int poclast);
     bool    isFilterThisframe(uint8_t sliceTypeConfig, int curSliceType);
     int32_t estimateNoise(Frame* curFrame);
 
@@ -307,6 +308,15 @@ protected:
     /*Compute index for positioning B-Ref frames*/
     void     placeBref(Frame** frames, int start, int end, int num, int *brefs);
     void     compCostBref(Lowres **frame, int start, int end, int num);
+
+    struct SubGop
+    {
+        int    start;
+        int    end;
+        int8_t gopId;
+    };
+    enum { MAX_SUB_GOPS = X265_MAX_GOP_CONFIG };
+    int      splitMiniGop(int bframes, SubGop* subGops) const;
     /*Hierarchical B-pyramid used when the mini-GOP is not defined by temporal sub-layers*/
     void     placeHierarchicalBref(Frame** list, int bframes, int *brefs);
     void     compCostHierarchicalBref(Lowres **frames, int p0, int p1, bool bP0Avail);

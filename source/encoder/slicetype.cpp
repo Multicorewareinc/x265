@@ -42,8 +42,20 @@
 #define ProfileLookaheadTimeCount(elapsed, count)
 #define ProfileLookaheadTime(elapsed)
 #endif
+#define MCSTF_MIN_ANCHOR_GAP    8   // min POC distance between MCSTF-filtered P anchors
+#define MCSTF_MIN_BREF_GOP_LEN  8   // the mid B-ref is MCSTF-filtered only when the mini-GOP length is greater than this
 
 using namespace X265_NS;
+
+static inline int brefMidIdx(int start, int end)
+{
+    return (start + end) / 2;
+}
+
+static inline int hierBrefTopIdx(int start, int end)
+{
+    return start + (end + 1 - start) / 2 - 1;
+}
 
 namespace {
 
@@ -1058,6 +1070,7 @@ Lookahead::Lookahead(x265_param *param, ThreadPool* pool, SPS* sps)
     m_noiseBlurBuf   = NULL;
     m_gradMagBuf     = NULL;
     m_filterThisGOP  = false;
+    m_lastMcstfAnchorPoc = -MCSTF_MIN_ANCHOR_GAP;
     m_filled   = false;
     m_outputSignalRequired = false;
     m_isActive = true;
@@ -1891,7 +1904,7 @@ void PreLookaheadGroup::processTasks(int workerThreadID)
 /* B-ref placement of the temporal sub-layer mini-GOPs (--temporal-layers > 2) */
 void Lookahead::placeBref(Frame** frames, int start, int end, int num, int *brefs)
 {
-    int avg = (start + end) / 2;
+    int avg = brefMidIdx(start, end);
     if (m_param->bEnableTemporalSubLayers < 2)
     {
         (*frames[avg]).m_lowres.sliceType = X265_TYPE_BREF;
@@ -1911,6 +1924,35 @@ void Lookahead::placeBref(Frame** frames, int start, int end, int num, int *bref
             return;
         }
     }
+}
+
+int Lookahead::splitMiniGop(int bframes, SubGop* subGops) const
+{
+    int count = 0;
+    int leftOver = bframes + 1;
+    int listReset = 0;
+
+    for (int8_t gopId = m_gopId - 1; gopId >= 0 && leftOver > 3; gopId--)
+    {
+        const int gopLen = x265_gop_ra_length[gopId];
+        if (leftOver < gopLen)
+            continue;
+        subGops[count].start = listReset;
+        subGops[count].end = listReset + gopLen - 1;
+        subGops[count].gopId = gopId;
+        count++;
+        listReset += gopLen;
+        leftOver -= gopLen;
+    }
+
+    if (leftOver > 0 && leftOver < 4)
+    {
+        subGops[count].start = listReset;
+        subGops[count].end = listReset + leftOver - 1;
+        subGops[count].gopId = -1;
+        count++;
+    }
+    return count;
 }
 
 /* Hierarchical B-ref placement: list[bframes] closes a mini-GOP of bframes B frames (list[i] is
@@ -2365,6 +2407,18 @@ void Lookahead::slicetypeDecide()
     {
         m_inputLock.acquire();
         Frame* frameEnc = m_inputQueue.first();
+        SubGop subGops[MAX_SUB_GOPS];
+        const bool bSplit = m_param->bEnableTemporalSubLayers > 2 && bframes < m_param->bframes;
+        int numSubGops = bSplit ? splitMiniGop(bframes, subGops) : 0;
+        if (!numSubGops)
+        {
+            numSubGops = 1;
+            subGops[0].start = 0;
+            subGops[0].end = bframes;
+            subGops[0].gopId = -1;
+        }
+        const bool bPlaceBref = m_param->bBPyramid && (bSplit || !brefs);
+        int subGop = 0;
         for (int b = 0; b < m_inputQueue.size(); b++)
         {
             /* Noise gate: re-evaluate at every GOP boundary (IDR/I/scenecut).
@@ -2389,7 +2443,35 @@ void Lookahead::slicetypeDecide()
             /* Stamp the per-frame flag so frameencoder reads a race-free value */
             frameEnc->m_lowres.filterThisGOP = m_filterThisGOP;
 
-            if (frameEnc->m_lowres.filterThisGOP && isFilterThisframe(frameEnc->m_mcstf->m_sliceTypeConfig, frameEnc->m_lowres.sliceType))
+            /* Only frames of the current mini-GOP (b <= bframes) have a final slice type.
+             * Frames beyond it are decided when their own mini-GOP is dispatched. */
+            if (b <= bframes)
+            {
+                while (subGop < numSubGops - 1 && b > subGops[subGop].end)
+                    subGop++;
+                const int start  = subGops[subGop].start;
+                const int end    = subGops[subGop].end;
+                const int gopLen = end - start + 1;   /* B-frames + the anchor that ends this mini-GOP */
+
+                const bool isIFrame = IS_X265_TYPE_I(frameEnc->m_lowres.sliceType);
+                /* P anchor: needs MCSTF_MIN_ANCHOR_GAP since the last filtered anchor.
+                 * poc == m_lastMcstfAnchorPoc keeps the decision stable if this frame is revisited. */
+                const bool isAnchor = (b == end) && !isIFrame &&
+                    (frameEnc->m_poc - m_lastMcstfAnchorPoc >= MCSTF_MIN_ANCHOR_GAP ||
+                     frameEnc->m_poc == m_lastMcstfAnchorPoc);
+                /* top B-ref of a long mini-GOP; does not count towards the anchor spacing */
+                const int midBrefIdx = !bSplit && m_param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL
+                                     ? hierBrefTopIdx(start, end) : brefMidIdx(start, end);
+                const bool isMidBref = bPlaceBref && (gopLen > MCSTF_MIN_BREF_GOP_LEN) && (b == midBrefIdx);
+
+                frameEnc->m_lowres.bApplyFilter = frameEnc->m_lowres.filterThisGOP && (isIFrame || isAnchor || isMidBref);
+                if (frameEnc->m_lowres.bApplyFilter && (isIFrame || isAnchor))
+                    m_lastMcstfAnchorPoc = frameEnc->m_poc;
+            }
+
+            /* Dispatch only frames of the current mini-GOP: bApplyFilter of any later frame is not decided yet
+             * and may be stale from a previous use of the same Frame object. */
+            if (b <= bframes && frameEnc->m_lowres.bApplyFilter && frameEnc->m_mcstf->m_numRef == 0)
             {
                 if (!generatemcstf(frameEnc, m_origPicBuf->m_mcstfPicList, m_inputQueue.last()->m_poc))
                 {
@@ -2431,24 +2513,20 @@ void Lookahead::slicetypeDecide()
         //Split the partial mini GOP into sub mini GOPs when temporal sub layers are enabled
         if (bframes < m_param->bframes)
         {
-            int leftOver = bframes + 1;
-            int8_t gopId = m_gopId - 1;
-            int gopLen = (gopId >= 0) ? x265_gop_ra_length[gopId] : 0;
-            int listReset = 0;
+            SubGop subGops[MAX_SUB_GOPS];
+            const int numSubGops = splitMiniGop(bframes, subGops);
 
             m_outputLock.acquire();
 
-            while ((gopId >= 0) && (leftOver > 3))
+            for (int s = 0; s < numSubGops; s++)
             {
-                if (leftOver < gopLen)
+                const int listReset  = subGops[s].start;
+                const int newbFrames = subGops[s].end;
+                const int8_t gopId   = subGops[s].gopId;
+                const int gopLen     = newbFrames - listReset + 1;
+
+                if (gopId >= 0)
                 {
-                    gopId = gopId - 1;
-                    gopLen = x265_gop_ra_length[gopId];
-                    continue;
-                }
-                else
-                {
-                    int newbFrames = listReset + gopLen - 1;
                     //Re-assign GOP
                     list[newbFrames]->m_lowres.sliceType = IS_X265_TYPE_I(list[newbFrames]->m_lowres.sliceType) ? list[newbFrames]->m_lowres.sliceType : X265_TYPE_P;
                     if (newbFrames)
@@ -2523,100 +2601,92 @@ void Lookahead::slicetypeDecide()
                         m_outputQueue.pushBack(*list[offset]);
                         i++;
                     }
-
-                    listReset += gopLen;
-                    leftOver = leftOver - gopLen;
-                    gopId -= 1;
-                    gopLen = (gopId >= 0) ? x265_gop_ra_length[gopId] : 0;
                 }
-            }
-
-            if (leftOver > 0 && leftOver < 4)
-            {
-                int64_t pts[X265_BFRAME_MAX + 1];
-                int idx = 0;
-
-                int newbFrames = listReset + leftOver - 1;
-                list[newbFrames]->m_lowres.sliceType = IS_X265_TYPE_I(list[newbFrames]->m_lowres.sliceType) ? list[newbFrames]->m_lowres.sliceType : X265_TYPE_P;
-                if (newbFrames)
-                        list[newbFrames - 1]->m_lowres.bLastMiniGopBFrame = true;
-                list[newbFrames]->m_lowres.leadingBframes = newbFrames;
-                m_lastNonB = &list[newbFrames]->m_lowres;
-
-                /* insert a bref into the sequence */
-                if (m_param->bBPyramid && (newbFrames- listReset) > 1)
-                    placeBref(list, listReset, newbFrames, newbFrames + 1, &brefs);
-
-                if (m_param->rc.rateControlMode != X265_RC_CQP)
+                else
                 {
-                    int p0, p1, b;
-                    /* For zero latency tuning, calculate frame cost to be used later in RC */
-                    if (!maxSearch)
+                    int64_t pts[X265_BFRAME_MAX + 1];
+                    int idx = 0;
+
+                    list[newbFrames]->m_lowres.sliceType = IS_X265_TYPE_I(list[newbFrames]->m_lowres.sliceType) ? list[newbFrames]->m_lowres.sliceType : X265_TYPE_P;
+                    if (newbFrames)
+                        list[newbFrames - 1]->m_lowres.bLastMiniGopBFrame = true;
+                    list[newbFrames]->m_lowres.leadingBframes = newbFrames;
+                    m_lastNonB = &list[newbFrames]->m_lowres;
+
+                    /* insert a bref into the sequence */
+                    if (m_param->bBPyramid && (newbFrames - listReset) > 1)
+                        placeBref(list, listReset, newbFrames, newbFrames + 1, &brefs);
+
+                    if (m_param->rc.rateControlMode != X265_RC_CQP)
                     {
-                        for (int i = listReset; i <= newbFrames; i++)
-                            frames[i + 1] = &list[listReset + i]->m_lowres;
-                    }
+                        int p0, p1, b;
+                        /* For zero latency tuning, calculate frame cost to be used later in RC */
+                        if (!maxSearch)
+                        {
+                            for (int i = listReset; i <= newbFrames; i++)
+                                frames[i + 1] = &list[listReset + i]->m_lowres;
+                        }
 
                         /* estimate new non-B cost */
-                    p1 = b = newbFrames + 1;
-                    p0 = (IS_X265_TYPE_I(frames[newbFrames + 1]->sliceType)) ? b : listReset;
+                        p1 = b = newbFrames + 1;
+                        p0 = (IS_X265_TYPE_I(frames[newbFrames + 1]->sliceType)) ? b : listReset;
 
-                    CostEstimateGroup estGroup(*this, frames);
+                        CostEstimateGroup estGroup(*this, frames);
 
-                    estGroup.singleCost(p0, p1, b);
+                        estGroup.singleCost(p0, p1, b);
 
-                    if (newbFrames)
-                        compCostBref(frames, listReset, newbFrames, newbFrames + 1);
-                }
+                        if (newbFrames)
+                            compCostBref(frames, listReset, newbFrames, newbFrames + 1);
+                    }
 
-                m_inputLock.acquire();
-                /* dequeue all frames from inputQueue that are about to be enqueued
-                 * in the output queue. The order is important because Frame can
-                 * only be in one list at a time */
-                for (int i = 0; i < leftOver; i++)
-                {
-                    Frame *curFrame;
-                    curFrame = m_inputQueue.popFront();
-                    pts[i] = curFrame->m_pts;
-                    maxSearch--;
-                }
-                m_inputLock.release();
+                    m_inputLock.acquire();
+                    /* dequeue all frames from inputQueue that are about to be enqueued
+                     * in the output queue. The order is important because Frame can
+                     * only be in one list at a time */
+                    for (int i = 0; i < gopLen; i++)
+                    {
+                        const Frame* curFrame = m_inputQueue.popFront();
+                        pts[i] = curFrame->m_pts;
+                        maxSearch--;
+                    }
+                    m_inputLock.release();
 
-                m_lastNonB = &list[newbFrames]->m_lowres;
-                codedFrameOrderedIndex[codedCount++] = newbFrames;
-                list[newbFrames]->m_reorderedPts = pts[idx++];
-                list[newbFrames]->m_gopOffset = 0;
-                list[newbFrames]->m_gopId = -1;
-                list[newbFrames]->m_bPyramidLayer = list[newbFrames]->m_tempLayer = 0;
-                m_outputQueue.pushBack(*list[newbFrames]);
-                if (brefs)
-                {
+                    m_lastNonB = &list[newbFrames]->m_lowres;
+                    codedFrameOrderedIndex[codedCount++] = newbFrames;
+                    list[newbFrames]->m_reorderedPts = pts[idx++];
+                    list[newbFrames]->m_gopOffset = 0;
+                    list[newbFrames]->m_gopId = -1;
+                    list[newbFrames]->m_bPyramidLayer = list[newbFrames]->m_tempLayer = 0;
+                    m_outputQueue.pushBack(*list[newbFrames]);
+                    if (brefs)
+                    {
+                        for (int i = listReset; i < newbFrames; i++)
+                        {
+                            if (list[i]->m_lowres.sliceType == X265_TYPE_BREF)
+                            {
+                                codedFrameOrderedIndex[codedCount++] = i;
+                                list[i]->m_reorderedPts = pts[idx++];
+                                list[i]->m_gopOffset = 0;
+                                list[i]->m_gopId = -1;
+                                list[i]->m_bPyramidLayer = list[i]->m_tempLayer = 0;
+                                m_outputQueue.pushBack(*list[i]);
+                            }
+                        }
+                    }
+
+                    /* add B frames to output queue */
                     for (int i = listReset; i < newbFrames; i++)
                     {
-                        if (list[i]->m_lowres.sliceType == X265_TYPE_BREF)
+                        /* push all the B frames into output queue except B-ref, which already pushed into output queue */
+                        if (list[i]->m_lowres.sliceType != X265_TYPE_BREF)
                         {
                             codedFrameOrderedIndex[codedCount++] = i;
                             list[i]->m_reorderedPts = pts[idx++];
                             list[i]->m_gopOffset = 0;
                             list[i]->m_gopId = -1;
-                            list[i]->m_bPyramidLayer = list[i]->m_tempLayer = 0;
+                            list[i]->m_bPyramidLayer = list[i]->m_tempLayer = 1;
                             m_outputQueue.pushBack(*list[i]);
                         }
-                    }
-                }
-
-                /* add B frames to output queue */
-                for (int i = listReset; i < newbFrames; i++)
-                {
-                    /* push all the B frames into output queue except B-ref, which already pushed into output queue */
-                    if (list[i]->m_lowres.sliceType != X265_TYPE_BREF)
-                    {
-                        codedFrameOrderedIndex[codedCount++] = i;
-                        list[i]->m_reorderedPts = pts[idx++];
-                        list[i]->m_gopOffset = 0;
-                        list[i]->m_gopId = -1;
-                        list[i]->m_bPyramidLayer = list[i]->m_tempLayer = 1;
-                        m_outputQueue.pushBack(*list[i]);
                     }
                 }
             }
@@ -4620,7 +4690,7 @@ void CostEstimateGroup::processTasks(int workerThreadID)
             ProfileScopeEvent(estCostSingle);
             Estimate& e = m_estimates[i];
             Frame* curFrame = e.frame;
-            if (m_lookahead.m_param->bEnableTemporalFilter && curFrame && m_lookahead.isFilterThisframe(curFrame->m_mcstf->m_sliceTypeConfig, curFrame->m_lowres.sliceType))
+            if (m_lookahead.m_param->bEnableTemporalFilter && curFrame && curFrame->m_lowres.bApplyFilter)
             {
                 ProfileLookaheadTime(tld.mcstfBatchElapsedTime);
                 MotionEstimatorTLD& m_metld = m_lookahead.m_metld[id];
@@ -4634,9 +4704,16 @@ void CostEstimateGroup::processTasks(int workerThreadID)
                 else if (e.MElevel == 1)
                     m_metld.motionEstimationLuma(ref->mvs1, ref->mvsStride1, lowres->lowresPlane[0], (int)(lowres->lumaStride), (lowres->lines), (lowres->width), ref->lowres, e.blockRow, rowSize, ref->mvs0, ref->mvsStride0, 2);
                 else if (e.MElevel == 2)
+                {
                     m_metld.motionEstimationLuma(ref->mvs2, ref->mvsStride2, curFrame->m_fencPic->m_picOrg[0], (int)curFrame->m_fencPic->m_stride, curFrame->m_fencPic->m_picHeight, curFrame->m_fencPic->m_picWidth, ref->picBuffer->m_picOrg[0], e.blockRow, rowSize, ref->mvs1, ref->mvsStride1, 2);
+                    /* level 3 needs the source block variances of these rows; the first reference's jobs
+                     * compute them once for all references (each level finishes before the next starts) */
+                    if (!e.p0)
+                        m_metld.computeBlockVariance(curFrame->m_fencPic, curFrame->m_mcstf->m_blockVariance, curFrame->m_mcstf->m_blockVarStride, e.blockRow, rowSize);
+                }
                 else if (e.MElevel == 3)
-                    m_metld.motionEstimationLumaDoubleRes(ref->mvs, ref->mvsStride, curFrame->m_fencPic, ref->picBuffer, ref->mvs2, ref->mvsStride2, 1, ref->error, e.blockRow, rowSize);
+                    m_metld.motionEstimationLumaDoubleRes(ref->mvs, ref->mvsStride, curFrame->m_fencPic, ref->picBuffer, ref->mvs2, ref->mvsStride2, 1, ref->error, e.blockRow, rowSize,
+                        curFrame->m_mcstf->m_blockVariance, curFrame->m_mcstf->m_blockVarStride);
             }
             else
             {

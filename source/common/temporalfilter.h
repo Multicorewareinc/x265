@@ -61,6 +61,7 @@ const double s_refStrengths[3][4] =
   {0.30, 0.30, 0.30, 0.30}   // otherwise
 };
 #define MCSTF_MAX_REFS 16
+#define MCSTF_FRAC_MAX_RANGE 3 /* max +/- 1/16-pel window of motionSearchLumaFrac */
 
 namespace X265_NS {
 
@@ -74,6 +75,16 @@ namespace X265_NS {
     {
         int (*motionErrorLumaFrac)(const pixel* origOrigin, intptr_t origStride, const pixel* buffOrigin, intptr_t buffStride, int x, int y,
             int dx, int dy, int bs, int besterror, int bitDepth);
+
+        /* SSE of a bs x bs block against a reference block at any alignment (primitives.cu[].sse_pp
+         * needs aligned blocks, which would force a copy of every candidate) */
+        int (*motionErrorLumaInt)(const pixel* fenc, intptr_t fencStride, const pixel* ref, intptr_t refStride, int bs);
+
+        /* Tests the (2 * range + 1)^2 positions around (cx, cy) in raster order, the same as calling
+         * motionErrorLumaFrac for each of them, but filters every column of the window only once.
+         * Returns the lowest error; *bestMv is updated only when a position beats leastError. */
+        int (*motionSearchLumaFrac)(const pixel* origOrigin, intptr_t origStride, const pixel* buffOrigin, intptr_t buffStride, int x, int y,
+            int cx, int cy, int range, int bs, int leastError, int bitDepth, MV* bestMv);
 
         void (*applyMotion)(const pixel* pSrcImage, int srcStride, pixel* pDstImage, int dstStride, int width, int height, int blockSizeX,
             int blockSizeY, uint32_t mvsStride, const MV* mvs, int csx, int csy, int blockRow, int rowSize, int vShift);
@@ -135,7 +146,12 @@ namespace X265_NS {
             const MV* previous = 0, uint32_t prevmvStride = 0, int factor = 1);
 
         void motionEstimationLumaDoubleRes(MV* mvs, uint32_t mvStride, PicYuv* orig, PicYuv* buffer,
-            const MV* previous, uint32_t prevMvStride, int factor, int* minError, int row, const int rowSize);
+            const MV* previous, uint32_t prevMvStride, int factor, int* minError, int row, const int rowSize,
+            const double* blockVariance, uint32_t varStride);
+
+        /* variance of every motionEstimationLumaDoubleRes block of the rows it searches for (row, rowSize);
+         * it depends only on the source, so it is computed once and shared by all references */
+        void computeBlockVariance(PicYuv* orig, double* blockVariance, uint32_t varStride, int row, const int rowSize);
 
         int motionErrorLumaSSD(pixel* src,
             int stride,
@@ -155,8 +171,6 @@ namespace X265_NS {
     struct TemporalFilterRefPicInfo
     {
         PicYuv*    picBuffer;
-        PicYuv*    picBufferSubSampled2;
-        PicYuv*    picBufferSubSampled4;
         MV*        mvs;
         MV*        mvs0;
         MV*        mvs1;
@@ -173,7 +187,6 @@ namespace X265_NS {
 
         int16_t    origOffset;
         bool       isFilteredFrame;
-        PicYuv*    compensatedPic;
 
         int*       isSubsampled;
 
@@ -212,17 +225,31 @@ namespace X265_NS {
         MotionEstimatorTLD* m_metld;
         double m_overallStrength;
 
-        int createRefPicInfo(TemporalFilterRefPicInfo* refFrame, x265_param* param);
+        double*  m_blockVariance;   /* source block variances shared by the per-reference ME jobs */
+        uint32_t m_blockVarStride;
 
+        /* the block grid of mvs, noise and error: 8x8 luma blocks, or the 4x4 chroma blocks of
+         * the bilateral filter, whichever plane has more */
+        uint32_t m_blockGridStride;
+        uint32_t m_blockGridRows;
+
+        int createRefPicInfo(TemporalFilterRefPicInfo* refFrame);
+
+        /* compensatedPics: one motion-compensated picture per reference, owned by the caller (the
+         * frame encoder), since they are only needed while a frame is being filtered */
         void bilateralFilter(Frame*                    frame,
                             TemporalFilterRefPicInfo* mcstfRefList,
+                            PicYuv**                  compensatedPics,
                             ThreadPool*               pool);
 
         void bilateralFilterCore(Frame*                    frame,
                                 TemporalFilterRefPicInfo* mcstfRefList,
+                                PicYuv**                  compensatedPics,
                                 int                       numRef,
                                 int                       blockRow,
                                 int                       blockSize);
+
+        void resetRefPicInfo(TemporalFilterRefPicInfo* refFrame);
 
         void destroyRefPicInfo(TemporalFilterRefPicInfo* curFrame);
 
@@ -240,6 +267,7 @@ namespace X265_NS {
         {
             Frame*                    frame;
             TemporalFilterRefPicInfo* mcstfRefList;
+            PicYuv**                  compensatedPics;
             int                       numRef;
             int                       blockRow;
             int                       rowSize;
@@ -251,7 +279,7 @@ namespace X265_NS {
         BilateralFilterGroup(TemporalFilter& f, ThreadPool* pool)
             : m_filter(f), m_pool(pool), m_jobs() {}
 
-        void add(Frame* frame, TemporalFilterRefPicInfo* mcstfRefList,
+        void add(Frame* frame, TemporalFilterRefPicInfo* mcstfRefList, PicYuv** compensatedPics,
                 int numRef, int blockRow, int rowSize)
         {
             X265_CHECK(m_jobTotal < MAX_FILTER_JOBS,
@@ -259,6 +287,7 @@ namespace X265_NS {
             FilterJob& j    = m_jobs[m_jobTotal++];
             j.frame         = frame;
             j.mcstfRefList   = mcstfRefList;
+            j.compensatedPics = compensatedPics;
             j.numRef        = numRef;
             j.blockRow      = blockRow;
             j.rowSize       = rowSize;
@@ -282,7 +311,7 @@ namespace X265_NS {
                 m_lock.release();
 
                 const FilterJob& j = m_jobs[i];
-                m_filter.bilateralFilterCore(j.frame, j.mcstfRefList, j.numRef,
+                m_filter.bilateralFilterCore(j.frame, j.mcstfRefList, j.compensatedPics, j.numRef,
                                             j.blockRow, j.rowSize);
                 m_lock.acquire();
             }
