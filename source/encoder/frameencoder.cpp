@@ -692,6 +692,8 @@ void FrameEncoder::compressFrame(int layer)
 
         m_frame[layer]->m_encData->m_avgQpAq = m_frame[0]->m_encData->m_avgQpAq;
         m_frame[layer]->m_encData->m_avgQpRc = m_frame[0]->m_encData->m_avgQpRc;
+        m_frame[layer]->m_encData->m_zoneQpOffset = m_frame[0]->m_encData->m_zoneQpOffset;
+        m_frame[layer]->m_encData->m_zoneBaseQp = m_frame[0]->m_encData->m_zoneBaseQp;
         if (!!m_param->rc.hevcAq)
         {
             for (uint32_t d = 0; d < 4; d++)

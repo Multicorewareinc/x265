@@ -72,6 +72,7 @@ struct RcStats
     double   offset[4];
     double   bufferFillFinal;
     int64_t  currentSatd;
+    double   lastZoneQpOffset[3];
 };
 
 class Frame
