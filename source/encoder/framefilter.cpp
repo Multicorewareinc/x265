@@ -233,6 +233,7 @@ void FrameFilter::start(Frame *frame, Entropy& initState)
 #if ENABLE_LIBVMAF
     m_bNeedFilteredRecon = true;
 #endif
+    m_bUseDeblock = m_param->bEnableLoopFilter && (m_bNeedFilteredRecon || m_useSao);
 
     // Reset Filter Data Struct
     if (m_parallelFilter)
@@ -478,7 +479,7 @@ void FrameFilter::ParallelFilter::processTasks(int /*workerThreadId*/)
         const uint32_t cuAddr = m_rowAddr + col;
         const CUData* ctu = m_encData->getPicCTU(cuAddr);
 
-        if (m_frameFilter->m_param->bEnableLoopFilter)
+        if (m_frameFilter->m_bUseDeblock)
         {
             deblockCTU(ctu, cuGeoms[ctuGeomMap[cuAddr]], Deblock::EDGE_VER);
         }
@@ -486,7 +487,7 @@ void FrameFilter::ParallelFilter::processTasks(int /*workerThreadId*/)
         if (col >= 1)
         {
             const CUData* ctuPrev = m_encData->getPicCTU(cuAddr - 1);
-            if (m_frameFilter->m_param->bEnableLoopFilter)
+            if (m_frameFilter->m_bUseDeblock)
             {
                 deblockCTU(ctuPrev, cuGeoms[ctuGeomMap[cuAddr - 1]], Deblock::EDGE_HOR);
 
@@ -528,7 +529,7 @@ void FrameFilter::ParallelFilter::processTasks(int /*workerThreadId*/)
         const uint32_t cuAddr = m_rowAddr + numCols - 1;
         const CUData* ctuPrev = m_encData->getPicCTU(cuAddr);
 
-        if (m_frameFilter->m_param->bEnableLoopFilter)
+        if (m_frameFilter->m_bUseDeblock)
         {
             deblockCTU(ctuPrev, cuGeoms[ctuGeomMap[cuAddr]], Deblock::EDGE_HOR);
 
@@ -586,6 +587,26 @@ void FrameFilter::finishNonReferenceRecon()
         return;
 
     m_bNeedFilteredRecon = true;
+    if (m_param->bEnableLoopFilter && !m_bUseDeblock)
+    {
+        const CUGeom *cuGeoms = m_frameEncoder->m_cuGeoms;
+        const uint32_t *ctuGeomMap = m_frameEncoder->m_ctuGeomMap;
+        FrameData *encData = m_frame->m_encData;
+        for (int row = 0; row < m_numRows; row++)
+        {
+            int rowAddr = row * m_numCols;
+            for (int col = 0; col < m_numCols; col++)
+            {
+                int addr = rowAddr + col;
+                Deblock::deblockCTU(encData->getPicCTU(addr), cuGeoms[ctuGeomMap[addr]], Deblock::EDGE_VER);
+                if (col)
+                    Deblock::deblockCTU(encData->getPicCTU(addr - 1), cuGeoms[ctuGeomMap[addr - 1]], Deblock::EDGE_HOR);
+            }
+            int last = rowAddr + m_numCols - 1;
+            Deblock::deblockCTU(encData->getPicCTU(last), cuGeoms[ctuGeomMap[last]], Deblock::EDGE_HOR);
+        }
+        m_bUseDeblock = true;
+    }
     if (m_useSao)
     {
         SAOParam *saoParam = m_frame->m_encData->m_saoParam;
