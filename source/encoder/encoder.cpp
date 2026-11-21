@@ -2693,7 +2693,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
             }
 
             /* Allow FrameEncoder::compressFrame() to start in the frame encoder thread */
-            if (!curEncoder->startCompressFrame(frameEnc))
+            if (!curEncoder->startCompressFrame(frameEnc, pic_out != NULL))
                 m_aborted = true;
         }
         else if (m_encodedFrameNum)
