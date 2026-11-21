@@ -499,7 +499,8 @@ void FrameFilter::ParallelFilter::processTasks(int /*workerThreadId*/)
             if (m_frameFilter->m_useSao)
             {
                 // Save SAO bottom row reference pixels
-                copySaoAboveRef(ctuPrev, reconPic, cuAddr - 1, col - 1);
+                if (m_frameFilter->m_bNeedFilteredRecon)
+                    copySaoAboveRef(ctuPrev, reconPic, cuAddr - 1, col - 1);
 
                 // SAO Decide
                 if (col >= 2)
@@ -544,7 +545,8 @@ void FrameFilter::ParallelFilter::processTasks(int /*workerThreadId*/)
             const CUData* ctu = m_encData->getPicCTU(m_rowAddr + numCols - 2);
 
             // Save SAO bottom row reference pixels
-            copySaoAboveRef(ctuPrev, reconPic, cuAddr, numCols - 1);
+            if (m_frameFilter->m_bNeedFilteredRecon)
+                copySaoAboveRef(ctuPrev, reconPic, cuAddr, numCols - 1);
 
             // SAO Decide
             // NOTE: reduce condition check for 1 CU only video, Why someone play with it?
@@ -609,6 +611,15 @@ void FrameFilter::finishNonReferenceRecon()
     }
     if (m_useSao)
     {
+        FrameData *encData = m_frame->m_encData;
+        for (int row = 0; row < m_numRows; row++)
+        {
+            for (int col = 0; col < m_numCols; col++)
+            {
+                int addr = row * m_numCols + col;
+                m_parallelFilter[row].copySaoAboveRef(encData->getPicCTU(addr), encData->m_reconPic[0], addr, col);
+            }
+        }
         SAOParam *saoParam = m_frame->m_encData->m_saoParam;
         for (int row = 0; row < m_numRows; row++)
             for (int col = 0; col < m_numCols; col++)
