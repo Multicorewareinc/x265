@@ -49,6 +49,7 @@ public:
     int           m_useSao;
     bool m_bNeedReferenceBorder;
     bool m_bNeedFilteredRecon;
+    bool m_bUseDeblock;
     FrameEncoder* m_frameEncoder;
     int           m_hChromaShift;
     int           m_vChromaShift;
