@@ -41,6 +41,9 @@ class SEIBufferingPeriod;
 struct SPS;
 #define BASE_FRAME_DURATION 0.04
 
+/* time span, in seconds, of the moving average of the frame rate */
+#define FPS_AVERAGING_WINDOW 1.0
+
 /* Arbitrary limitations as a sanity check. */
 #define MAX_FRAME_DURATION 1.00
 #define MIN_FRAME_DURATION 0.01
@@ -157,7 +160,7 @@ public:
     bool   m_initVbv;
     int    m_lastAbrResetPoc;
 
-    int    m_lastScenecut;
+    int64_t m_lastScenecut;           /* display tick of the last scenecut, -1 if none */
     int    m_lastScenecutAwareIFrame;
     double m_rateTolerance;
     double m_bitrate;
@@ -206,7 +209,7 @@ public:
     double  m_movingSumComplexitySeg[3];
     int     m_frameCountSeg[3];
     double  m_segDur;
-    double  m_fps;              /* only a true framerate for CFR content */
+    double  m_movingAvgFps;     /* moving average of the fps */
     double  m_timebase;
     int64_t m_satdCostWindow[50];
     int64_t m_encodedBitsWindow[50];

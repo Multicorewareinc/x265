@@ -202,7 +202,6 @@ RateControl::RateControl(x265_param& p, Encoder *top)
     m_rateFactorMaxIncrement = 0;
     m_rateFactorMaxDecrement = 0;
     m_timebase = (double)m_param->fpsDenom / m_param->fpsNum;
-    m_fps = (double)m_param->fpsNum / m_param->fpsDenom;
     m_startEndOrder.set(0);
     m_bTerminated = false;
     m_finalFrameCount.set(0);
@@ -391,7 +390,8 @@ bool RateControl::initCUTreeSharedMem()
             itemSize += sizeof(uint16_t) * m_ncu;
         }
 
-        int32_t itemCnt = X265_MIN(m_param->keyframeMax, (int)(m_fps + 0.5));
+        int32_t maxFps = int(1.0 / m_timebase + 0.5);
+        int32_t itemCnt = X265_MIN(m_param->keyframeMax, maxFps);
         itemCnt *= GOP_CNT_CU_TREE;
 
         char shrname[MAX_SHR_NAME_LEN] = { 0 };
@@ -466,13 +466,17 @@ bool RateControl::init(const SPS& sps)
     m_encodedSegmentBits = 0;
     m_framesDone = 0;
     m_durationDone = 0;
+    m_movingAvgFps = 0;
     m_segDur = 0;
     m_residualCost = 0;
     m_partialResidualCost = 0;
     m_amortizeFraction = 0.85;
     m_amortizeFrames = 75;
     m_bRcReConfig = false;
-    if (m_param->totalFrames && m_param->totalFrames <= 2 * m_fps && m_param->rc.bStrictCbr) /* Strict CBR segment encode */
+
+    /* Strict CBR segment encode: up to 2 seconds of frames. */
+    if (m_param->totalFrames && m_param->rc.bStrictCbr &&
+        (uint64_t)m_param->totalFrames * m_param->fpsDenom <= 2 * (uint64_t)m_param->fpsNum)
     {
         m_amortizeFraction = 0.85;
         m_amortizeFrames = m_param->totalFrames / 2;
@@ -880,8 +884,10 @@ void RateControl::reconfigureRC()
     {
         m_param->rc.vbvBufferSize = x265_clip3(0, 8000000, m_param->rc.vbvBufferSize);
         m_param->rc.vbvMaxBitrate = x265_clip3(0, 8000000, m_param->rc.vbvMaxBitrate);
-        if (m_param->reconfigWindowSize)
-            m_param->rc.vbvMaxBitrate = (int)(m_param->rc.vbvMaxBitrate * (double)(m_fps / m_param->reconfigWindowSize));
+        if (m_param->reconfigWindowSize) {
+            const double avgFps = m_movingAvgFps > 0 ? m_movingAvgFps : 1.0 / m_timebase; /* reconf prior to the first frame... */
+            m_param->rc.vbvMaxBitrate = (int)(m_param->rc.vbvMaxBitrate * (double)(avgFps / m_param->reconfigWindowSize));
+        }
         if (m_param->rc.vbvMaxBitrate < m_param->rc.bitrate &&
             m_param->rc.rateControlMode == X265_RC_ABR)
         {
@@ -1164,9 +1170,11 @@ bool RateControl::initPass2()
     uint64_t allConstBits = 0;
     uint64_t allAvailableBits = uint64_t(m_param->rc.bitrate * 1000. * m_durationDone * m_timebase);
     int startIndex, endIndex;
-    int fps = X265_MIN(m_param->keyframeMax, (int)(m_fps + 0.5));
-    int distance = fps << 1;
-    distance = distance > m_param->keyframeMax ? (m_param->keyframeMax << 1) : m_param->keyframeMax;
+    /* the windows are expressed in ticks and resolved on the entries' actual durations */
+    const int64_t keyintTicks = m_param->keyframeMax;
+    const int64_t ticksPerSecond = (int64_t)(1.0 / m_timebase + 0.5);
+    const int64_t spanTicks = X265_MIN(keyintTicks, ticksPerSecond);   /* at most one second or a GOP */
+    const int64_t distanceTicks = 2 * spanTicks > keyintTicks ? 2 * keyintTicks : keyintTicks;
     startIndex = endIndex = 0;
     double targetBits = 0;
     double expectedBits = 0;
@@ -1199,10 +1207,13 @@ bool RateControl::initPass2()
         return true;
     }
 
-    if (m_start + (fps << 1) > m_numEntries)
-    {
+    /* less than two spans of content to analyse
+     * number of ticks covered by the entries [start, end) */
+    uint64_t ticks = 0;
+    for (int i = m_start; i < m_numEntries; i++)
+        ticks += m_rce2Pass[i].frameDuration;
+    if (ticks < (uint64_t)(2 * spanTicks))
         return true;
-    }
 
     for (startIndex = m_start, endIndex = m_numEntries - 1; startIndex < endIndex; startIndex++, endIndex--)
     {
@@ -1259,8 +1270,16 @@ bool RateControl::initPass2()
         m_isGopReEncoded = false;
     }
 
-    m_start = X265_MAX(m_start, m_numEntries - distance + m_param->keyframeMax);
+    /* highest index i <= end such that the entries [i, end) cover at least ticks (0 if they never do) */
+    int i = m_numEntries;
+    const uint64_t diff = (uint64_t)(distanceTicks - keyintTicks);
 
+    ticks = 0;
+    while (i > 0 && ticks < diff)
+        ticks += m_rce2Pass[--i].frameDuration;
+
+    /* keep the last (distance - keyint) ticks of entries for the next window */
+    m_start = X265_MAX(m_start, i);
     return true;
 }
 
@@ -1426,6 +1445,22 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
     }
     rce->bPyramidLayer = curFrame->m_bPyramidLayer;
     rce->bPyramidMaxLayer = x265_clip3(1, 5, bPyramidMaxLayer(m_lastMiniGopLen));
+
+    /* moving average of the frame rate. Averaged on durations (frames per elapsed time),
+     * each frame weighted by its duration over about FPS_AVERAGING_WINDOW seconds of content. */
+    const double frameSecs = rce->frameDuration * m_timebase;
+    if (m_movingAvgFps <= 0)
+        m_movingAvgFps = 1.0 / frameSecs;
+    else
+    {
+        double weight = X265_MIN(1.0, frameSecs / FPS_AVERAGING_WINDOW);
+        m_movingAvgFps = 1.0 / (weight * frameSecs + (1.0 - weight) / m_movingAvgFps);
+    }
+
+    /* m_wantedBitsWindow is initialized based on the VUI timebase. the actual
+     * first frame duration is only known at this stage */
+    if (m_isAbr && rce->encodeOrder == 0)
+        m_wantedBitsWindow = m_bitrate * m_timebase * rce->frameDuration;
 
     if (m_param->bEnableSBRC)
     {
@@ -1980,15 +2015,18 @@ fail:
 double RateControl::tuneAbrQScaleFromFeedback(double qScale)
 {
     double abrBuffer = 2 * m_rateTolerance * m_bitrate;
-    /* use framesDone instead of POC as poc count is not serial with bframes enabled */
     double overflow = 1.0;
-    /* approximate, assume the other threads have a frame duration of a single tick */
-    double timeDone = (double)((int64_t)m_durationDone - m_param->frameNumThreads + 1) * m_timebase;
+    /* average frame duration so far: 1 tick in CFR */
+    double avgTicks = m_framesDone ? (double)m_durationDone / m_framesDone : 1.0;
+    /* approximate: the frames still in flight on the other threads last avgTicks each */
+    double timeDone = ((double)m_durationDone - (m_param->frameNumThreads - 1) * avgTicks) * m_timebase;
     double wantedBits = timeDone * m_bitrate;
     int64_t encodedBits = m_totalBits;
-    if (m_param->totalFrames && m_param->totalFrames <= 2 * m_fps)
+
+    double totalSecs = m_param->totalFrames * avgTicks * m_timebase;
+    if (m_param->totalFrames && totalSecs <= 2.0)
     {
-        abrBuffer = m_param->totalFrames * (m_bitrate * m_timebase);
+        abrBuffer = totalSecs * m_bitrate;
         encodedBits = m_encodedBits;
     }
 
@@ -2033,9 +2071,10 @@ double RateControl::tuneQScaleForGrain(double rcOverflow)
     double qScaleAvg = x265_qp2qScale(m_avgPFrameQp);
     double  q = m_lastQScaleFor[P_SLICE];
     int curQp = int (x265_qScale2qp(m_lastQScaleFor[P_SLICE]) + 0.5);
-    double curBitrate = m_qpToEncodedBits[curQp] * int(m_fps + 0.5);
+    const int roundedFps = int(m_movingAvgFps + 0.5);
+    double curBitrate = m_qpToEncodedBits[curQp] * roundedFps;
     int newQp = rcOverflow > 1.1 ? curQp + 2 : rcOverflow > 1 ? curQp + 1 : curQp - 1 ;
-    double projectedBitrate =  int(m_fps + 0.5) * m_qpToEncodedBits[newQp];
+    double projectedBitrate = m_qpToEncodedBits[newQp] * roundedFps;
     if (curBitrate > 0 && projectedBitrate > 0)
         q =  std::abs(projectedBitrate - m_bitrate) < std::abs (curBitrate - m_bitrate) ? x265_qp2qScale(newQp) : m_lastQScaleFor[P_SLICE];
     else
@@ -2460,7 +2499,8 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
                 q = (!m_partialResidualFrames) ? tunedQScale : initialQScale;
                 bool isEncodeEnd = (m_param->totalFrames &&
                     m_framesDone > 0.75 * m_param->totalFrames) ? 1 : 0;
-                bool isEncodeBeg = m_framesDone < (int)(m_fps + 0.5);
+                /* not one second of content encoded yet? */
+                bool isEncodeBeg = m_durationDone * m_param->fpsDenom < (uint64_t)m_param->fpsNum;
                 if (m_isGrainEnabled)
                 {
                     if(m_sliceType!= I_SLICE && m_framesDone && !isEncodeEnd &&
@@ -3670,14 +3710,17 @@ void RateControl::splitbUsed(char bused[], RateControlEntry *rce)
 double RateControl::forwardMasking(Frame* curFrame, double q)
 {
     double qp = x265_qScale2qp(q);
-    uint32_t maxWindowSize = uint32_t((m_param->fwdMaxScenecutWindow / 1000.0) * m_fps + 0.5);
+    /* windows in ticks, positions in display ticks: exact with any frame durations */
+    const double ticksPerSec = 1.0 / m_timebase;
+    uint32_t maxWindowSize = uint32_t((m_param->fwdMaxScenecutWindow / 1000.0) * ticksPerSec + 0.5);
     uint32_t windowSize[6], prevWindow = 0;
-    int lastScenecut = m_top->m_rateControl->m_lastScenecut;
+    int64_t lastScenecut = m_top->m_rateControl->m_lastScenecut;
+    int64_t curPos = curFrame->m_displayPicCount;
 
     double fwdRefQpDelta[6], fwdNonRefQpDelta[6], sliceTypeDelta[6];
     for (int i = 0; i < 6; i++)
     {
-        windowSize[i] = prevWindow + (uint32_t((m_param->fwdScenecutWindow[i] / 1000.0) * m_fps + 0.5));
+        windowSize[i] = prevWindow + (uint32_t((m_param->fwdScenecutWindow[i] / 1000.0) * ticksPerSec + 0.5));
         fwdRefQpDelta[i] = double(m_param->fwdRefQpDelta[i]);
         fwdNonRefQpDelta[i] = double(m_param->fwdNonRefQpDelta[i]);
         sliceTypeDelta[i] = SLICE_TYPE_DELTA * fwdRefQpDelta[i];
@@ -3686,7 +3729,7 @@ double RateControl::forwardMasking(Frame* curFrame, double q)
 
 
     //Check whether the current frame is within the forward window
-    if (curFrame->m_poc > lastScenecut && curFrame->m_poc <= (lastScenecut + int(maxWindowSize)))
+    if (curPos > lastScenecut && curPos <= (lastScenecut + (int64_t)maxWindowSize))
         curFrame->m_isInsideWindow = FORWARD_WINDOW;
     if (curFrame->m_isInsideWindow == FORWARD_WINDOW)
     {
@@ -3697,49 +3740,49 @@ double RateControl::forwardMasking(Frame* curFrame, double q)
         else if (curFrame->m_lowres.sliceType == X265_TYPE_P)
         {
             //Add offsets corresponding to the window in which the P-frame occurs
-            if (curFrame->m_poc <= (lastScenecut + int(windowSize[0])))
+            if (curPos <= (lastScenecut + (int64_t)windowSize[0]))
                 qp += fwdRefQpDelta[0] - sliceTypeDelta[0];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[0]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[1]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[0])) && (curPos <= (lastScenecut + (int64_t)windowSize[1])))
                 qp += fwdRefQpDelta[1] - sliceTypeDelta[1];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[1]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[2]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[1])) && (curPos <= (lastScenecut + (int64_t)windowSize[2])))
                 qp += fwdRefQpDelta[2] - sliceTypeDelta[2];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[2]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[3]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[2])) && (curPos <= (lastScenecut + (int64_t)windowSize[3])))
                 qp += fwdRefQpDelta[3] - sliceTypeDelta[3];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[3]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[4]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[3])) && (curPos <= (lastScenecut + (int64_t)windowSize[4])))
                 qp += fwdRefQpDelta[4] - sliceTypeDelta[4];
-            else if (curFrame->m_poc > lastScenecut + int(windowSize[4]))
+            else if (curPos > lastScenecut + (int64_t)windowSize[4])
                 qp += fwdRefQpDelta[5] - sliceTypeDelta[5];
         }
         else if (curFrame->m_lowres.sliceType == X265_TYPE_BREF)
         {
             //Add offsets corresponding to the window in which the B-frame occurs
-            if (curFrame->m_poc <= (lastScenecut + int(windowSize[0])))
+            if (curPos <= (lastScenecut + (int64_t)windowSize[0]))
                 qp += fwdRefQpDelta[0];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[0]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[1]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[0])) && (curPos <= (lastScenecut + (int64_t)windowSize[1])))
                 qp += fwdRefQpDelta[1];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[1]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[2]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[1])) && (curPos <= (lastScenecut + (int64_t)windowSize[2])))
                 qp += fwdRefQpDelta[2];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[2]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[3]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[2])) && (curPos <= (lastScenecut + (int64_t)windowSize[3])))
                 qp += fwdRefQpDelta[3];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[3]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[4]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[3])) && (curPos <= (lastScenecut + (int64_t)windowSize[4])))
                 qp += fwdRefQpDelta[4];
-            else if (curFrame->m_poc > lastScenecut + int(windowSize[4]))
+            else if (curPos > lastScenecut + (int64_t)windowSize[4])
                 qp += fwdRefQpDelta[5];
         }
         else if (curFrame->m_lowres.sliceType == X265_TYPE_B)
         {
             //Add offsets corresponding to the window in which the b-frame occurs
-            if (curFrame->m_poc <= (lastScenecut + int(windowSize[0])))
+            if (curPos <= (lastScenecut + (int64_t)windowSize[0]))
                 qp += fwdNonRefQpDelta[0];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[0]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[1]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[0])) && (curPos <= (lastScenecut + (int64_t)windowSize[1])))
                 qp += fwdNonRefQpDelta[1];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[1]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[2]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[1])) && (curPos <= (lastScenecut + (int64_t)windowSize[2])))
                 qp += fwdNonRefQpDelta[2];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[2]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[3]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[2])) && (curPos <= (lastScenecut + (int64_t)windowSize[3])))
                 qp += fwdNonRefQpDelta[3];
-            else if (((curFrame->m_poc) > (lastScenecut + int(windowSize[3]))) && ((curFrame->m_poc) <= (lastScenecut + int(windowSize[4]))))
+            else if ((curPos > (lastScenecut + (int64_t)windowSize[3])) && (curPos <= (lastScenecut + (int64_t)windowSize[4])))
                 qp += fwdNonRefQpDelta[4];
-            else if (curFrame->m_poc > lastScenecut + int(windowSize[4]))
+            else if (curPos > lastScenecut + (int64_t)windowSize[4])
                 qp += fwdNonRefQpDelta[5];
         }
     }
@@ -3749,13 +3792,16 @@ double RateControl::forwardMasking(Frame* curFrame, double q)
 double RateControl::backwardMasking(Frame* curFrame, double q)
 {
     double qp = x265_qScale2qp(q);
+    /* windows in ticks, positions in display ticks: exact with any frame durations */
+    const double ticksPerSec = 1.0 / m_timebase;
     uint32_t windowSize[6], prevWindow = 0;
-    int lastScenecut = m_top->m_rateControl->m_lastScenecut;
+    int64_t lastScenecut = m_top->m_rateControl->m_lastScenecut;
+    int64_t curPos = curFrame->m_displayPicCount;
 
     double bwdRefQpDelta[6], bwdNonRefQpDelta[6], sliceTypeDelta[6];
     for (int i = 0; i < 6; i++)
     {
-        windowSize[i] = prevWindow + (uint32_t((m_param->bwdScenecutWindow[i] / 1000.0) * (m_param->fpsNum / m_param->fpsDenom) + 0.5));
+        windowSize[i] = prevWindow + (uint32_t((m_param->bwdScenecutWindow[i] / 1000.0) * ticksPerSec + 0.5));
         prevWindow = windowSize[i];
         bwdRefQpDelta[i] = double(m_param->bwdRefQpDelta[i]);
         bwdNonRefQpDelta[i] = double(m_param->bwdNonRefQpDelta[i]);
@@ -3773,49 +3819,49 @@ double RateControl::backwardMasking(Frame* curFrame, double q)
         if (curFrame->m_lowres.sliceType == X265_TYPE_P)
         {
             //Add offsets corresponding to the window in which the P-frame occurs
-            if (curFrame->m_poc >= (lastScenecut - int(windowSize[0])))
+            if (curPos >= (lastScenecut - (int64_t)windowSize[0]))
                 qp += bwdRefQpDelta[0] - sliceTypeDelta[0];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[0]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[1]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[0])) && (curPos >= (lastScenecut - (int64_t)windowSize[1])))
                 qp += bwdRefQpDelta[1] - sliceTypeDelta[1];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[1]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[2]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[1])) && (curPos >= (lastScenecut - (int64_t)windowSize[2])))
                 qp += bwdRefQpDelta[2] - sliceTypeDelta[2];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[2]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[3]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[2])) && (curPos >= (lastScenecut - (int64_t)windowSize[3])))
                 qp += bwdRefQpDelta[3] - sliceTypeDelta[3];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[3]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[4]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[3])) && (curPos >= (lastScenecut - (int64_t)windowSize[4])))
                 qp += bwdRefQpDelta[4] - sliceTypeDelta[4];
-            else if (curFrame->m_poc < lastScenecut - int(windowSize[4]))
+            else if (curPos < lastScenecut - (int64_t)windowSize[4])
                 qp += bwdRefQpDelta[5] - sliceTypeDelta[5];
         }
         else if (curFrame->m_lowres.sliceType == X265_TYPE_BREF)
         {
             //Add offsets corresponding to the window in which the B-frame occurs
-            if (curFrame->m_poc >= (lastScenecut - int(windowSize[0])))
+            if (curPos >= (lastScenecut - (int64_t)windowSize[0]))
                 qp += bwdRefQpDelta[0];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[0]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[1]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[0])) && (curPos >= (lastScenecut - (int64_t)windowSize[1])))
                 qp += bwdRefQpDelta[1];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[1]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[2]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[1])) && (curPos >= (lastScenecut - (int64_t)windowSize[2])))
                 qp += bwdRefQpDelta[2];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[2]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[3]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[2])) && (curPos >= (lastScenecut - (int64_t)windowSize[3])))
                 qp += bwdRefQpDelta[3];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[3]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[4]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[3])) && (curPos >= (lastScenecut - (int64_t)windowSize[4])))
                 qp += bwdRefQpDelta[4];
-            else if (curFrame->m_poc < lastScenecut - int(windowSize[4]))
+            else if (curPos < lastScenecut - (int64_t)windowSize[4])
                 qp += bwdRefQpDelta[5];
         }
         else if (curFrame->m_lowres.sliceType == X265_TYPE_B)
         {
             //Add offsets corresponding to the window in which the b-frame occurs
-            if (curFrame->m_poc >= (lastScenecut - int(windowSize[0])))
+            if (curPos >= (lastScenecut - (int64_t)windowSize[0]))
                 qp += bwdNonRefQpDelta[0];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[0]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[1]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[0])) && (curPos >= (lastScenecut - (int64_t)windowSize[1])))
                 qp += bwdNonRefQpDelta[1];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[1]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[2]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[1])) && (curPos >= (lastScenecut - (int64_t)windowSize[2])))
                 qp += bwdNonRefQpDelta[2];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[2]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[3]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[2])) && (curPos >= (lastScenecut - (int64_t)windowSize[3])))
                 qp += bwdNonRefQpDelta[3];
-            else if (((curFrame->m_poc) < (lastScenecut - int(windowSize[3]))) && ((curFrame->m_poc) >= (lastScenecut - int(windowSize[4]))))
+            else if ((curPos < (lastScenecut - (int64_t)windowSize[3])) && (curPos >= (lastScenecut - (int64_t)windowSize[4])))
                 qp += bwdNonRefQpDelta[4];
-            else if (curFrame->m_poc < lastScenecut - int(windowSize[4]))
+            else if (curPos < lastScenecut - (int64_t)windowSize[4])
                 qp += bwdNonRefQpDelta[5];
         }
     }
