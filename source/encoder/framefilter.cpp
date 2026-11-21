@@ -228,8 +228,8 @@ void FrameFilter::start(Frame *frame, Entropy& initState)
     m_frame = frame;
     m_bNeedReferenceBorder =
         IS_REFERENCED(frame) || m_param->numLayers > 1 || m_param->bEnableSCC || m_param->searchMethod == X265_SEA;
-    m_bNeedFilteredRecon =
-        m_bNeedReferenceBorder || m_param->bEnablePsnr || m_param->bEnableSsim || m_param->decodedPictureHashSEI;
+    m_bNeedFilteredRecon = m_bNeedReferenceBorder || m_frameEncoder->m_bNeedReconOutput || m_param->bEnablePsnr ||
+                           m_param->bEnableSsim || m_param->decodedPictureHashSEI;
 #if ENABLE_LIBVMAF
     m_bNeedFilteredRecon = true;
 #endif

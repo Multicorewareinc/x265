@@ -192,7 +192,7 @@ public:
     void destroy();
 
     /* triggers encode of a new frame by the worker thread */
-    bool startCompressFrame(Frame* curFrame[MAX_LAYERS]);
+    bool startCompressFrame(Frame *curFrame[MAX_LAYERS], bool needReconOutput);
 
     /* blocks until worker thread is done, returns access unit */
     Frame **getEncodedPicture(NALList& list);
@@ -204,6 +204,7 @@ public:
     Event                    m_completionEvent;
     int                      m_localTldIdx;
     bool                     m_reconfigure; /* reconfigure in progress */
+    bool m_bNeedReconOutput;
     volatile bool            m_threadActive;
     volatile bool            *m_bAllRowsStop;
     volatile int             m_completionCount;

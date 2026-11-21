@@ -57,6 +57,7 @@ static inline bool shouldRunMLPred(const Encoder* top, const Frame* frame)
 FrameEncoder::FrameEncoder()
 {
     m_reconfigure = false;
+    m_bNeedReconOutput = false;
     m_isFrameEncoder = true;
     m_threadActive = true;
     m_activeWorkerCount = 0;
@@ -319,8 +320,9 @@ bool FrameEncoder::initializeGeoms()
     return true;
 }
 
-bool FrameEncoder::startCompressFrame(Frame* curFrame[MAX_LAYERS])
+bool FrameEncoder::startCompressFrame(Frame *curFrame[MAX_LAYERS], bool needReconOutput)
 {
+    m_bNeedReconOutput = needReconOutput;
     for (int layer = 0; layer < m_param->numLayers; layer++)
     {
         m_slicetypeWaitTime[layer] = x265_mdate() - m_prevOutputTime[layer];
