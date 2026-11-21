@@ -636,7 +636,7 @@ void FrameFilter::processRow(int row, int layer)
     m_frameEncoder->m_cuStats.countLoopFilter++;
 #endif
 
-    if (!m_param->bEnableLoopFilter && !m_useSao)
+    if (!m_bUseDeblock && !m_useSao)
     {
         processPostRow(row, layer);
         return;

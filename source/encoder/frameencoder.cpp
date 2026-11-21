@@ -1877,7 +1877,7 @@ void FrameEncoder::processRowEncoder(int intRow, ThreadLocalData& tld, int layer
             m_frameFilter.m_parallelFilter[row].m_sao.calcSaoStatsCu_BeforeDblk(m_frame[layer], col, row);
 
         /* Deblock with idle threading */
-        if (m_param->bEnableLoopFilter | slice->m_bUseSao)
+        if ((int)m_frameFilter.m_bUseDeblock | slice->m_bUseSao)
         {
             // NOTE: in VBV mode, we may reencode anytime, so we can't do Deblock stage-Horizon and SAO
             if (!bIsVbv)
@@ -2195,7 +2195,7 @@ void FrameEncoder::processRowEncoder(int intRow, ThreadLocalData& tld, int layer
 
 
     /* Processing left Deblock block with current threading */
-    if ((m_param->bEnableLoopFilter | slice->m_bUseSao) & (rowInSlice >= 2))
+    if (((int)m_frameFilter.m_bUseDeblock | slice->m_bUseSao) & (rowInSlice >= 2))
     {
         /* Check conditional to start previous row process with current threading */
         if (m_frameFilter.m_parallelFilter[row - 2].m_lastDeblocked.get() == (int)numCols)
