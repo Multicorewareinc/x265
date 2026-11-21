@@ -226,6 +226,8 @@ void FrameFilter::init(Encoder *top, FrameEncoder *frame, int numRows, uint32_t 
 void FrameFilter::start(Frame *frame, Entropy& initState)
 {
     m_frame = frame;
+    m_bNeedReferenceBorder =
+        IS_REFERENCED(frame) || m_param->numLayers > 1 || m_param->bEnableSCC || m_param->searchMethod == X265_SEA;
 
     // Reset Filter Data Struct
     if (m_parallelFilter)
@@ -344,6 +346,9 @@ void FrameFilter::ParallelFilter::processPostCu(int col) const
 {
     // Update finished CU cursor
     m_frameFilter->m_frame->m_reconColCount[m_row].set(col);
+
+    if (!m_frameFilter->m_bNeedReferenceBorder)
+        return;
 
     // shortcut path for non-border area
     if ((col != 0) & (col != m_frameFilter->m_numCols - 1) & (m_row != 0) & (m_row != m_frameFilter->m_numRows - 1))
