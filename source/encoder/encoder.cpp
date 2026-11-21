@@ -2139,6 +2139,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                     x265_free_analysis_data(m_param, &outFrame->m_analysisData);
                 if (pic_out)
                 {
+                    curEncoder->m_frameFilter.finishNonReferenceRecon();
                     PicYuv* recpic = outFrame->m_reconPic[0];
                     pic_out[sLayer].poc = slice->m_poc;
                     pic_out[sLayer].bitDepth = X265_DEPTH;

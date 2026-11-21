@@ -228,6 +228,11 @@ void FrameFilter::start(Frame *frame, Entropy& initState)
     m_frame = frame;
     m_bNeedReferenceBorder =
         IS_REFERENCED(frame) || m_param->numLayers > 1 || m_param->bEnableSCC || m_param->searchMethod == X265_SEA;
+    m_bNeedFilteredRecon =
+        m_bNeedReferenceBorder || m_param->bEnablePsnr || m_param->bEnableSsim || m_param->decodedPictureHashSEI;
+#if ENABLE_LIBVMAF
+    m_bNeedFilteredRecon = true;
+#endif
 
     // Reset Filter Data Struct
     if (m_parallelFilter)
@@ -322,6 +327,9 @@ void FrameFilter::ParallelFilter::copySaoAboveRef(const CUData *ctu, PicYuv* rec
 
 void FrameFilter::ParallelFilter::processSaoCTU(SAOParam *saoParam, int col)
 {
+    if (!m_frameFilter->m_bNeedFilteredRecon)
+        return;
+
     // TODO: apply SAO on CU and copy back soon, is it necessary?
     if (saoParam->bSaoFlag[0])
         m_sao.generateLumaOffsets(saoParam->ctuParam[0], m_row, col);
@@ -569,6 +577,21 @@ void FrameFilter::ParallelFilter::processTasks(int /*workerThreadId*/)
                 m_frameFilter->m_frame->m_reconColCount[m_row - 1].set(numCols - 1);
         }
         m_lastDeblocked.set(numCols);
+    }
+}
+
+void FrameFilter::finishNonReferenceRecon()
+{
+    if (m_bNeedFilteredRecon)
+        return;
+
+    m_bNeedFilteredRecon = true;
+    if (m_useSao)
+    {
+        SAOParam *saoParam = m_frame->m_encData->m_saoParam;
+        for (int row = 0; row < m_numRows; row++)
+            for (int col = 0; col < m_numCols; col++)
+                m_parallelFilter[row].processSaoCTU(saoParam, col);
     }
 }
 
