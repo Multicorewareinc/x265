@@ -4222,6 +4222,16 @@ void Lookahead::cuTreeBPyramid(Lowres **frames, CostEstimateGroup& estGroup, dou
         }
         if (batch.m_jobTotal)
             batch.finishBatch();
+
+        for (int k = 0; k < count; k++)
+            if (plan[k].bRef)
+                memset(frames[plan[k].b]->propagateCost, 0, m_cuCount * sizeof(uint16_t));
+        for (int k = count - 1; k >= 0; k--)
+        {
+            const BPyramidNode &node = plan[k];
+            estimateCUPropagate(frames, averageDuration, node.p0, node.p1, node.b, node.bRef);
+        }
+        return;
     }
     cuTreePropagateBPyramid(frames, estGroup, averageDuration, plan, 0, count);
 }
