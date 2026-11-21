@@ -4139,6 +4139,20 @@ void Lookahead::cuTreeBPyramid(Lowres **frames, CostEstimateGroup& estGroup, dou
 {
     BPyramidNode plan[X265_BPYRAMID_MAX_NODES];
     const int count = bPyramidPlan(p0, p1, plan);
+    if (m_pool && m_pool->m_numWorkers > 1 && m_numCoopSlices == 1 && m_param->bFrameAdaptive == X265_B_ADAPT_NONE)
+    {
+        CostEstimateGroup batch(*this, frames);
+        for (int k = 0; k < count; k++)
+        {
+            const BPyramidNode &node = plan[k];
+            const Lowres *frame = frames[node.b];
+            if (frame->costEst[node.b - node.p0][node.p1 - node.b] < 0 ||
+                frame->rowSatds[node.b - node.p0][node.p1 - node.b][0] == -1)
+                batch.add(node.p0, node.p1, node.b);
+        }
+        if (batch.m_jobTotal)
+            batch.finishBatch();
+    }
     cuTreePropagateBPyramid(frames, estGroup, averageDuration, plan, 0, count);
 }
 
