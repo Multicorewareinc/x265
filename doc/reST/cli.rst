@@ -2043,9 +2043,9 @@ Quality, rate control and rate distortion options
 	limits of the rate, generally within 5% of the target rate. Typically, the
 	encoder stays conservative, waiting until there is enough feedback in terms
 	of encoded frames to control QP. strict-cbr allows the encoder to be more
-	aggressive in hitting the target, bitrate even for short segment videos.
+	aggressive in hitting the target bitrate even for short segment videos.
 
-	Requires :option:`--hrd` and VBV configuration. Default disabled.
+	Requires VBV configuration. Default disabled.
 	Without this flag, if :option:`--bitrate` is greater or equal to :option:`--vbv-maxrate`
 	then x265 tries to approach a CBR output in VBR mode.
 
