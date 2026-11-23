@@ -728,7 +728,7 @@ uint64_t Analysis::compressIntraCU(const CUData& parentCTU, const CUGeom& cuGeom
 #ifdef ENABLE_MLCTUPRED
     /* Leave depths decided by analysis reuse to that analysis */
     const float* mlPred = bAlreadyDecided ? NULL : m_MLCTUPred;
-    const bool bMLDepth0 = m_param->maxCUSize != 64;
+    const bool bMLDepth0 = m_param->maxCUSize != 64 || m_param->bEnableIntra64x64;
 
     /* Confident split: skip the unsplit trial */
     if (mlPred && mightNotSplit && !(cuGeom.flags & CUGeom::LEAF))
