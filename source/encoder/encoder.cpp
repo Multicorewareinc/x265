@@ -3869,8 +3869,8 @@ void Encoder::initSPS(SPS *sps)
     vui.frameFieldInfoPresentFlag = m_param->bEmitFrameFieldInfo;
     vui.fieldSeqFlag = !!m_param->interlaceMode;
 
-    vui.hrdParametersPresentFlag = m_param->bEmitHRDSEI;
-
+    vui.hrdParametersPresentFlag = m_param->bEmitHRDSEI && m_param->bEmitVUITimingInfo && m_param->bEmitVUIHRDInfo;
+    sps->bCpbDpbDelaysPresent = m_param->bEmitHRDSEI;
     vui.timingInfo.numUnitsInTick = m_param->fpsDenom;
     vui.timingInfo.timeScale = m_param->fpsNum;
     sps->sps_extension_flag = false;
@@ -4039,6 +4039,10 @@ void Encoder::configureDolbyVisionParams(x265_param* p)
 
     if (dovi[doviProfile].doviProfileId == 50)
         p->crQpOffset = 3;
+
+    /* assume that if the dovi has HRD SEIs then it shall carry its config and timing */
+    if (p->bEmitHRDSEI)
+        p->bEmitVUITimingInfo = p->bEmitVUIHRDInfo = 1;
 }
 
 void Encoder::configureVideoSignalTypePreset(x265_param* p)
@@ -4764,6 +4768,8 @@ void Encoder::configure(x265_param *p)
     {
         p->bEnableAccessUnitDelimiters = 1;
         p->vui.aspectRatioIdc = 1;
+        p->bEmitVUIHRDInfo = 1;
+        p->bEmitVUITimingInfo = 1;
         p->bEmitHRDSEI = 1;
         int disableUhdBd = 0;
 
@@ -4843,10 +4849,18 @@ void Encoder::configure(x265_param *p)
             x265_log(p, X265_LOG_ERROR, "uhd-bd: Supported resolutions are 1920x1080 and 3840x2160\n");
             disableUhdBd = 1;
         }
+
+        if (!bIsVbv) /* since HRD is required */
+        {
+            x265_log(p, X265_LOG_ERROR, "uhd-bd: VBV configuration missing.\n");
+            disableUhdBd = 1;
+        }
+
         if (disableUhdBd)
         {
-            p->uhdBluray = 0;
+            /* user explicitely requested UHD BD-compatible output, no reason to continue */
             x265_log(p, X265_LOG_ERROR, "uhd-bd: Disabled\n");
+            m_aborted = true;
         }
     }
     /* set pad size if height is not multiple of the minimum CU size */
@@ -5007,6 +5021,14 @@ void Encoder::configure(x265_param *p)
     {
         x265_log(p, X265_LOG_WARNING, "Screen Content Coding requies maximum number of references should be atleast greater than 1.Increamenting by one.\n");
         p->maxNumReferences++;
+    }
+
+    /* Warns that x265 will use default HRD timing lengths in the unusual config
+     * with --no-vui-hrd-info or --no-vui-timing-info set */
+    if (p->bEmitHRDSEI && (!p->bEmitVUITimingInfo || !p->bEmitVUIHRDInfo))
+    {
+        x265_log(p, X265_LOG_WARNING, "HRD parameters not signalled in the VUI: Buffering Period and Pic Timing SEIs "
+                                       "rely on external HRD parameters (H.265 D.3.2).\n");
     }
 }
 

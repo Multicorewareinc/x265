@@ -917,7 +917,7 @@ void FrameEncoder::compressFrame(int layer)
             sei->m_duplicateFlag = false;
         }
 
-        if (vui->hrdParametersPresentFlag)
+        if (slice->m_sps->bCpbDpbDelaysPresent)
         {
             const HRDInfo *hrd = &vui->hrdParameters;
 

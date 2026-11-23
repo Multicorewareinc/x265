@@ -863,7 +863,7 @@ public:
             WRITE_FLAG(m_duplicateFlag,         "duplicate_flag");
         }
 
-        if (vui->hrdParametersPresentFlag)
+        if (sps.bCpbDpbDelaysPresent)
         {
             WRITE_CODE(m_auCpbRemovalDelay - 1, hrd->cpbRemovalDelayLength, "au_cpb_removal_delay_minus1");
             WRITE_CODE(m_picDpbOutputDelay, hrd->dpbOutputDelayLength, "pic_dpb_output_delay");
