@@ -502,7 +502,8 @@ typedef struct x265_picture
      * of a frame, 2 for the second */
     int fieldNum;
 
-    /* Pic Timing SEI picture structure signaling. See PicStruct enumeration */
+    /* Pic Timing SEI picture structure signaling. See PicStruct enumeration.
+     * Requires x265_param.bEmitFrameFieldInfo to be set, ignored else. */
     uint32_t picStruct;
 
     int    width;
@@ -1308,9 +1309,16 @@ typedef struct x265_param
      * NAL at the start of every access unit. Default false */
     int       bEnableAccessUnitDelimiters;
 
-    /* Enables the buffering period SEI and picture timing SEI to signal the HRD
+    /* Enables the buffering period SEI and Pic Timing SEI to signal the HRD
      * parameters. Default is disabled */
     int       bEmitHRDSEI;
+
+    /* Sets VUI frame_field_info_present_flag and emits a Pic Timing SEI carrying
+     * x265_picture.picStruct. Enabled forcefully with bEnableFrameDuplication,
+     * interlaceMode or pictureStructure >= 0. It must be enabled if a per-picture
+     * picStruct is set by the user.
+     * API only, connected CLI options set this manually. Default disabled. */
+    int       bEmitFrameFieldInfo;
 
     /* Enables the emission of a user data SEI with the stream headers which
      * describes the encoder version, build info, and parameters. This is
