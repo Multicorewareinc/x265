@@ -232,3 +232,9 @@ big_buck_bunny_360p24.y4m,--preset veryfast --b-adapt 2 --bframes 0 --interlace 
 #User data unregistered SEI raw tests
 BasketballDrive_1920x1080_50.y4m,--preset ultrafast --nalu-file udu_sei_raw.txt --sei-udu-raw
 big_buck_bunny_360p24.y4m,--preset superfast --nalu-file udu_sei_raw.txt --sei-udu-raw --single-sei
+
+#psfile tests
+FourPeople_1280x720_60.y4m,--preset medium --hrd --aud --repeat-headers --keyint 60 --bitrate 3000 --vbv-maxrate 4000 --vbv-bufsize 4000 --psfile psfile.txt
+
+#prepulldown-fps tests
+big_buck_bunny_360p24.y4m,--preset medium --hrd --fps 60000/1001 --prepulldown-fps 24000/1001 --keyint 60 --bitrate 800 --vbv-maxrate 1200 --vbv-bufsize 1500
