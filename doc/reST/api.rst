@@ -289,8 +289,9 @@ If you wish to override the lookahead or rate control for a given
 picture you may specify a slicetype other than X265_TYPE_AUTO, or a
 forceQP value other than 0.
 
-With HRD, the Pic Timing SEI picture structure can be overriden per frame with
-**picStruct**. Refer to the PicStruct enumeration or ITU H.265 Table D.2.
+With **bEmitFrameFieldInfo** enabled, emit Pic Timing SEI every access unit
+to convey each picture's **picStruct**. Its purpose is to aid the display or
+perform pulldown. Refer to the PicStruct enumeration or ITU H.265 Table D.2.
 
 User SEI messages can be attached to a picture with **userSEI**. For a
 payload of type USER_DATA_UNREGISTERED, x265 by default writes its own

@@ -180,6 +180,7 @@ void x265_param_default(x265_param* param)
     param->bEmitHDRSEI = 0; /*Deprecated*/
     param->bEmitHDR10SEI = 0;
     param->bEmitIDRRecoverySEI = 0;
+    param->bEmitFrameFieldInfo = 0;
 
     /* CU definitions */
     param->maxCUSize = 64;
@@ -2042,10 +2043,14 @@ int x265_check_params(x265_param* param)
 
     bool isSingleSEI = (param->bRepeatHeaders
                      || param->bEmitHRDSEI
+                     || param->bEmitFrameFieldInfo
                      || param->bEmitInfoSEI
                      || param->bEmitHDR10SEI
                      || param->bEmitIDRRecoverySEI
+                     /* the next 3 enable bEmitFrameFieldInfo later in the encoder set-up */
                    || !!param->interlaceMode
+                     || param->pictureStructure >= 0
+                     || param->bEnableFrameDuplication
                      || param->preferredTransferCharacteristics > 1
                      || param->framePacking > -1
                      || strlen(param->toneMapFile)
@@ -3063,6 +3068,7 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->dynamicRd = src->dynamicRd;
     dst->bEmitHDR10SEI = src->bEmitHDR10SEI;
     dst->bEmitHRDSEI = src->bEmitHRDSEI;
+    dst->bEmitFrameFieldInfo = src->bEmitFrameFieldInfo;
     dst->bHDROpt = src->bHDROpt; /*DEPRECATED*/
     dst->bHDR10Opt = src->bHDR10Opt;
     dst->analysisReuseLevel = src->analysisReuseLevel;

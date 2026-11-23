@@ -131,7 +131,7 @@ void FrameEncoder::destroy()
         }
     }
 
-    if (m_param->bEmitHRDSEI || !!m_param->interlaceMode)
+    if (m_param->bEmitHRDSEI || m_param->bEmitFrameFieldInfo)
     {
         delete m_rce.picTimingSEI;
     }
@@ -207,7 +207,7 @@ bool FrameEncoder::init(Encoder *top, int numRows, int numCols)
     m_frameFilter.init(top, this, numRows, numCols);
 
     // initialize HRD parameters of SPS
-    if (m_param->bEmitHRDSEI || !!m_param->interlaceMode)
+    if (m_param->bEmitHRDSEI || m_param->bEmitFrameFieldInfo)
     {
         m_rce.picTimingSEI = new SEIPictureTiming;
 
@@ -884,11 +884,10 @@ void FrameEncoder::compressFrame(int layer)
         }
     }
 
-    if ((m_param->bEmitHRDSEI || !!m_param->interlaceMode))
+    if ((m_param->bEmitHRDSEI || m_param->bEmitFrameFieldInfo))
     {
         SEIPictureTiming *sei = m_rce.picTimingSEI;
         const VUI *vui = &slice->m_sps->vuiParameters;
-        const HRDInfo *hrd = &vui->hrdParameters;
 
         if (vui->frameFieldInfoPresentFlag)
         {
@@ -920,6 +919,8 @@ void FrameEncoder::compressFrame(int layer)
 
         if (vui->hrdParametersPresentFlag)
         {
+            const HRDInfo *hrd = &vui->hrdParameters;
+
             /* The m_aucpbremoval delay specifies how many clock ticks the access unit
              * with the picture timing SEI message has to wait after removal of the
              * access unit with the most recent buffering period SEI message */

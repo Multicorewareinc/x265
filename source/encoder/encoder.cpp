@@ -1845,7 +1845,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
 
             if (inFrame[layer]->m_param->pictureStructure >= 0)
                 inFrame[layer]->m_picStruct = inFrame[layer]->m_param->pictureStructure;
-            else if (inFrame[layer]->m_param->bEmitHRDSEI)
+            else if (inFrame[layer]->m_param->bEmitFrameFieldInfo)
                 inFrame[layer]->m_picStruct = inputPic[0]->picStruct;
             else
                 inFrame[layer]->m_picStruct = PIC_STRUCT_AUTO;
@@ -3664,7 +3664,7 @@ void Encoder::getStreamHeaders(NALList& list, Entropy& sbacCoder, Bitstream& bs)
         }
     }
 
-    if ((m_param->bEmitHRDSEI || !!m_param->interlaceMode))
+    if ((m_param->bEmitHRDSEI || m_param->bEmitFrameFieldInfo))
     {
         /* Picture Timing and Buffering Period SEI require the SPS to be "activated" */
         SEIActiveParameterSets sei;
@@ -3866,7 +3866,7 @@ void Encoder::initSPS(SPS *sps)
     vui.defaultDisplayWindow.bottomOffset = m_param->vui.defDispWinBottomOffset;
     vui.defaultDisplayWindow.leftOffset = m_param->vui.defDispWinLeftOffset;
 
-    vui.frameFieldInfoPresentFlag = !!m_param->interlaceMode || m_param->bEmitHRDSEI;
+    vui.frameFieldInfoPresentFlag = m_param->bEmitFrameFieldInfo;
     vui.fieldSeqFlag = !!m_param->interlaceMode;
 
     vui.hrdParametersPresentFlag = m_param->bEmitHRDSEI;
@@ -4701,12 +4701,6 @@ void Encoder::configure(x265_param *p)
             x265_log(p, X265_LOG_WARNING, "pic-struct is ignored with interlace, which sets pic_struct from the field order.\n");
             p->pictureStructure = -1;
         }
-
-        if (!m_param->bEmitHRDSEI)
-        {
-            x265_log(p, X265_LOG_WARNING, "Pic struct requires HRD Timing information. Disabling picture structure.\n");
-            p->pictureStructure = -1;
-        }
     }
 
     if (!p->bEnableFrameDuplication && p->dupThreshold && p->dupThreshold != 70)
@@ -4727,11 +4721,6 @@ void Encoder::configure(x265_param *p)
         p->pictureStructure = -1;
     }
 
-    if (m_param->bEnableFrameDuplication && (!bIsVbv || !m_param->bEmitHRDSEI))
-    {
-        x265_log(m_param, X265_LOG_WARNING, "Frame-duplication require NAL HRD and VBV parameters. Disabling frame duplication\n");
-        m_param->bEnableFrameDuplication = 0;
-    }
 #ifdef ENABLE_HDR10_PLUS
     if (m_param->bDhdr10opt && strlen(m_param->toneMapFile) == 0)
     {
@@ -4766,6 +4755,10 @@ void Encoder::configure(x265_param *p)
         m_param->bDhdr10opt = 0;
     }
 #endif
+
+    /* enable VUI Frame Field Information */
+    if (m_param->interlaceMode > 0 || m_param->pictureStructure >= 0 || p->bEnableFrameDuplication)
+        p->bEmitFrameFieldInfo = 1;
 
     if (p->uhdBluray)
     {

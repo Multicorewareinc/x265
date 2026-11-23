@@ -965,6 +965,7 @@ namespace X265_NS {
 
         if (!!psfile)
         {
+            param->bEmitFrameFieldInfo = 1;
             if (checkParamsWithCustomPicStruct(param, "psfile"))
                 return true;
             if (this->pulldownFpsRatioNum > 0)
@@ -1056,8 +1057,12 @@ namespace X265_NS {
             param->totalFrames *= 2;
         }
 
-        if (this->pulldownFpsRatioNum > 0 && prepareRatesRatioForPulldown(param))
-            return true;
+        if (this->pulldownFpsRatioNum > 0)
+        {
+            param->bEmitFrameFieldInfo = 1;
+            if (prepareRatesRatioForPulldown(param))
+                return true;
+        }
 
         if (api->param_apply_profile(param, profile))
             return true;
@@ -1232,11 +1237,6 @@ namespace X265_NS {
 
     bool CLIOptions::checkParamsWithCustomPicStruct(const x265_param* globalParam, const char *optName)
     {
-        if (!globalParam->bEmitHRDSEI)
-        {
-            x265_log(param, X265_LOG_ERROR, "%s requires --hrd.\n", optName);
-            return true;
-        }
         if (globalParam->bEnableTemporalSubLayers)
         {
             x265_log(param, X265_LOG_ERROR, "Cannot use a %s with temporal sublayers.\n", optName);
