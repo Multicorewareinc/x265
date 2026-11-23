@@ -42,6 +42,9 @@ struct BPyramidNode
 
 static inline int bPyramidPlanRange(int p0, int p1, int layer, BPyramidNode* plan, int count)
 {
+    X265_CHECK(count >= 0 && count < X265_BPYRAMID_MAX_NODES, "bpyramid plan overflow\n");
+    if (count < 0 || count >= X265_BPYRAMID_MAX_NODES)
+        return count;
     if (p1 - p0 > 3)
     {
         const int k = count++;
@@ -53,7 +56,7 @@ static inline int bPyramidPlanRange(int p0, int p1, int layer, BPyramidNode* pla
     }
     else
     {
-        for (int b = p0 + 1; b < p1; b++, count++)
+        for (int b = p0 + 1; b < p1 && count < X265_BPYRAMID_MAX_NODES; b++, count++)
             plan[count] = { b, p0, p1, layer, false, count + 1 };
     }
     return count;
