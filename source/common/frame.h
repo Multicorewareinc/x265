@@ -165,7 +165,8 @@ public:
     int                    m_isInsideWindow;
 
     /*Frame's temporal layer info*/
-    uint8_t                m_tempLayer;
+    uint8_t                m_tempLayer;      // TemporalId signalled in the bitstream (--temporal-layers)
+    uint8_t                m_bPyramidLayer;  // hierarchical B-pyramid level, 0 for I/P; never signalled
     int8_t                 m_gopId;
     bool                   m_sameLayerRefPic;
 
@@ -191,6 +192,11 @@ public:
     int64_t                m_displayPicCount;    /* PTS in clock ticks */
     int64_t                m_codedPicCount;      /* DTS in clock ticks */
     double                 m_timebase;           /* timebase for this picture [seconds] */
+
+    /* ML CTU split probabilities, NULL if disabled. With 64x64 CTUs, float[numCTUs * 21]:
+     * [n*21+0]=split64, [n*21+1..4]=split32 quadrants, [n*21+5..20]=split16 (Z-scan).
+     * With 32x32 CTUs, float[numCTUs]: split32 per CTU. */
+    float*                 m_MLCTUPred;
 
     Frame();
 

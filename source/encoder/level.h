@@ -33,6 +33,7 @@ namespace X265_NS {
 struct VPS;
 void determineLevel(const x265_param &param, VPS& vps);
 bool enforceLevel(x265_param& param, VPS& vps);
+uint32_t hierarchicalReorderPics(int bframes);
 
 }
 

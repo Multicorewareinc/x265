@@ -70,6 +70,7 @@ bool ThreadedME::create()
     for (int i = 0; i < m_tldCount; i++)
     {
         m_tld[i].analysis.initSearch(*m_param, m_enc.m_scalingList);
+        m_tld[i].analysis.m_rdCost.setChromaDistWeight(m_enc.m_bChromaDistWeight);
         m_tld[i].analysis.create(m_tld);
     }
 

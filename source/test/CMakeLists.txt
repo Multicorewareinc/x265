@@ -10,6 +10,7 @@ if(X86)
 enable_language(ASM_NASM)
 
 if(MSVC_IDE)
+    include(X265NasmFlags)
     set(NASM_SRC checkasm-a.obj)
     add_custom_command(
         OUTPUT checkasm-a.obj

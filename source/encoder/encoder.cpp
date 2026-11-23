@@ -37,7 +37,11 @@
 #include "slicetype.h"
 #include "frameencoder.h"
 #include "ratecontrol.h"
+#ifdef ENABLE_MLCTUPRED
+#include "mlctu.h"
+#endif
 #include "dpb.h"
+#include "level.h"
 #include "nal.h"
 #include "threadedme.h"
 #include "ratecontrol.h"
@@ -134,7 +138,7 @@ Encoder::Encoder()
     m_clockTickCount = 0;
     m_lastPirCpbDelay = 0;
     m_bframeDelayTime = 0;
-    m_prevReorderedPts[0] = m_prevReorderedPts[1] = 0;
+    memset(m_prevReorderedPts, 0, sizeof(m_prevReorderedPts));
     m_curEncoder = 0;
     m_numLumaWPFrames = 0;
     m_numChromaWPFrames = 0;
@@ -143,6 +147,10 @@ Encoder::Encoder()
     m_lookahead = NULL;
     m_threadedME = NULL;
     m_rateControl = NULL;
+#ifdef ENABLE_MLCTUPRED
+    m_MLCTUPredictor = NULL;
+    m_mlThreadPool = NULL;
+#endif
     m_dpb = NULL;
     m_numDelayedPic = 0;
     m_outputCount = 0;
@@ -267,6 +275,10 @@ void Encoder::create()
     {
         p->frameNumThreads = 1;
     }
+
+    /* Like x264, --tune psnr/ssim optimize luma metrics, so chroma distortion is not up-weighted.
+     * Resolved here because p->tune is not owned by the encoder and may not outlive this call */
+    m_bChromaDistWeight = !(p->tune && (!strcmp(p->tune, "psnr") || !strcmp(p->tune, "ssim")));
 
     bool allowPools = !strlen(p->numaPools) || strcmp(p->numaPools, "none");
 
@@ -529,6 +541,50 @@ void Encoder::create()
         m_aborted = true;
     if (!m_lookahead->create())
         m_aborted = true;
+
+#ifdef ENABLE_MLCTUPRED
+    if (m_param->bEnableMLCTUPred)
+    {
+        m_MLCTUPredictor = new MLCTUPredictor(m_param);
+        if (!m_MLCTUPredictor->init())
+        {
+            x265_log(m_param, X265_LOG_WARNING,
+                     "ML CTU pred: init failed, feature disabled\n");
+            delete m_MLCTUPredictor;
+            m_MLCTUPredictor = NULL;
+            m_param->bEnableMLCTUPred = 0;
+        }
+        else
+        {
+            int numNodes = ThreadPool::getNumaNodeCount();
+            uint64_t mlNodeMask = 0;
+            for (int ni = 0; ni < numNodes; ni++)
+                mlNodeMask |= ((uint64_t)1 << ni);
+
+            /* One worker per concurrent frame inference */
+            const int mlThreads = X265_MIN(m_param->frameNumThreads, MAX_POOL_THREADS);
+            m_mlThreadPool = new ThreadPool();
+            if (!m_mlThreadPool->create(mlThreads, 1, mlNodeMask))
+            {
+                x265_log(m_param, X265_LOG_WARNING,
+                         "ML CTU pred: failed to create ML thread pool, "
+                         "falling back to synchronous inference\n");
+                delete m_mlThreadPool;
+                m_mlThreadPool = NULL;
+            }
+            else
+            {
+                m_MLCTUPredictor->m_pool = m_mlThreadPool;
+                m_MLCTUPredictor->m_jpId = m_mlThreadPool->m_numProviders++;
+                m_mlThreadPool->m_jpTable[m_MLCTUPredictor->m_jpId] = m_MLCTUPredictor;
+                m_mlThreadPool->start();
+                x265_log(m_param, X265_LOG_DEBUG,
+                         "ML CTU pred: async thread pool started (%d threads)\n",
+                         mlThreads);
+            }
+        }
+    }
+#endif
 
     initRefIdx();
 
@@ -1004,6 +1060,20 @@ void Encoder::destroy()
         m_rateControl->destroy();
         delete m_rateControl;
     }
+
+#ifdef ENABLE_MLCTUPRED
+    if (m_mlThreadPool)
+    {
+        m_mlThreadPool->stopWorkers();
+        delete m_mlThreadPool;
+        m_mlThreadPool = NULL;
+    }
+    if (m_MLCTUPredictor)
+    {
+        delete m_MLCTUPredictor;
+        m_MLCTUPredictor = NULL;
+    }
+#endif
 
     X265_FREE(m_offsetEmergency);
 
@@ -1699,6 +1769,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                 inFrame[layer]->m_lowresInit = false;
                 inFrame[layer]->m_isInsideWindow = 0;
                 inFrame[layer]->m_tempLayer = 0;
+                inFrame[layer]->m_bPyramidLayer = 0;
                 inFrame[layer]->m_sameLayerRefPic = 0;
 #if ENABLE_MULTIVIEW
                 inFrame[layer]->m_viewId = m_param->numViews > 1 ? layer : 0;
@@ -1902,6 +1973,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                     {
                         inFrame[0]->m_lowres.plannedSatd[index] = inFrame[0]->m_analysisData.lookahead.plannedSatd[index];
                         inFrame[0]->m_lowres.plannedType[index] = inFrame[0]->m_analysisData.lookahead.plannedType[index];
+                        inFrame[0]->m_lowres.plannedBQpCoef[index] = -1; /* not in the analysis data */
                     }
                 }
             }
@@ -2312,6 +2384,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                     frameEnc[layer]->m_lowres.sliceType = IS_X265_TYPE_I(baseViewType) ? X265_TYPE_P : baseViewType;
                 frameEnc[layer]->m_lowres.bKeyframe = frameEnc[0]->m_lowres.bKeyframe;
                 frameEnc[layer]->m_tempLayer = frameEnc[0]->m_tempLayer;
+                frameEnc[layer]->m_bPyramidLayer = frameEnc[0]->m_bPyramidLayer;
             }
 #endif
 
@@ -2534,6 +2607,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                     if ((frameEnc[layer]->m_poc == (m_param->totalFrames - 1)) || (frameEnc[layer]->m_lowres.sliceType == X265_TYPE_I) || (frameEnc[layer]->m_lowres.sliceType == X265_TYPE_IDR))
                     {
                         frameEnc[layer]->m_tempLayer = (int8_t)0;
+                        frameEnc[layer]->m_bPyramidLayer = 0;
                     }
                 }
             }
@@ -4040,6 +4114,25 @@ void Encoder::configure(x265_param *p)
         x265_log(p, X265_LOG_WARNING, "Setting minCuSize = 8, AVCINFO expects 8x8 blocks\n");
     }
 
+    if (p->bEnableMLCTUPred)
+    {
+#ifdef ENABLE_MLCTUPRED
+        if (p->maxCUSize != 64 && p->maxCUSize != 32)
+        {
+            x265_log(p, X265_LOG_WARNING, "ML CTU pred requires --ctu 64 or 32, disabling ml-ctu-pred\n");
+            p->bEnableMLCTUPred = 0;
+        }
+        else if (p->numLayers > 1)
+        {
+            x265_log(p, X265_LOG_WARNING, "ML CTU pred does not support multi-layer encodes, disabling ml-ctu-pred\n");
+            p->bEnableMLCTUPred = 0;
+        }
+#else
+        x265_log(p, X265_LOG_WARNING, "x265 built without ENABLE_MLCTUPRED, disabling ml-ctu-pred\n");
+        p->bEnableMLCTUPred = 0;
+#endif
+    }
+
     if (p->keyframeMax < 0)
     {
         /* A negative max GOP size indicates the user wants only one I frame at
@@ -4382,6 +4475,10 @@ void Encoder::configure(x265_param *p)
     }
 
     m_bframeDelay = p->bframes ? (p->bBPyramid ? 2 : 1) : 0;
+    /* the DTS delay must cover the deepest reorder, or DTS ends up after PTS: the hierarchical
+     * B-pyramid reorders more than 2 pictures from 7 B-frames on */
+    if (X265_HIERARCHICAL_BPYRAMID(p) && p->bframes > 1)
+        m_bframeDelay = X265_MAX(m_bframeDelay, (int)hierarchicalReorderPics(p->bframes));
 
     p->bFrameBias = X265_MIN(X265_MAX(-90, p->bFrameBias), 100);
     p->scenecutBias = (double)(p->scenecutBias / 100);
@@ -4688,12 +4785,6 @@ void Encoder::configure(x265_param *p)
         {
             x265_log(p, X265_LOG_WARNING, "uhd-bd: Turning on repeat-headers\n");
             p->bRepeatHeaders = 1;
-        }
-
-        if (p->bOpenGOP)
-        {
-            x265_log(p, X265_LOG_WARNING, "uhd-bd: Turning off open GOP\n");
-            p->bOpenGOP = false;
         }
 
         if (p->bIntraRefresh)

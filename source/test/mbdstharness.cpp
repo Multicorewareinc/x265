@@ -97,6 +97,24 @@ bool MBDstHarness::check_dct_primitive(dct_t ref, dct_t opt, intptr_t width)
     int j = 0;
     intptr_t cmp_size = sizeof(short) * width * width;
 
+    for (int pattern = 0; pattern < 4; pattern++)
+    {
+        for (intptr_t y = 0; y < width; y++)
+            for (intptr_t x = 0; x < width; x++)
+            {
+                bool negative = pattern < 2 ? y >= width / 2 : x >= width / 2;
+                mbufdct[y * width + x] = (negative ^ (pattern & 1)) ? -PIXEL_MAX : PIXEL_MAX;
+            }
+
+        ref(mbufdct, mshortbuf2, width);
+        checked(opt, mbufdct, mshortbuf3, width);
+
+        if (memcmp(mshortbuf2, mshortbuf3, cmp_size))
+            return false;
+
+        reportfail();
+    }
+
     for (int i = 0; i < ITERS; i++)
     {
         int index = rand() % TEST_CASES;

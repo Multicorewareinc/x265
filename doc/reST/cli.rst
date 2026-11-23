@@ -422,6 +422,52 @@ Performance Options
 		fewer cores, the overhead of the additional motion estimation work
 		may outweigh the parallelism gains.
 
+.. option:: --ml-ctu-pred, --no-ml-ctu-pred
+
+	Predict CTU partitions with a convolutional neural network and use the
+	predictions to prune the intra partition search. For each 64x64 block of
+	the source luma, the network outputs split probabilities for the
+	64x64, 32x32 and 16x16 levels. A confident split skips the unsplit
+	candidate, a confident no-split skips the split candidate, and anything
+	in between is left to the regular RD search.
+
+	Inference runs on a dedicated thread pool, one worker per frame thread,
+	and results are published per CTU row so wavefront encoding can start
+	before the whole frame is predicted.
+
+	Predictions are made and used on I-frames only; P- and B-frames are
+	analyzed as usual and cost nothing extra. The speedup therefore scales
+	with the share of I-frames, and is largest for all-intra encodes
+	(:option:`--keyint` 1).
+
+	Requirements and limitations:
+
+	- x265 built with ``-DENABLE_MLCTUPRED=ON`` and ``ONNXRUNTIME_DIR``
+	  pointing at an ONNX Runtime package.
+	- :option:`--ctu` 64 or 32. With 32, only the 32x32 split decision is
+	  predicted.
+	- Not supported with multi-layer encodes.
+
+	Default disabled. **Experimental Feature**
+
+.. option:: --ml-model-dir <dir>
+
+	Directory containing the :option:`--ml-ctu-pred` models
+	(``x265_ctu_pred_qp*.onnx``). If a directory is given, by this option or
+	the ``X265_ML_MODEL_DIR`` environment variable, only that directory is
+	used. Otherwise the first of these holding all models is used:
+
+	- ``models`` next to the x265 executable or library
+	- the install directory, relative to the executable or library, so a
+	  relocated install still works
+	- the install directory, ``<prefix>/share/x265/models`` by default (CMake
+	  option ``ML_MODEL_INSTALL_DIR``)
+
+	Paths are UTF-8. On Windows, ``/`` and ``\`` are both accepted as
+	separators.
+
+	Default: auto
+
 .. option:: --preset, -p <integer|string>
 
 	Sets parameters to preselected values, trading off compression efficiency against 
@@ -767,9 +813,12 @@ Profile, Level, Tier
 .. option:: --uhd-bd
 
     Enable Ultra HD Blu-ray format support. If specified with incompatible
-    encoding options, the encoder will attempt to modify/set the right 
+    encoding options, the encoder will attempt to modify/set the right
     encode specifications. If the encoder is unable to do so, this option
     will be turned OFF. Highly experimental.
+
+    Open GOP is enabled by default. Use :option:`--no-open-gop` to preserve older
+    x265 :option:`--uhd-bd` behaviour.
 
     Default: disabled
 
@@ -1682,9 +1731,33 @@ Slice decision options
 	more likely x265 is to use B frames. Can be any value between -90
 	and 100 and is clipped to that range. Default 0
 
-.. option:: --b-pyramid, --no-b-pyramid
+.. option:: --b-pyramid <integer>
 
-	Use B-frames as references, when possible. Default enabled
+	Use B-frames as references, when possible. Default 1
+
+	0. No B frame is used as a reference
+	1. The middle B frame of each mini-GOP of more than 2 B frames is a
+	   reference for the other B frames of the mini-GOP
+	2. Hierarchical B-pyramid: the middle B frame of a mini-GOP is a B-ref
+	   from the two anchors, and each half is split the same way while it
+	   has more than two B frames, so the B frames are predicted from nearer
+	   references. With :option:`--temporal-layers` greater than 2 the
+	   mini-GOP is defined by the temporal sub-layers, as with 1
+
+	**Values:** 0, 1, 2. Earlier versions took no value: use 1 for
+	:option:`--b-pyramid` and 0 for the removed ``--no-b-pyramid``.
+
+	With 2 the QP of a B frame comes from its layer in the pyramid instead of
+	from whether it is a reference: see :option:`--b-pyramid-qp-scale`.
+
+.. option:: --b-pyramid-qp-scale <float>
+
+	Scale the QP offsets of the B-pyramid layers over their anchors. A B frame
+	at layer L sits scale * min(2, 0.5 * L) * 6 * log2(:option:`--pbratio`) QP
+	above its anchors, so at scale 1 layer 1 matches a B-ref of
+	:option:`--b-pyramid` 1 and layer 2 a non-reference B frame. 0 codes all
+	B frames at the anchor QP; values below 1 flatten the pyramid, above 1
+	steepen it. Only used with :option:`--b-pyramid` 2. Range 0 to 2. Default 1.0
 
 .. option:: --force-flush <integer>
 
@@ -1962,18 +2035,19 @@ Quality, rate control and rate distortion options
 
 .. option:: --strict-cbr, --no-strict-cbr
 
-	Enables stricter conditions to control bitrate deviance from the 
-	target bitrate in ABR mode. Bit rate adherence is prioritised
-	over quality. Rate tolerance is reduced to 50%. Default disabled.
-	
-	This option is for use-cases which require the final average bitrate 
-	to be within very strict limits of the target; preventing overshoots, 
-	while keeping the bit rate within 5% of the target setting, 
-	especially in short segment encodes. Typically, the encoder stays 
-	conservative, waiting until there is enough feedback in terms of 
-	encoded frames to control QP. strict-cbr allows the encoder to be 
-	more aggressive in hitting the target bitrate even for short segment 
-	videos.
+	Enables strict constant bitrate mode. If enabled, the bitstream signals
+	constant bitrate to a decoder. Attaining the target rate is prioritised
+	over quality, and bitstream filler units may be inserted whenever needed.
+
+	For use-cases which require the final average bitrate to be within strict
+	limits of the rate, generally within 5% of the target rate. Typically, the
+	encoder stays conservative, waiting until there is enough feedback in terms
+	of encoded frames to control QP. strict-cbr allows the encoder to be more
+	aggressive in hitting the target, bitrate even for short segment videos.
+
+	Requires :option:`--hrd` and VBV configuration. Default disabled.
+	Without this flag, if :option:`--bitrate` is greater or equal to :option:`--vbv-maxrate`
+	then x265 tries to approach a CBR output in VBR mode.
 
 .. option:: --cbqpoffs <integer>
 
@@ -2002,6 +2076,11 @@ Quality, rate control and rate distortion options
 	QP ratio factor between P and B slices. This ratio is used in all of
 	the rate control modes. Some :option:`--tune` options may change the
 	default value. It is not typically manually specified. Default 1.3
+
+	With :option:`--b-pyramid` 2 the B frames get a QP offset per pyramid layer
+	derived from this ratio: 6 * log2(pbratio) / 2 for each layer, up to twice
+	the offset of a non-reference B frame, scaled by
+	:option:`--b-pyramid-qp-scale`.
 
 .. option:: --qcomp <float>
 
@@ -2593,6 +2672,23 @@ VUI fields must be manually specified.
 	Ignored with :option:`--interlace`, which sets pic_struct from the field
 	order. Requires :option:`--hrd`.
 
+.. option:: --prepulldown-fps <integer|float|numerator/denominator>
+
+    Specify the input content frame rate. If it is lower than the output
+    rate (:option:`--fps`), x265 performs adaptive soft pulldown to reach
+    the target rate. Default disabled.
+
+    The ratio between the two rates shall not exceed 3. It can be
+    fractional or a real number. Fractions are preferred to avoid drift
+    from rounding errors.
+
+    Requires :option:`--hrd`, :option:`--vbv-maxrate` and
+    :option:`--vbv-bufsize`. Without VBV, the HRD SEI is disabled and
+    the pulldown is not written to the stream.
+
+    Cannot be used concurrently with :option:`--frame-dup`, :option:`--psfile`,
+    :option:`--pic-struct`, :option:`--interlace` or :option:`--temporal-layers`.
+
 .. option:: --psfile <filename>
 
 	Specify a text file which contains the picture structure for some or all frames.
@@ -2607,7 +2703,12 @@ VUI fields must be manually specified.
 	It shall be compatible with the encoder configuration for the given sequence.
 	Unspecified framenumbers get a default structure (single frame or field).
 
-	Requires :option:`--hrd`.
+    Requires :option:`--hrd`, :option:`--vbv-maxrate` and
+    :option:`--vbv-bufsize`. Without VBV, the HRD SEI is disabled and the structures
+    are not written to the stream.
+
+    Cannot be used concurrently with :option:`--frame-dup`, :option:`--pic-struct`,
+    :option:`--interlace`, :option:`--temporal-layers` or :option:`--prepulldown-fps`
 
 .. option:: --video-signal-type-preset <string>
 
@@ -2728,6 +2829,7 @@ Bitstream options
 	Picture Timing SEI messages providing timing information to the
 	decoder. Default disabled
 
+	A VBV configuration is required with HRD.
 
 .. option:: --hrd-concat, --no-hrd-concat
 

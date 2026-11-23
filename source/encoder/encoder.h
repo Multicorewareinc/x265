@@ -169,6 +169,9 @@ class Lookahead;
 class RateControl;
 class ThreadPool;
 class FrameData;
+#ifdef ENABLE_MLCTUPRED
+class MLCTUPredictor;
+#endif
 
 #define MAX_SCENECUT_THRESHOLD 1.0
 #define SCENECUT_STRENGTH_FACTOR 2.0
@@ -186,7 +189,7 @@ public:
 
     int64_t            m_firstPts;
     int64_t            m_bframeDelayTime;
-    int64_t            m_prevReorderedPts[2];
+    int64_t            m_prevReorderedPts[X265_BFRAME_MAX];
     int64_t            m_encodeStartTime;
     uint64_t           m_clockTickCount;  /* Clock ticks elapsed since the first presentation */
     uint32_t           m_lastPirCpbDelay;
@@ -222,6 +225,10 @@ public:
     RateControl*       m_rateControl;
     Lookahead*         m_lookahead;
     ThreadedME*        m_threadedME;
+#ifdef ENABLE_MLCTUPRED
+    MLCTUPredictor*    m_MLCTUPredictor;
+    ThreadPool*        m_mlThreadPool;   /* dedicated pool for async ML inference */
+#endif
     AdaptiveFrameDuplication* m_dupBuffer[DUP_BUFFER];      // picture buffer of size 2
     /*Frame duplication: Two pictures used to compute PSNR */
     pixel*             m_dupPicOne[3];
@@ -245,6 +252,7 @@ public:
     bool               m_reconfigure;      // Encoder reconfigure in progress
     bool               m_reconfigureRc;
     bool               m_reconfigureZone;
+    bool               m_bChromaDistWeight; // RDO up-weights chroma distortion by the luma/chroma QP gap
 
     int                m_saveCtuDistortionLevel;
 

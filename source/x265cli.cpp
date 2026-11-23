@@ -66,7 +66,7 @@ namespace X265_NS {
         H0("\nInput Options:\n");
         H0("   --input <filename>            Raw YUV or Y4M input file name. `-` for stdin\n");
         H1("   --y4m                         Force parsing of input stream as YUV4MPEG2 regardless of file extension\n");
-        H0("   --fps <float|rational>        Source frame rate (float or num/denom), auto-detected if Y4M. Defines the bitstream timescale.\n");
+        H0("   --fps <integer|float|num/den> Source frame rate, auto-detected if Y4M. Defines the bitstream timescale.\n");
         H0("   --input-res WxH               Source picture size [w x h], auto-detected if Y4M\n");
         H1("   --input-depth <integer>       Bit-depth of input file. Default 8\n");
         H1("   --input-csp <string>          Chroma subsampling, auto-detected if Y4M\n");
@@ -106,6 +106,8 @@ namespace X265_NS {
         H0("   --[no-]pmode                  Parallel mode analysis. Deprecated from release 4.1. Default %s\n", OPT(param->bDistributeModeAnalysis));
         H0("   --[no-]pme                    Parallel motion estimation. Deprecated from release 4.1. Default %s\n", OPT(param->bDistributeMotionEstimation));
         H0("   --[no-]threaded-me            Enables standalone multi-threaded module for motion estimation at CTU level. Default %s\n", OPT(param->bThreadedME));
+        H0("   --[no-]ml-ctu-pred            Enable ML based CTU partition prediction on I-frames. Default %s\n", OPT(param->bEnableMLCTUPred));
+        H1("   --ml-model-dir <dir>          Directory containing the ML CTU partition prediction models. Default: auto\n");
         H0("   --[no-]asm <bool|int|string>  Override CPU detection. Default: auto\n");
         H0("\nPresets:\n");
         H0("-p/--preset <string>             Trade off performance for compression efficiency. Default medium\n");
@@ -201,7 +203,8 @@ namespace X265_NS {
         H0("-b/--bframes <0..16>             Maximum number of consecutive b-frames. Default %d\n", param->bframes);
         H1("   --bframe-bias <integer>       Bias towards B frame decisions. Default %d\n", param->bFrameBias);
         H0("   --b-adapt <0..2>              0 - none, 1 - fast, 2 - full (trellis) adaptive B frame scheduling. Default %d\n", param->bFrameAdaptive);
-        H0("   --[no-]b-pyramid              Use B-frames as references. Default %s\n", OPT(param->bBPyramid));
+        H0("   --b-pyramid <0..2>            Use B-frames as references. 0 - none, 1 - normal, 2 - hierarchical. Default %d\n", param->bBPyramid);
+        H1("   --b-pyramid-qp-scale <float>  Scale the QP offsets of the B-pyramid layers, 0 to 2. Default %.2f\n", param->bPyramidQpScale);
         H1("   --qpfile <string>             Force frametypes and QPs for some or all frames\n");
         H1("                                 Format of each line: framenumber frametype QP\n");
         H1("                                 QP is optional (none lets x265 choose). Frametypes: I,i,K,P,B,b.\n");
@@ -391,6 +394,9 @@ namespace X265_NS {
         H0("                                 Format of each line: framenum ffo picstruct.\n");
         H0("                                 ffo is the frame field order (0: progressive, 1: bff, 2: tff) and shall match the encode settings.\n");
         H0("                                 picstruct value, from H.265 Table D.2 enumeration, shall be compatible with the encode settings.\n");
+        H0("   --prepulldown-fps <integer|float|num/den>  Specify the FPS to pulldown from. The FPS to pulldown to is set by --fps.\n");
+        H0("                                              E.g. --prepulldown-fps 24000/1001 --fps 60000/1001 for 6:4 pulldown.\n");
+        H0("                                              Fractions should be preferred to avoid temporal drift with rounding. Requires VBV + HRD config.\n");
         H0("   --log2-max-poc-lsb <integer>  Maximum of the picture order count\n");
         H0("   --[no-]vui-timing-info        Emit VUI timing information in the bitstream. Default %s\n", OPT(param->bEmitVUITimingInfo));
         H0("   --[no-]vui-hrd-info           Emit VUI HRD information in the bitstream. Default %s\n", OPT(param->bEmitVUIHRDInfo));
@@ -817,6 +823,16 @@ namespace X265_NS {
                 OPT("output-depth")   /* handled above */;
                 OPT("recon-y4m-exec") reconPlayCmd = optarg;
                 OPT("svt")    /* handled above */;
+                OPT("prepulldown-fps")
+                {
+                    uint32_t num, den;
+                    x265_parse_fps(optarg, num, den, bError);
+                    /* swap num and den already: the fpsRatioNum/Denom pair holds the
+                     * ratio between the VUI timescale (--fps) to the prepulldown timescale.
+                     * i.e ratio = (fpsNum * prePdDenom) / (fpsDen * prePdNum) */
+                    this->pulldownFpsRatioNum = den;
+                    this->pulldownFpsRatioDenom = num;
+                }
                 OPT("psfile")
                 {
                     this->psfile = x265_fopen(optarg, "rb");
@@ -945,9 +961,15 @@ namespace X265_NS {
             return true;
         }
 
-        if (!!psfile && checkParamsWithPSFile(param))
+        if (!!psfile)
         {
-            return true;
+            if (checkParamsWithCustomPicStruct(param, "psfile"))
+                return true;
+            if (this->pulldownFpsRatioNum > 0)
+            {
+                x265_log(param, X265_LOG_WARNING, "Cannot use --prepulldown-fps with --psfile: disabling pulldown.\n");
+                this->pulldownFpsRatioNum = 0;
+            }
         }
 
 #ifdef SVT_HEVC
@@ -1023,10 +1045,6 @@ namespace X265_NS {
         }
 #endif
 
-        /* Force CFR until we have support for VFR */
-        info[0].timebaseNum = param->fpsDenom;
-        info[0].timebaseDenom = param->fpsNum;
-
         if (param->bField && param->interlaceMode)
         {   // Field FPS
             param->fpsNum *= 2;
@@ -1035,6 +1053,9 @@ namespace X265_NS {
             // Number of fields to encode
             param->totalFrames *= 2;
         }
+
+        if (this->pulldownFpsRatioNum > 0 && prepareRatesRatioForPulldown(param))
+            return true;
 
         if (api->param_apply_profile(param, profile))
             return true;
@@ -1145,29 +1166,96 @@ namespace X265_NS {
         return false;
     }
 
-    bool CLIOptions::checkParamsWithPSFile(const x265_param* globalParam)
+    bool CLIOptions::prepareRatesRatioForPulldown(const x265_param* globalParam)
+    {
+        /* ensure pic-struct requirements */
+        if (checkParamsWithCustomPicStruct(globalParam, "prepulldown-fps"))
+            return true;
+
+        pulldownFpsRatioNum *= (int64_t)param->fpsNum;
+        pulldownFpsRatioDenom *= (int64_t)param->fpsDenom;
+
+        /* source rate cannot exceed target rate */
+        if (pulldownFpsRatioNum < pulldownFpsRatioDenom || pulldownFpsRatioNum == 0 || pulldownFpsRatioDenom == 0)
+        {
+            x265_log(param, X265_LOG_ERROR, "Pre-pulldown rate cannot exceed bitstream rate.\n");
+            return true;
+        }
+
+        /* 1:1 ratio: just disable */
+        if (pulldownFpsRatioNum == pulldownFpsRatioDenom)
+        {
+            pulldownFpsRatioDenom = 0;
+            pulldownFpsRatioNum = 0;
+        }
+        else
+        {
+            int64_t a = pulldownFpsRatioNum, b = pulldownFpsRatioDenom;
+            while (b > 0)
+            {
+                int64_t c = b;
+                b = a % b;
+                a = c;
+            }
+            pulldownFpsRatioNum /= a;
+            pulldownFpsRatioDenom /= a;
+
+            const double rateRatio = (double)pulldownFpsRatioNum / pulldownFpsRatioDenom;
+            if (rateRatio > 3.0)
+            {
+                x265_log(param, X265_LOG_ERROR, "Target rate to pre-pulldown rate ratio shall not exceed 3, got %.5f.\n", rateRatio);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool CLIOptions::determineStructureForPulldown(x265_picture &pic_org)
+    {
+        /* relies on integer truncation */
+        int frameDuration = (int)((pulldownFpsRatioNum + pulldownCumulatedTickError + (pulldownFpsRatioDenom >> 1)) / pulldownFpsRatioDenom);
+        pulldownCumulatedTickError += (pulldownFpsRatioNum - (int64_t)frameDuration * pulldownFpsRatioDenom);
+
+        /* not achievable with pic-struct marking: give up.
+         * Never happens if the FPS ratio was sanitized prior to encoding. */
+        if (frameDuration > 3)
+            return 0;
+
+        if (frameDuration == 1)
+            pic_org.picStruct = PIC_STRUCT_PROGRESSIVE_FRAME;
+        else
+            pic_org.picStruct = PIC_STRUCT_DOUBLING + (frameDuration - 2);
+        return 1;
+    }
+
+    bool CLIOptions::checkParamsWithCustomPicStruct(const x265_param* globalParam, const char *optName)
     {
         if (!globalParam->bEmitHRDSEI)
         {
-            x265_log(param, X265_LOG_ERROR, "psfile requires --hrd.\n");
+            x265_log(param, X265_LOG_ERROR, "%s requires --hrd.\n", optName);
             return true;
         }
         if (globalParam->bEnableTemporalSubLayers)
         {
-            x265_log(param, X265_LOG_ERROR, "Cannot use a psfile with temporal sublayers.\n");
+            x265_log(param, X265_LOG_ERROR, "Cannot use a %s with temporal sublayers.\n", optName);
             return true;
         }
         if (globalParam->interlaceMode)
         {
-            /* not supported: the encoder must check the field complementary of every frame (field) num.
+            /* psfile: the encoder must check the field complementary of every frame (field) num.
              * Only framefieldcoding is useful in interlacing: it can be written to the frame's PicTiming
              * SEI source_scan_type to aid a decoder to select between deinterlacing or weaving fields. */
-            x265_log(param, X265_LOG_ERROR, "psfile with interlacing not yet supported.\n");
+            x265_log(param, X265_LOG_ERROR, "%s with interlacing not supported.\n", optName);
             return true;
         }
         if (globalParam->pictureStructure >= 0)
         {
-            x265_log(param, X265_LOG_ERROR, "psfile incompatible with user pic-struct.\n");
+            x265_log(param, X265_LOG_ERROR, "%s incompatible with user pic-struct.\n", optName);
+            return true;
+        }
+        if (globalParam->bEnableFrameDuplication)
+        {
+            x265_log(param, X265_LOG_ERROR, "%s incompatible with --frame-dup.\n", optName);
             return true;
         }
         return false;
@@ -1234,7 +1322,6 @@ namespace X265_NS {
             else
             {
                 x265_log(NULL, X265_LOG_WARNING, "Ignored invalid picture structure %u for pic %d.", pictureStructure, num);
-                return 1;
             }
         }
         /* default */

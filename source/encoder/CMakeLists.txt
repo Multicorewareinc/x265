@@ -25,12 +25,19 @@ if(EXTRA_LIB)
     set_source_files_properties(api.cpp PROPERTIES COMPILE_FLAGS ${APIFLAGSTR})
 endif(EXTRA_LIB)
 
+if(ENABLE_MLCTUPRED)
+    set(ML_SRCS mlctu.cpp mlctu.h mlutil.cpp mlutil.h)
+    if(OpenMP_CXX_FOUND)
+        set_source_files_properties(mlctu.cpp PROPERTIES COMPILE_FLAGS "${OpenMP_CXX_FLAGS}")
+    endif()
+endif()
+
 add_library(encoder OBJECT ../x265.h
     analysis.cpp analysis.h
     search.cpp search.h
     bitcost.cpp bitcost.h rdcost.h
     motion.cpp motion.h
-    slicetype.cpp slicetype.h
+    slicetype.cpp slicetype.h bpyramid.h
     frameencoder.cpp frameencoder.h
     framefilter.cpp framefilter.h
     level.cpp level.h
@@ -44,4 +51,5 @@ add_library(encoder OBJECT ../x265.h
     encoder.cpp encoder.h
     api.cpp
     weightPrediction.cpp svt.h
-    threadedme.h threadedme.cpp)
+    threadedme.h threadedme.cpp
+    ${ML_SRCS})

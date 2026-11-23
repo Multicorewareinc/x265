@@ -33,6 +33,9 @@
 #include "analysis.h"
 #include "rdcost.h"
 #include "encoder.h"
+#ifdef ENABLE_MLCTUPRED
+#include "mlctu.h"
+#endif
 
 using namespace X265_NS;
 
@@ -85,6 +88,9 @@ Analysis::Analysis()
         memset(m_modeDepth[i].pred, 0, sizeof(m_modeDepth[i].pred));
     }
 
+#ifdef ENABLE_MLCTUPRED
+    m_MLCTUPred = NULL;
+#endif
     m_reuseInterDataCTU = NULL;
     m_reuseRef = NULL;
     m_reuseDepth = NULL;
@@ -311,6 +317,12 @@ Mode& Analysis::compressCTU(CUData& ctu, Frame& frame, const CUGeom& cuGeom, con
     m_frame = &frame;
     m_bChromaSa8d = m_param->rdLevel >= 3;
     m_param = m_frame->m_param;
+
+#ifdef ENABLE_MLCTUPRED
+    const int mlPredSize = (m_param->maxCUSize == 64) ? CTU_PRED_SIZE : 1;
+    m_MLCTUPred = (m_param->bEnableMLCTUPred && m_frame->m_MLCTUPred && IS_X265_TYPE_I(m_frame->m_lowres.sliceType))
+                ? m_frame->m_MLCTUPred + ctu.m_cuAddr * mlPredSize : NULL;
+#endif
 
 #if _DEBUG || CHECKED_BUILD
     invalidateContexts(0);
@@ -713,6 +725,22 @@ uint64_t Analysis::compressIntraCU(const CUData& parentCTU, const CUGeom& cuGeom
     bool bAlreadyDecided = m_param->intraRefine != 4 && parentCTU.m_lumaIntraDir[cuGeom.absPartIdx] != (uint8_t)ALL_IDX && !(m_param->bAnalysisType == HEVC_INFO);
     bool bDecidedDepth = m_param->intraRefine != 4 && parentCTU.m_cuDepth[cuGeom.absPartIdx] == depth;
     int split = 0;
+#ifdef ENABLE_MLCTUPRED
+    /* Leave depths decided by analysis reuse to that analysis */
+    const float* mlPred = bAlreadyDecided ? NULL : m_MLCTUPred;
+    const bool bMLDepth0 = m_param->maxCUSize != 64;
+
+    /* Confident split: skip the unsplit trial */
+    if (mlPred && mightNotSplit && !(cuGeom.flags & CUGeom::LEAF))
+    {
+        if (depth == 0 && bMLDepth0)
+            mightNotSplit = mlPred[0] < ML_SPLIT_CONFIDENT_THRESHOLD;
+        else if (m_param->maxCUSize == 64 && depth == 1)
+            mightNotSplit = mlPred[1 + (cuGeom.absPartIdx / 64)] < ML_SPLIT_CONFIDENT_THRESHOLD;
+        else if (m_param->maxCUSize == 64 && depth == 2)
+            mightNotSplit = mlPred[5 + (cuGeom.absPartIdx / 16)] < ML_SPLIT_CONFIDENT_THRESHOLD;
+    }
+#endif
     if (m_param->intraRefine && m_param->intraRefine != 4)
     {
         split = m_param->scaleFactor && bDecidedDepth && (!mightNotSplit || 
@@ -889,6 +917,33 @@ uint64_t Analysis::compressIntraCU(const CUData& parentCTU, const CUGeom& cuGeom
     // stop recursion if we reach the depth of previous analysis decision
     mightSplit &= !(bAlreadyDecided && bDecidedDepth) || split;
 
+#ifdef ENABLE_MLCTUPRED
+    if (mlPred)
+    {
+        const float* pred = NULL;
+        float vetoThreshold = ML_NOSPLIT_CONFIDENT_THRESHOLD;
+        if (depth == 0 && bMLDepth0)
+            pred = &mlPred[0];
+        else if (m_param->maxCUSize == 64 && depth == 1)
+            pred = &mlPred[1 + (cuGeom.absPartIdx / 64)];
+        else if (m_param->maxCUSize == 64 && depth == 2)
+        {
+            pred = &mlPred[5 + (cuGeom.absPartIdx / 16)];
+            vetoThreshold = ML_NOSPLIT_CONFIDENT_THRESHOLD_16;
+        }
+
+        if (pred)
+        {
+            /* Veto only if the unsplit mode was evaluated */
+            if ((cuGeom.flags & CUGeom::SPLIT_MANDATORY) || *pred >= ML_SPLIT_CONFIDENT_THRESHOLD)
+                mightSplit = true;
+            else if (mightNotSplit && *pred <= vetoThreshold)
+                mightSplit = false;
+            mightSplit &= !(cuGeom.flags & CUGeom::LEAF);
+        }
+    }
+#endif
+
     if (mightSplit)
     {
         Mode* splitPred = &md.pred[PRED_SPLIT];
@@ -989,6 +1044,8 @@ uint64_t Analysis::compressIntraCU(const CUData& parentCTU, const CUGeom& cuGeom
     }
 
     /* Copy best data to encData CTU and recon */
+    X265_CHECK(md.bestMode != NULL, "compressIntraCU: no mode evaluated at depth %d "
+               "(mightSplit=%d mightNotSplit=%d)\n", depth, mightSplit, mightNotSplit);
     md.bestMode->cu.copyToPic(depth);
     if (md.bestMode != &md.pred[PRED_SPLIT])
     {
