@@ -281,6 +281,7 @@ struct SPS
     bool     bTemporalMVPEnabled;
     bool     bEmitVUITimingInfo;
     bool     bEmitVUIHRDInfo;
+    bool     bCpbDpbDelaysPresent;
 
     Window   conformanceWindow;
     VUI      vuiParameters;

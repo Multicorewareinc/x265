@@ -841,6 +841,8 @@ void Entropy::codeVUI(const VUI& vui, int maxSubTLayers, bool bEmitVUITimingInfo
         WRITE_UVLC(vui.defaultDisplayWindow.bottomOffset, "def_disp_win_bottom_offset");
     }
 
+    /* note: if the HRD is provided per layer then RateControl::initHRD() should be modified
+     * to not fallback to H.265 default 24-bit CpbDpbDelays length with numLayers > 1. */
     if(layer)
         WRITE_FLAG(0, "vui_timing_info_present_flag");
     else

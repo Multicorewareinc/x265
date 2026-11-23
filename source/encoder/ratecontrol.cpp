@@ -976,11 +976,18 @@ void RateControl::initHRD(SPS& sps)
     int maxDpbOutputDelay = (int)(sps.maxDecPicBuffering[sps.maxTempSubLayers - 1] * MAX_DURATION * time->timeScale / time->numUnitsInTick);
     int maxDelay = (int)(90000.0 * cpbSizeUnscale / bitRateUnscale + 0.5);
 
-    hrd->initialCpbRemovalDelayLength = 2 + x265_clip3(4, 22, 32 - calcLength(maxDelay));
-    hrd->cpbRemovalDelayLength = x265_clip3(4, 31, 32 - calcLength(maxCpbOutputDelay));
-    hrd->dpbOutputDelayLength = x265_clip3(4, 31, 32 - calcLength(maxDpbOutputDelay));
-
     #undef MAX_DURATION
+
+    /* The VUI only conveys the HRD of the primary layer, other layers have no HRD information.
+     * For consistency with layering, fallback to the default delays length for N>1 layers streams */
+    if (sps.vuiParameters.hrdParametersPresentFlag && m_param->numLayers == 1)
+    {
+        hrd->initialCpbRemovalDelayLength = 2 + x265_clip3(4, 22, 32 - calcLength(maxDelay));
+        hrd->cpbRemovalDelayLength = x265_clip3(4, 31, 32 - calcLength(maxCpbOutputDelay));
+        hrd->dpbOutputDelayLength = x265_clip3(4, 31, 32 - calcLength(maxDpbOutputDelay));
+    }
+    else /* when hrd_parameters is not emitted, CpbDpb delay lengths are 24 (23+1), as specified in ITU H.265 */
+        hrd->initialCpbRemovalDelayLength = hrd->cpbRemovalDelayLength = hrd->dpbOutputDelayLength = 24;
 }
 
 bool RateControl::analyseABR2Pass(uint64_t allAvailableBits)

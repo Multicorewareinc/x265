@@ -2905,8 +2905,9 @@ Bitstream options
 
 .. option:: --vui-hrd-info, --no-vui-hrd-info
 
-	Emit VUI HRD info in  bitstream. Default enabled when
-	:option:`--hrd` is enabled.
+	Emit VUI HRD info in  bitstream. Default enabled when :option:`--hrd` is enabled.
+	If forcefully disabled, Buffering Period and Pic Timing SEIs use
+	the default field coding lengths specified in the H.265 specification.
 
 .. option:: --opt-qp-pps, --no-opt-qp-pps
 
