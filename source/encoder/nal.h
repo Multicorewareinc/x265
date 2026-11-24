@@ -60,6 +60,10 @@ public:
 
     void takeContents(NALList& other);
 
+    /* move the units of other to the end of this list, other is left empty
+     * (its buffers are kept for reuse). Both lists must use the same framing. */
+    void append(NALList& other);
+
     void serialize(NalUnitType nalUnitType, const Bitstream& bs, int layerId = 0, uint8_t temporalID = 1);
 
     uint32_t serializeSubstreams(uint32_t* streamSizeBytes, uint32_t streamCount, const Bitstream* streams);
@@ -78,6 +82,11 @@ public:
 private:
     uint8_t getStartCodeLength(const x265_nal& nal) const { return (m_annexB && nal.payload[2] == 1) ? 3 : 4; }
     uint8_t getNextStartCodeLength(NalUnitType nalUnitType) const;
+
+    bool isAccessUnitStart() const { return !m_numNal || back()->type == NAL_UNIT_EOS; }
+
+    static const uint64_t longCodeBitmask = ((1ull << NAL_UNIT_ACCESS_UNIT_DELIMITER) |
+        (1ull << NAL_UNIT_VPS) | (1ull << NAL_UNIT_SPS) | (1ull << NAL_UNIT_PPS) | (1ull << NAL_UNIT_UNSPECIFIED));
 };
 
 }

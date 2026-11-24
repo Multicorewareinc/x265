@@ -3552,8 +3552,9 @@ int RateControl::updateVbv(int64_t bits, RateControlEntry* rce)
     return filler;
 }
 
-/* After encoding one frame, update rate control state */
-int RateControl::rateControlEnd(Frame* curFrame, int64_t bits, RateControlEntry* rce, int *filler)
+/* Block until prior frame has finished rate control end. This is needed to get
+ * an accurate value of the m_bufferFillFinal for the current access unit. */
+void RateControl::rateControlWaitEnd(RateControlEntry* rce)
 {
     int orderValue = m_startEndOrder.get();
     int endOrdinal = (rce->encodeOrder + m_param->frameNumThreads) * 2 - 1;
@@ -3567,8 +3568,11 @@ int RateControl::rateControlEnd(Frame* curFrame, int64_t bits, RateControlEntry*
             break;
         orderValue = m_startEndOrder.waitForChange(orderValue);
     }
+}
 
-    ScopedSpinLock lock(m_rateControlLock);
+/* After encoding one frame, update rate control state */
+int RateControl::rateControlEnd(Frame* curFrame, int64_t bits, RateControlEntry* rce, int *filler)
+{
     FrameData& curEncData = *curFrame->m_encData;
     int64_t actualBits = bits;
     Slice *slice = curEncData.m_slice;

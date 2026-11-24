@@ -474,7 +474,7 @@ bool FrameEncoder::writeToneMapInfo(x265_sei_payload *payload)
     return (payloadChange || isIDR);
 }
 
-void FrameEncoder::writeTrailingSEIMessages(int layer, uint8_t sliceTempIdPlus1)
+void FrameEncoder::writeTrailingSEIMessages(Bitstream &bs, NALList &nalList, int layer, uint8_t sliceTempIdPlus1)
 {
     Slice* slice = m_frame[layer]->m_encData->m_slice;
     int planes = (m_param->internalCsp != X265_CSP_I400) ? 3 : 1;
@@ -503,7 +503,7 @@ void FrameEncoder::writeTrailingSEIMessages(int layer, uint8_t sliceTempIdPlus1)
     }
 
     m_seiReconPictureDigest.setSize(payloadSize);
-    m_seiReconPictureDigest.writeAccessUnitSEI(m_bs, *slice->m_sps, NAL_UNIT_SUFFIX_SEI, m_nalList, false, layer, sliceTempIdPlus1);
+    m_seiReconPictureDigest.writeAccessUnitSEI(bs, *slice->m_sps, NAL_UNIT_SUFFIX_SEI, nalList, false, layer, sliceTempIdPlus1);
 }
 
 void FrameEncoder::compressFrame(int layer)
@@ -533,6 +533,12 @@ void FrameEncoder::compressFrame(int layer)
     memset(&(m_frame[layer]->m_encData->m_frameStats), 0, sizeof(m_frame[layer]->m_encData->m_frameStats));
     m_sLayerId = layer;
 
+    /* bitstream prefix, bitstream slice+suffix.
+     * bsp: everything up to (incl.) prefix SEIs
+     * bss: everything from slice data up to the next access unit
+     * This split is needed for proper HRD timing. */
+    Bitstream bsp, bss;
+
     if (m_param->rc.aqMode != X265_AQ_EDGE && m_param->recursionSkipMode == EDGE_BASED_RSKIP)
     {
         int height = m_frame[layer]->m_fencPic->m_picHeight;
@@ -553,20 +559,20 @@ void FrameEncoder::compressFrame(int layer)
 
     if (m_param->bEnableEndOfSequence && m_frame[layer]->m_lowres.sliceType == X265_TYPE_IDR && m_frame[layer]->m_poc)
     {
-        m_bs.resetBits();
+        bsp.resetBits();
         /* EOS nut enforces temporalId = 0 (pass 1 for nuh_temporal_id_plus1) */
-        m_nalList.serialize(NAL_UNIT_EOS, m_bs, layer, 1);
+        m_nalList.serialize(NAL_UNIT_EOS, bsp, layer, 1);
     }
 
     if (m_param->bEnableAccessUnitDelimiters && (m_frame[layer]->m_poc || m_param->bRepeatHeaders))
     {
-        m_bs.resetBits();
-        m_entropyCoder.setBitstream(&m_bs);
+        bsp.resetBits();
+        m_entropyCoder.setBitstream(&bsp);
         m_entropyCoder.codeAUD(*slice);
-        m_bs.writeByteAlignment();
-        m_nalList.serialize(NAL_UNIT_ACCESS_UNIT_DELIMITER, m_bs, layer, sliceTempIdPlus1);
+        bsp.writeByteAlignment();
+        m_nalList.serialize(NAL_UNIT_ACCESS_UNIT_DELIMITER, bsp, layer, sliceTempIdPlus1);
         if (m_param->bSingleSeiNal)
-            m_bs.resetBits();
+            bsp.resetBits();
     }
     if (m_frame[layer]->m_lowres.bKeyframe && m_param->bRepeatHeaders)
     {
@@ -583,10 +589,10 @@ void FrameEncoder::compressFrame(int layer)
                 x265_log(m_param, X265_LOG_ERROR, "compute commonly RPS failed!\n");
                 m_top->m_aborted = true;
             }
-            m_top->getStreamHeaders(m_nalList, m_entropyCoder, m_bs);
+            m_top->getStreamHeaders(m_nalList, m_entropyCoder, bsp);
         }
         else
-            m_top->getStreamHeaders(m_nalList, m_entropyCoder, m_bs);
+            m_top->getStreamHeaders(m_nalList, m_entropyCoder, bsp);
     }
 
     if (m_top->m_param->rc.bStatRead && m_top->m_param->bMultiPassOptRPS)
@@ -608,7 +614,7 @@ void FrameEncoder::compressFrame(int layer)
 #endif
         if (strlen(m_param->analysisLoad))
         {
-            for (int list = 0; list < slice->isInterB() + 1; list++) 
+            for (int list = 0; list < slice->isInterB() + 1; list++)
             {
                 for (int plane = 0; plane < (m_param->internalCsp != X265_CSP_I400 ? 3 : 1); plane++)
                 {
@@ -853,173 +859,9 @@ void FrameEncoder::compressFrame(int layer)
         }
     }
 
-    /* In single SEI NAL mode the SEI messages of this access unit are collected in m_bs, which still holds the
-     * previous picture's slice header unless the AUD or the repeated stream headers above have reset it */
-    if (m_param->bSingleSeiNal && !(m_frame[layer]->m_lowres.bKeyframe && m_param->bRepeatHeaders))
-        m_bs.resetBits();
-
     m_rce.encodeOrder = m_frame[layer]->m_encodeOrder;
 
-    if (m_frame[layer]->m_lowres.bKeyframe)
-    {
-        if (m_param->bEmitHRDSEI)
-        {
-            SEIBufferingPeriod* bpSei = &m_top->m_rateControl->m_bufPeriodSEI;
-
-            // since the temporal layer HRD is not ready, we assumed it is fixed
-            bpSei->m_auCpbRemovalDelayDelta = 1;
-            bpSei->m_cpbDelayOffset = 0;
-            bpSei->m_dpbDelayOffset = 0;
-            bpSei->m_concatenationFlag = (m_param->bEnableHRDConcatFlag && !m_frame[layer]->m_poc) ? true : false;
-
-            // hrdFullness() calculates the initial CPB removal delay and offset
-            m_top->m_rateControl->hrdFullness(bpSei);
-            bpSei->writeAccessUnitSEI(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
-        }
-
-        if (m_frame[layer]->m_lowres.sliceType == X265_TYPE_IDR && m_param->bEmitIDRRecoverySEI)
-        {
-            /* Recovery Point SEI require the SPS to be "activated" */
-            SEIRecoveryPoint sei;
-            sei.m_recoveryPocCnt = 0;
-            sei.m_exactMatchingFlag = true;
-            sei.m_brokenLinkFlag = false;
-            sei.writeAccessUnitSEI(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
-        }
-    }
-
-    if ((m_param->bEmitHRDSEI || m_param->bEmitFrameFieldInfo))
-    {
-        SEIPictureTiming *sei = m_rce.picTimingSEI;
-        const VUI *vui = &slice->m_sps->vuiParameters;
-
-        if (vui->frameFieldInfoPresentFlag)
-        {
-            if (m_frame[layer]->m_picStruct == PIC_STRUCT_AUTO)
-            {
-                /* field_seq_flag is 1, so each picture is a single field. Signal
-                 * the field pair with pic_struct 9-12 (H.265 Table D.2, pairing in
-                 * output order): 11 = top field paired with the next bottom field,
-                 * 10 = bottom field paired with the previous top field (tff frame),
-                 * 12 = bottom field paired with the next top field, 9 = top field
-                 * paired with the previous bottom field (bff frame). With --field,
-                 * fieldNum 1 is the first field of the frame; with field input, or
-                 * when a library caller leaves fieldNum at 0, the even POC is. */
-                const bool firstField = slice->m_fieldNum ? (slice->m_fieldNum == 1) : !(slice->m_poc & 1);
-                if (m_param->interlaceMode == 2)      /* bff: first field is the bottom field */
-                    sei->m_picStruct = firstField ? PIC_STRUCT_BOTTOM_NEXTTOP : PIC_STRUCT_TOP_PREVBOTTOM;
-                else if (m_param->interlaceMode == 1) /* tff: first field is the top field */
-                    sei->m_picStruct = firstField ? PIC_STRUCT_TOP_NEXTBOTTOM : PIC_STRUCT_BOTTOM_PREVTOP;
-                else
-                    sei->m_picStruct = PIC_STRUCT_PROGRESSIVE_FRAME;
-            }
-            else
-                sei->m_picStruct = m_frame[layer]->m_picStruct;
-
-            sei->m_sourceScanType = m_param->interlaceMode ? 0 : 1;
-
-            sei->m_duplicateFlag = false;
-        }
-
-        if (slice->m_sps->bCpbDpbDelaysPresent)
-        {
-            const HRDInfo *hrd = &vui->hrdParameters;
-
-            /* The m_aucpbremoval delay specifies how many clock ticks the access unit
-             * with the picture timing SEI message has to wait after removal of the
-             * access unit with the most recent buffering period SEI message */
-            sei->m_auCpbRemovalDelay = X265_MIN(X265_MAX(1u, m_frame[layer]->m_cpbDelay), (1u << hrd->cpbRemovalDelayLength));
-            sei->m_picDpbOutputDelay = m_frame[layer]->m_dpbDelay;
-        }
-
-        sei->writeAccessUnitSEI(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
-    }
-
-    if (m_param->preferredTransferCharacteristics > -1 && slice->isIRAP())
-    {
-        SEIAlternativeTC m_seiAlternativeTC;
-        m_seiAlternativeTC.m_preferredTransferCharacteristics = m_param->preferredTransferCharacteristics;
-        m_seiAlternativeTC.writeAccessUnitSEI(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
-    }
-
-    /* The message describes the packed pictures of the base layer: an alpha layer is not a view. */
-    bool writeFramePacking = m_param->framePacking > -1 && !layer && (slice->isIRAP() || m_param->framePacking == 5 ||
-                             (m_param->bIntraRefresh && m_frame[layer]->m_lowres.bKeyframe));
-    if (writeFramePacking)
-    {
-        /* Type 5 alternates the views frame by frame, so every picture carries its own message. The
-         * other types persist until the next IRAP, which repeats the message, or with intra refresh
-         * until the next refresh cycle, which starts a keyframe that is not an IRAP. With --interlace the
-         * pictures are fields and both fields of a frame belong to the same view. The view follows
-         * the input picture, not the encoded one: --frame-dup drops duplicates before encoding. */
-        int frameIdx = m_param->interlaceMode ? m_frame[layer]->m_sourcePoc >> 1 : m_frame[layer]->m_sourcePoc;
-        SEIFramePacking m_seiFramePacking;
-        m_seiFramePacking.m_arrangementType = m_param->framePacking;
-        m_seiFramePacking.m_currentFrameIsFrame0 = m_param->framePacking == 5 && !(frameIdx & 1);
-        m_seiFramePacking.m_persistence = m_param->framePacking != 5;
-        m_seiFramePacking.writeAccessUnitSEI(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
-    }
-    /* Write Film grain characteristics if present */
-    if (this->m_top->m_filmGrainIn)
-    {
-        FilmGrainCharacteristics m_filmGrain;
-        /* Read the Film grain model file */
-        readModel(&m_filmGrain, this->m_top->m_filmGrainIn);
-        m_filmGrain.writeAccessUnitSEI(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
-    }
-    /* Write Aom film grain characteristics if present */
-    if (this->m_top->m_aomFilmGrainIn)
-    {
-        AomFilmGrainCharacteristics m_aomFilmGrain;
-        /* Read the Film grain model file */
-        readAomModel(&m_aomFilmGrain, this->m_top->m_aomFilmGrainIn);
-        m_aomFilmGrain.writeAccessUnitSEI(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
-    }
-    /* Write user SEI */
-    for (int i = 0; i < m_frame[layer]->m_userSEI.numPayloads; i++)
-    {
-        x265_sei_payload *payload = &m_frame[layer]->m_userSEI.payloads[i];
-        if (payload->payloadType == USER_DATA_UNREGISTERED)
-        {
-            if (m_param->bUserSEIRaw && payload->payloadSize < (int)ISO_IEC_11578_LEN)
-            {
-                x265_log(m_param, X265_LOG_ERROR, "user data unregistered SEI payload of %d bytes is "
-                         "smaller than the 16-byte UUID required by --sei-udu-raw, skipped\n",
-                         payload->payloadSize);
-                continue;
-            }
-            SEIuserDataUnregistered sei;
-            sei.m_bRaw = !!m_param->bUserSEIRaw;
-            sei.m_userData = payload->payload;
-            sei.setSize(payload->payloadSize);
-            sei.writeAccessUnitSEI(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
-        }
-        else if (payload->payloadType == USER_DATA_REGISTERED_ITU_T_T35)
-        {
-            bool writeSei = m_param->bDhdr10opt ? writeToneMapInfo(payload) : true;
-            if (writeSei)
-            {
-                SEIuserDataRegistered sei;
-                sei.m_userData = payload->payload;
-                sei.setSize(payload->payloadSize);
-                sei.writeAccessUnitSEI(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
-            }
-        }
-        else
-            x265_log(m_param, X265_LOG_ERROR, "Unrecognized SEI type\n");
-    }
-
-    bool isSei = ((m_frame[layer]->m_lowres.bKeyframe && m_param->bRepeatHeaders) || m_param->bEmitHRDSEI ||
-                 !!m_param->interlaceMode || (m_frame[layer]->m_lowres.sliceType == X265_TYPE_IDR && m_param->bEmitIDRRecoverySEI) ||
-                   writeFramePacking ||
-                   m_frame[layer]->m_userSEI.numPayloads);
-
-    if (isSei && m_param->bSingleSeiNal)
-    {
-        m_bs.writeByteAlignment();
-        m_nalList.serialize(NAL_UNIT_PREFIX_SEI, m_bs, layer, sliceTempIdPlus1);
-    }
-    /* CQP and CRF (without capped VBV) doesn't use mid-frame statistics to 
+    /* CQP and CRF (without capped VBV) doesn't use mid-frame statistics to
      * tune RateControl parameters for other frames.
      * Hence, for these modes, update m_startEndOrder and unlock RC for previous threads waiting in
      * RateControlEnd here, after the slice contexts are initialized. For the rest - ABR
@@ -1211,7 +1053,7 @@ void FrameEncoder::compressFrame(int layer)
         PicYuv *reconPic = m_frame[layer]->m_reconPic[0];
         uint32_t height = reconPic->m_picHeight;
         initDecodedPictureHashSEI(0, 0, height, layer);
-    } 
+    }
 
     if (m_param->bDynamicRefine && m_top->m_startPoint <= m_frame[layer]->m_encodeOrder) //Avoid collecting data that will not be used by future frames.
         collectDynDataFrame(layer);
@@ -1293,15 +1135,19 @@ void FrameEncoder::compressFrame(int layer)
         m_frame[layer]->m_encData->m_frameStats.avgResEnergy = (double)(m_frame[layer]->m_encData->m_frameStats.resEnergy) / m_frame[layer]->m_encData->m_frameStats.totalCtu;
     }
 
-    m_bs.resetBits();
+    bss.resetBits();
     m_entropyCoder.load(m_initSliceContext);
-    m_entropyCoder.setBitstream(&m_bs);
+    m_entropyCoder.setBitstream(&bss);
 
     // finish encode of each CTU row, only required when SAO is enabled
     if (slice->m_bUseSao)
+    {
         encodeSlice(0, layer);
+        m_entropyCoder.setBitstream(&bss);
+    }
 
-    m_entropyCoder.setBitstream(&m_bs);
+    NALList sliceNals;
+    sliceNals.m_annexB = m_nalList.m_annexB;
 
     if (m_param->maxSlices > 1)
     {
@@ -1309,7 +1155,7 @@ void FrameEncoder::compressFrame(int layer)
 
         for(uint32_t sliceId = 0; sliceId < m_param->maxSlices; sliceId++)
         {
-            m_bs.resetBits();
+            bss.resetBits();
 
             const uint32_t sliceAddr = nextSliceRow * m_numCols;
             if (m_param->bOptRefListLengthPPS)
@@ -1325,16 +1171,16 @@ void FrameEncoder::compressFrame(int layer)
                 nextSliceRow++;
 
             // serialize each row, record final lengths in slice header
-            uint32_t maxStreamSize = m_nalList.serializeSubstreams(&m_substreamSizes[prevSliceRow], (nextSliceRow - prevSliceRow), &m_outStreams[prevSliceRow]);
+            uint32_t maxStreamSize = sliceNals.serializeSubstreams(&m_substreamSizes[prevSliceRow], (nextSliceRow - prevSliceRow), &m_outStreams[prevSliceRow]);
 
             // complete the slice header by writing WPP row-starts
-            m_entropyCoder.setBitstream(&m_bs);
+            m_entropyCoder.setBitstream(&bss);
             if (slice->m_pps->bEntropyCodingSyncEnabled)
                 m_entropyCoder.codeSliceHeaderWPPEntryPoints(&m_substreamSizes[prevSliceRow], (nextSliceRow - prevSliceRow - 1), maxStreamSize);
 
-            m_bs.writeByteAlignment();
+            bss.writeByteAlignment();
 
-            m_nalList.serialize(slice->m_nalUnitType, m_bs, layer, sliceTempIdPlus1);
+            sliceNals.serialize(slice->m_nalUnitType, bss, layer, sliceTempIdPlus1);
         }
     }
     else
@@ -1347,27 +1193,40 @@ void FrameEncoder::compressFrame(int layer)
         m_entropyCoder.codeSliceHeader(*slice, *m_frame[layer]->m_encData, 0, 0, slice->m_sliceQp, layer);
 
         // serialize each row, record final lengths in slice header
-        uint32_t maxStreamSize = m_nalList.serializeSubstreams(m_substreamSizes, numSubstreams, m_outStreams);
+        uint32_t maxStreamSize = sliceNals.serializeSubstreams(m_substreamSizes, numSubstreams, m_outStreams);
 
         // complete the slice header by writing WPP row-starts
-        m_entropyCoder.setBitstream(&m_bs);
+        m_entropyCoder.setBitstream(&bss);
         if (slice->m_pps->bEntropyCodingSyncEnabled)
             m_entropyCoder.codeSliceHeaderWPPEntryPoints(m_substreamSizes, (slice->m_sps->numCuInHeight - 1), maxStreamSize);
-        m_bs.writeByteAlignment();
+        bss.writeByteAlignment();
 
-        m_nalList.serialize(slice->m_nalUnitType, m_bs, layer, sliceTempIdPlus1);
+        sliceNals.serialize(slice->m_nalUnitType, bss, layer, sliceTempIdPlus1);
     }
 
     if (m_param->decodedPictureHashSEI)
-        writeTrailingSEIMessages(layer, sliceTempIdPlus1);
+        writeTrailingSEIMessages(bss, sliceNals, layer, sliceTempIdPlus1);
+
+    /* Rate Control End process starts here:
+     * 1: wait for previous frame
+     * 2: update whatever is needed given the definitive rateControl state fro this frame
+     *   for now, this is only used to get the exact cpb fill (initial_cpb_removal_delay) for the BP SEI
+     * 3: commit the access unit bits to rateControlEnd */
+    if (!layer)
+        m_top->m_rateControl->rateControlWaitEnd(&m_rce);
+
+    writePrefixSEIs(slice, bsp, layer, sliceTempIdPlus1);
+
+    /* now that we have all prefix NALUs, concatenate with the slice nals*/
+    m_nalList.append(sliceNals);
 
     uint64_t bytes = 0;
 
     for (const x265_nal& nal : m_nalList)
     {
         // exclude SEI
-        if (nal.type != NAL_UNIT_PREFIX_SEI && nal.type != NAL_UNIT_SUFFIX_SEI)
-            bytes += m_nalList.getNaluBytesLength(nal);
+        //if (nal.type != NAL_UNIT_PREFIX_SEI && nal.type != NAL_UNIT_SUFFIX_SEI)
+            bytes += nal.sizeBytes;//m_nalList.getNaluBytesLength(nal);
     }
 
     m_accessUnitBits[layer] = (layer) ? (bytes - (m_accessUnitBits[0] >> 3)) << 3 : bytes << 3;
@@ -1396,25 +1255,25 @@ void FrameEncoder::compressFrame(int layer)
     if (filler > 0)
     {
         filler -= FILLER_OVERHEAD * 8;
-        m_bs.resetBits();
+        bss.resetBits();
         while (filler > 0)
         {
-            m_bs.write(0xff, 8);
+            bss.write(0xff, 8);
             filler -= 8;
         }
-        m_bs.writeByteAlignment();
+        bss.writeByteAlignment();
         /* FD unit must carry the same temporalId as the associated frame */
-        m_nalList.serialize(NAL_UNIT_FILLER_DATA, m_bs, layer, sliceTempIdPlus1);
+        m_nalList.serialize(NAL_UNIT_FILLER_DATA, bss, layer, sliceTempIdPlus1);
         bytes += m_nalList.getNaluBytesLength(*m_nalList.back());   // filler
         m_accessUnitBits[layer] = bytes << 3;
     }
 
     if (m_frame[layer]->m_rpu.payloadSize)
     {
-        m_bs.resetBits();
+        bss.resetBits();
         for (int i = 0; i < m_frame[layer]->m_rpu.payloadSize; i++)
-            m_bs.write(m_frame[layer]->m_rpu.payload[i], 8);
-        m_nalList.serialize(NAL_UNIT_UNSPECIFIED, m_bs);
+            bss.write(m_frame[layer]->m_rpu.payload[i], 8);
+        m_nalList.serialize(NAL_UNIT_UNSPECIFIED, bss);
     }
 
     m_endCompressTime[layer] = x265_mdate();
@@ -1469,6 +1328,174 @@ void FrameEncoder::compressFrame(int layer)
 #endif
 
     m_endFrameTime[layer] = x265_mdate();
+}
+
+void FrameEncoder::writePrefixSEIs(const Slice *slice, Bitstream &bs, int layer, uint8_t sliceTempIdPlus1)
+{
+    /* In single SEI NAL mode the SEI messages of this access unit are collected in bs, which still holds the
+     * previous picture's slice header unless the AUD or the repeated stream headers above have reset it */
+    if (m_param->bSingleSeiNal && !(m_frame[layer]->m_lowres.bKeyframe && m_param->bRepeatHeaders))
+        bs.resetBits();
+
+    if (m_frame[layer]->m_lowres.bKeyframe)
+    {
+        if (m_param->bEmitHRDSEI)
+        {
+            SEIBufferingPeriod* bpSei = &m_top->m_rateControl->m_bufPeriodSEI;
+
+            // since the temporal layer HRD is not ready, we assumed it is fixed
+            bpSei->m_auCpbRemovalDelayDelta = 1;
+            bpSei->m_cpbDelayOffset = 0;
+            bpSei->m_dpbDelayOffset = 0;
+            bpSei->m_concatenationFlag = (m_param->bEnableHRDConcatFlag && !m_frame[layer]->m_poc) ? true : false;
+
+            // hrdFullness() calculates the initial CPB removal delay and offset
+            m_top->m_rateControl->hrdFullness(bpSei);
+            bpSei->writeAccessUnitSEI(bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
+        }
+
+        if (m_frame[layer]->m_lowres.sliceType == X265_TYPE_IDR && m_param->bEmitIDRRecoverySEI)
+        {
+            /* Recovery Point SEI require the SPS to be "activated" */
+            SEIRecoveryPoint sei;
+            sei.m_recoveryPocCnt = 0;
+            sei.m_exactMatchingFlag = true;
+            sei.m_brokenLinkFlag = false;
+            sei.writeAccessUnitSEI(bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
+        }
+    }
+
+    if ((m_param->bEmitHRDSEI || m_param->bEmitFrameFieldInfo))
+    {
+        SEIPictureTiming *sei = m_rce.picTimingSEI;
+        const VUI *vui = &slice->m_sps->vuiParameters;
+
+        if (vui->frameFieldInfoPresentFlag)
+        {
+            if (m_frame[layer]->m_picStruct == PIC_STRUCT_AUTO)
+            {
+                /* field_seq_flag is 1, so each picture is a single field. Signal
+                 * the field pair with pic_struct 9-12 (H.265 Table D.2, pairing in
+                 * output order): 11 = top field paired with the next bottom field,
+                 * 10 = bottom field paired with the previous top field (tff frame),
+                 * 12 = bottom field paired with the next top field, 9 = top field
+                 * paired with the previous bottom field (bff frame). With --field,
+                 * fieldNum 1 is the first field of the frame; with field input, or
+                 * when a library caller leaves fieldNum at 0, the even POC is. */
+                const bool firstField = slice->m_fieldNum ? (slice->m_fieldNum == 1) : !(slice->m_poc & 1);
+                if (m_param->interlaceMode == 2)      /* bff: first field is the bottom field */
+                    sei->m_picStruct = firstField ? PIC_STRUCT_BOTTOM_NEXTTOP : PIC_STRUCT_TOP_PREVBOTTOM;
+                else if (m_param->interlaceMode == 1) /* tff: first field is the top field */
+                    sei->m_picStruct = firstField ? PIC_STRUCT_TOP_NEXTBOTTOM : PIC_STRUCT_BOTTOM_PREVTOP;
+                else
+                    sei->m_picStruct = PIC_STRUCT_PROGRESSIVE_FRAME;
+            }
+            else
+                sei->m_picStruct = m_frame[layer]->m_picStruct;
+
+            sei->m_sourceScanType = m_param->interlaceMode ? 0 : 1;
+
+            sei->m_duplicateFlag = false;
+        }
+
+        if (slice->m_sps->bCpbDpbDelaysPresent)
+        {
+            const HRDInfo *hrd = &vui->hrdParameters;
+
+            /* The m_aucpbremoval delay specifies how many clock ticks the access unit
+             * with the picture timing SEI message has to wait after removal of the
+             * access unit with the most recent buffering period SEI message */
+            sei->m_auCpbRemovalDelay = X265_MIN(X265_MAX(1u, m_frame[layer]->m_cpbDelay), (1u << hrd->cpbRemovalDelayLength));
+            sei->m_picDpbOutputDelay = m_frame[layer]->m_dpbDelay;
+        }
+
+        sei->writeAccessUnitSEI(bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
+    }
+
+    if (m_param->preferredTransferCharacteristics > -1 && slice->isIRAP())
+    {
+        SEIAlternativeTC m_seiAlternativeTC;
+        m_seiAlternativeTC.m_preferredTransferCharacteristics = m_param->preferredTransferCharacteristics;
+        m_seiAlternativeTC.writeAccessUnitSEI(bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
+    }
+
+    /* The message describes the packed pictures of the base layer: an alpha layer is not a view. */
+    bool writeFramePacking = m_param->framePacking > -1 && !layer && (slice->isIRAP() || m_param->framePacking == 5 ||
+                             (m_param->bIntraRefresh && m_frame[layer]->m_lowres.bKeyframe));
+    if (writeFramePacking)
+    {
+        /* Type 5 alternates the views frame by frame, so every picture carries its own message. The
+         * other types persist until the next IRAP, which repeats the message, or with intra refresh
+         * until the next refresh cycle, which starts a keyframe that is not an IRAP. With --interlace the
+         * pictures are fields and both fields of a frame belong to the same view. The view follows
+         * the input picture, not the encoded one: --frame-dup drops duplicates before encoding. */
+        int frameIdx = m_param->interlaceMode ? m_frame[layer]->m_sourcePoc >> 1 : m_frame[layer]->m_sourcePoc;
+        SEIFramePacking m_seiFramePacking;
+        m_seiFramePacking.m_arrangementType = m_param->framePacking;
+        m_seiFramePacking.m_currentFrameIsFrame0 = m_param->framePacking == 5 && !(frameIdx & 1);
+        m_seiFramePacking.m_persistence = m_param->framePacking != 5;
+        m_seiFramePacking.writeAccessUnitSEI(bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
+    }
+    /* Write Film grain characteristics if present */
+    if (this->m_top->m_filmGrainIn)
+    {
+        FilmGrainCharacteristics m_filmGrain;
+        /* Read the Film grain model file */
+        readModel(&m_filmGrain, this->m_top->m_filmGrainIn);
+        m_filmGrain.writeAccessUnitSEI(bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
+    }
+    /* Write Aom film grain characteristics if present */
+    if (this->m_top->m_aomFilmGrainIn)
+    {
+        AomFilmGrainCharacteristics m_aomFilmGrain;
+        /* Read the Film grain model file */
+        readAomModel(&m_aomFilmGrain, this->m_top->m_aomFilmGrainIn);
+        m_aomFilmGrain.writeAccessUnitSEI(bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
+    }
+    /* Write user SEI */
+    for (int i = 0; i < m_frame[layer]->m_userSEI.numPayloads; i++)
+    {
+        x265_sei_payload *payload = &m_frame[layer]->m_userSEI.payloads[i];
+        if (payload->payloadType == USER_DATA_UNREGISTERED)
+        {
+            if (m_param->bUserSEIRaw && payload->payloadSize < (int)ISO_IEC_11578_LEN)
+            {
+                x265_log(m_param, X265_LOG_ERROR, "user data unregistered SEI payload of %d bytes is "
+                         "smaller than the 16-byte UUID required by --sei-udu-raw, skipped\n",
+                         payload->payloadSize);
+                continue;
+            }
+            SEIuserDataUnregistered sei;
+            sei.m_bRaw = !!m_param->bUserSEIRaw;
+            sei.m_userData = payload->payload;
+            sei.setSize(payload->payloadSize);
+            sei.writeAccessUnitSEI(bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
+        }
+        else if (payload->payloadType == USER_DATA_REGISTERED_ITU_T_T35)
+        {
+            bool writeSei = m_param->bDhdr10opt ? writeToneMapInfo(payload) : true;
+            if (writeSei)
+            {
+                SEIuserDataRegistered sei;
+                sei.m_userData = payload->payload;
+                sei.setSize(payload->payloadSize);
+                sei.writeAccessUnitSEI(bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal, layer, sliceTempIdPlus1);
+            }
+        }
+        else
+            x265_log(m_param, X265_LOG_ERROR, "Unrecognized SEI type\n");
+    }
+
+    bool isSei = ((m_frame[layer]->m_lowres.bKeyframe && m_param->bRepeatHeaders) || m_param->bEmitHRDSEI ||
+                 !!m_param->interlaceMode || (m_frame[layer]->m_lowres.sliceType == X265_TYPE_IDR && m_param->bEmitIDRRecoverySEI) ||
+                   writeFramePacking ||
+                   m_frame[layer]->m_userSEI.numPayloads);
+
+    if (isSei && m_param->bSingleSeiNal)
+    {
+        bs.writeByteAlignment();
+        m_nalList.serialize(NAL_UNIT_PREFIX_SEI, bs, layer, sliceTempIdPlus1);
+    }
 }
 
 void FrameEncoder::initDecodedPictureHashSEI(int row, int cuAddr, int height, int layer)

@@ -296,6 +296,7 @@ public:
     // to be called for each curFrame to process RateControl and set QP
     int  rateControlStart(Frame* curFrame, RateControlEntry* rce, Encoder* enc);
     void rateControlUpdateStats(RateControlEntry* rce);
+    void rateControlWaitEnd(RateControlEntry* rce);
     int  rateControlEnd(Frame* curFrame, int64_t bits, RateControlEntry* rce, int *filler);
     int  rowVbvRateControl(Frame* curFrame, uint32_t row, RateControlEntry* rce, double& qpVbv, uint32_t* m_sliceBaseRow, uint32_t sliceId);
     int  rateControlSliceType(int frameNum);
