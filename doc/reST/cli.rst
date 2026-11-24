@@ -587,8 +587,10 @@ frame counts) are only applicable to the CLI application.
 	:option:`--min-keyint` still count fields, one clock tick each, but a
 	keyframe interval holds whole frames. An odd :option:`--keyint` gives
 	intervals one field shorter, and a scenecut or a forced frame type on
-	a second field moves the keyframe to the next field. With
-	:option:`--radl` the RADL pictures of an IDR are whole frames as well.
+	a second field moves the keyframe to the next field, where it replaces
+	a frame type forced for that field. With :option:`--radl` the RADL
+	pictures of an IDR are whole frames as well, so an odd RADL count is
+	reduced by one at a scenecut.
 	:option:`--chunk-start`, :option:`--chunk-end` and zone starts are
 	used as given and should be first fields.
 

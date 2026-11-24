@@ -1085,6 +1085,7 @@ Lookahead::Lookahead(x265_param *param, ThreadPool* pool, SPS* sps)
     m_lastKeyframe = -m_param->keyframeMax;
     m_lastKeyframeNum = -m_param->keyframeMax;
     m_deferredKeyType = X265_TYPE_AUTO;
+    m_deferredKeyScenecut = false;
     m_sliceTypeBusy = false;
     m_fullQueueSize = X265_MAX(1, m_param->lookaheadDepth);
     m_bAdaptiveQuant = m_param->rc.aqMode ||
@@ -2026,9 +2027,9 @@ void Lookahead::slicetypeDecide()
         if (m_deferredKeyType != X265_TYPE_AUTO)
         {
             /* keyframe moved off the second field that ended the previous mini-GOP */
-            if (curFrame->m_lowres.sliceType != X265_TYPE_IDR)
-                curFrame->m_lowres.sliceType = m_deferredKeyType;
+            moveKeyframeTo(curFrame->m_lowres, m_deferredKeyType, m_deferredKeyScenecut);
             m_deferredKeyType = X265_TYPE_AUTO;
+            m_deferredKeyScenecut = false;
         }
         if (m_param->bResetZoneConfig)
         {
@@ -2224,11 +2225,17 @@ void Lookahead::slicetypeDecide()
                     x265_log(m_param, X265_LOG_WARNING,
                              "specified frame type (%d) at %d is on a second field, keyframe moved to the next field\n",
                              frm.sliceTypeReq, frm.frameNum);
-                if (!list[bframes + 1])
+                if (list[bframes + 1])
+                    moveKeyframeTo(list[bframes + 1]->m_lowres, frm.sliceType, frm.bScenecut);
+                else
+                {
                     m_deferredKeyType = frm.sliceType;
-                else if (list[bframes + 1]->m_lowres.sliceType != X265_TYPE_IDR)
-                    list[bframes + 1]->m_lowres.sliceType = frm.sliceType;
-                frm.sliceType = X265_TYPE_AUTO;
+                    m_deferredKeyScenecut = frm.bScenecut;
+                }
+                /* the RADL pictures of a scenecut start at the next field: end the GOP here */
+                frm.sliceType = frm.bScenecut && isClosedGopRadl ? X265_TYPE_P : X265_TYPE_AUTO;
+                frm.sliceTypeReq = X265_TYPE_AUTO;
+                frm.bScenecut = false;
             }
             if (m_param->bResetZoneConfig)
             {
@@ -2257,11 +2264,14 @@ void Lookahead::slicetypeDecide()
                 else
                     frm.sliceType = X265_TYPE_IDR;
             }
-            if (frm.sliceType == X265_TYPE_IDR && frm.bScenecut && isClosedGopRadl)
+            /* Interlaced: the RADL pictures of a scenecut are whole frames, so that the IDR
+             * that follows them is a first field again. An odd count is reduced by one. */
+            const int scenecutRadl = fieldPos == 1 ? m_param->radl & ~1 : m_param->radl;
+            if (frm.sliceType == X265_TYPE_IDR && frm.bScenecut && isClosedGopRadl && scenecutRadl)
             {
-                for (int i = bframes; i < bframes + m_param->radl; i++)
+                for (int i = bframes; i < bframes + scenecutRadl; i++)
                     list[i]->m_lowres.sliceType = X265_TYPE_B;
-                list[(bframes + m_param->radl)]->m_lowres.sliceType = X265_TYPE_IDR;
+                list[(bframes + scenecutRadl)]->m_lowres.sliceType = X265_TYPE_IDR;
             }
             if (frm.sliceType == X265_TYPE_IDR)
             {
@@ -2940,6 +2950,22 @@ void Lookahead::setDurationsToLowres(Frame *frame)
     double durationSecs = frame->m_duration * frame->m_timebase;
     frame->m_lowres.dispDurationSecs = durationSecs;
     frame->m_lowres.cpbDurationSecs = durationSecs;
+}
+
+/* Interlaced: gives the keyframe that fell on a second field to the next picture.
+ * It replaces a frame type requested for that picture, and a scenecut moves with
+ * it, so that the keyframe gets its RADL pictures there. */
+void Lookahead::moveKeyframeTo(Lowres &next, int sliceType, bool bScenecut)
+{
+    if (next.sliceType == X265_TYPE_IDR || next.sliceTypeReq == X265_TYPE_IDR)
+        sliceType = X265_TYPE_IDR;
+    if (next.sliceTypeReq != X265_TYPE_AUTO && !IS_X265_TYPE_I(next.sliceTypeReq))
+        x265_log(m_param, X265_LOG_WARNING,
+                 "specified frame type (%d) at %d is replaced by the keyframe moved from the previous field\n",
+                 next.sliceTypeReq, next.frameNum);
+    next.sliceTypeReq = X265_TYPE_AUTO;
+    next.sliceType = sliceType;
+    next.bScenecut |= bScenecut;
 }
 
 void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
