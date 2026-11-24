@@ -2400,10 +2400,11 @@ typedef struct x265_param
      * upstream x265 when foveaDelta == 0 or foveaGazeFile == NULL with no gaze set. */
 
     /* Gaze fixation point in pixel coordinates. (0,0) = top-left.
-     * Ignored when foveaDelta == 0. */
+     * Negative means frame center; default -1. Ignored when foveaDelta == 0. */
     float    foveaGazeX;
 
-    /* Gaze fixation point Y in pixel coordinates. */
+    /* Gaze fixation point Y in pixel coordinates.
+     * Negative means frame center; default -1. */
     float    foveaGazeY;
 
     /* Maximum QP offset applied at the periphery (positive = lower quality).
@@ -2415,7 +2416,8 @@ typedef struct x265_param
     float    foveaSigma;
 
     /* Path to a per-frame gaze file (one line per frame: "frame_num x y").
-     * When set, overrides foveaGazeX/foveaGazeY with per-frame values.
+     * When set, overrides foveaGazeX/foveaGazeY with per-frame values;
+     * negative coordinates in a line mean frame center.
      * NULL = use static gaze from foveaGazeX/foveaGazeY. */
     char* foveaGazeFile;
 

@@ -3238,7 +3238,8 @@ Foveated Encoding Options
 
 .. option:: --fovea-gaze <x,y>
 
-	Static gaze fixation in pixels (e.g. 960,540 for center).
+	Static gaze fixation in pixels (e.g. 960,540). Negative values mean
+	frame center. Default -1,-1 (center).
 
 .. option:: --fovea-delta <float>
     
@@ -3251,5 +3252,6 @@ Foveated Encoding Options
 .. option:: --fovea-gaze-file <path>
 
 	Per-frame gaze file (format: 'frame_num x y', one per line). Overrides --fovea-gaze.
+	Negative coordinates in a line mean frame center, same as --fovea-gaze.
 
 .. vim: noet

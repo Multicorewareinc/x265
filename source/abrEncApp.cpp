@@ -923,8 +923,9 @@ ret:
                                 fseek(m_foveaGazeFileFP, linePos, SEEK_SET);
                             else
                             {
-                                gazeX = fx;
-                                gazeY = fy;
+                                /* Negative coordinates mean frame center, same as --fovea-gaze */
+                                gazeX = fx > 0.0f ? fx : m_param->sourceWidth  / 2.0f;
+                                gazeY = fy > 0.0f ? fy : m_param->sourceHeight / 2.0f;
                             }
                             break;
                         }
