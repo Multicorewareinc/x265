@@ -4109,7 +4109,7 @@ void Encoder::configure(x265_param *p)
     this->m_param = p;
     if (p->bAnalysisType == AVC_INFO)
         this->m_externalFlush = true;
-    else 
+    else
         this->m_externalFlush = false;
 
     if (p->bAnalysisType == AVC_INFO && (p->limitTU == 3 || p->limitTU == 4))
@@ -4275,7 +4275,7 @@ void Encoder::configure(x265_param *p)
         x265_log(p, X265_LOG_WARNING, "hevc-aq enabled, disabling other aq-modes\n");
     }
 
-    if (m_param->foveaDelta > 0.0f && p->rc.qgSize == 8)
+    if (p->foveaDelta > 0.0f && p->rc.qgSize == 8)
     {
         p->rc.qgSize = 16;
         x265_log(p, X265_LOG_WARNING,
@@ -4286,7 +4286,7 @@ void Encoder::configure(x265_param *p)
         p->lookaheadDepth = p->totalFrames;
     if (p->bIntraRefresh)
     {
-        int numCuInWidth = (m_param->sourceWidth + m_param->maxCUSize - 1) / m_param->maxCUSize;
+        int numCuInWidth = (p->sourceWidth + p->maxCUSize - 1) / p->maxCUSize;
         if (p->maxNumReferences > 1)
         {
             x265_log(p,  X265_LOG_WARNING, "Max References > 1 + intra-refresh is not supported , setting max num references = 1\n");
@@ -4306,8 +4306,8 @@ void Encoder::configure(x265_param *p)
 
         x265_log(p,  X265_LOG_WARNING, "Scenecut is disabled when Intra Refresh is enabled\n");
 
-        if (((float)numCuInWidth - 1) / m_param->keyframeMax > 1)
-            x265_log(p,  X265_LOG_WARNING, "Keyint value is very low.It leads to frequent intra refreshes, can be almost every frame."
+        if (((float)numCuInWidth - 1) / p->keyframeMax > 1)
+            x265_log(p,  X265_LOG_WARNING, "Keyint value is very low. It leads to frequent intra refreshes, can be almost every frame."
                      "Prefered use case would be high keyint value or an API call to refresh when necessary\n");
 
     }
@@ -4326,7 +4326,7 @@ void Encoder::configure(x265_param *p)
 
     if (p->rc.rfConstantMin > p->rc.rfConstant)
     {
-        x265_log(m_param, X265_LOG_WARNING, "CRF min must be less than CRF\n");
+        x265_log(p, X265_LOG_WARNING, "CRF min must be less than CRF\n");
         p->rc.rfConstantMin = 0;
     }
 
@@ -4555,7 +4555,7 @@ void Encoder::configure(x265_param *p)
     p->bEnableTSkipFast &= p->bEnableTransformSkip;
     p->bLimitSAO &= p->bEnableSAO;
 
-    if (m_param->bUseAnalysisFile && strlen(m_param->analysisLoad) && (p->confWinRightOffset || p->confWinBottomOffset))
+    if (p->bUseAnalysisFile && strlen(p->analysisLoad) && (p->confWinRightOffset || p->confWinBottomOffset))
         x265_log(p, X265_LOG_WARNING, "It is recommended not to set conformance window offset in file based analysis-load."
                                       " Offsets are shared in the analysis file already.\n");
     /* initialize the conformance window */
@@ -4566,12 +4566,12 @@ void Encoder::configure(x265_param *p)
     m_conformanceWindow.leftOffset = 0;
 
     uint32_t padsize = 0;
-    if (strlen(m_param->analysisLoad) && m_param->bUseAnalysisFile)
+    if (strlen(p->analysisLoad) && p->bUseAnalysisFile)
     {
-        m_analysisFileIn = x265_fopen(m_param->analysisLoad, "rb");
+        m_analysisFileIn = x265_fopen(p->analysisLoad, "rb");
         if (!m_analysisFileIn)
         {
-            x265_log_file(NULL, X265_LOG_ERROR, "Analysis load: failed to open file %s\n", m_param->analysisLoad);
+            x265_log_file(NULL, X265_LOG_ERROR, "Analysis load: failed to open file %s\n", p->analysisLoad);
             m_aborted = true;
         }
         else
@@ -4650,8 +4650,8 @@ void Encoder::configure(x265_param *p)
         p->limitTU = 0;
         x265_log(p, X265_LOG_WARNING, "limit-tu disabled, requires tu-inter-depth > 1\n");
     }
-    bool bIsVbv = m_param->rc.vbvBufferSize > 0 && m_param->rc.vbvMaxBitrate > 0;
-    if (!m_param->bLossless && (m_param->rc.aqMode || bIsVbv || m_param->bAQMotion))
+    bool bIsVbv = p->rc.vbvBufferSize > 0 && p->rc.vbvMaxBitrate > 0;
+    if (!p->bLossless && (p->rc.aqMode || bIsVbv || p->bAQMotion))
     {
         if (p->rc.qgSize < X265_MAX(8, p->minCUSize))
         {
@@ -4665,9 +4665,9 @@ void Encoder::configure(x265_param *p)
         }
     }
     else
-        m_param->rc.qgSize = p->maxCUSize;
+        p->rc.qgSize = p->maxCUSize;
 
-    if (m_param->dynamicRd && (!bIsVbv || !p->rc.aqMode || p->rdLevel > 4))
+    if (p->dynamicRd && (!bIsVbv || !p->rc.aqMode || p->rdLevel > 4))
     {
         p->dynamicRd = 0;
         x265_log(p, X265_LOG_WARNING, "Dynamic-rd disabled, requires RD <= 4, VBV and aq-mode enabled\n");
@@ -4726,19 +4726,19 @@ void Encoder::configure(x265_param *p)
     }
 
 #ifdef ENABLE_HDR10_PLUS
-    if (m_param->bDhdr10opt && strlen(m_param->toneMapFile) == 0)
+    if (p->bDhdr10opt && strlen(p->toneMapFile) == 0)
     {
         x265_log(p, X265_LOG_WARNING, "Disabling dhdr10-opt. dhdr10-info must be enabled.\n");
-        m_param->bDhdr10opt = 0;
+        p->bDhdr10opt = 0;
     }
 
-    if (strlen(m_param->toneMapFile))
+    if (strlen(p->toneMapFile))
     {
         if (!x265_fopen(p->toneMapFile, "r"))
         {
             x265_log(p, X265_LOG_ERROR, "Unable to open tone-map file.\n");
             m_bToneMap = 0;
-            m_param->toneMapFile[0] = 0;
+            p->toneMapFile[0] = 0;
             m_aborted = true;
         }
         else
@@ -4747,21 +4747,21 @@ void Encoder::configure(x265_param *p)
     else
         m_bToneMap = 0;
 #else
-    if (strlen(m_param->toneMapFile))
+    if (strlen(p->toneMapFile))
     {
         x265_log(p, X265_LOG_WARNING, "--dhdr10-info disabled. Enable HDR10_PLUS in cmake.\n");
         m_bToneMap = 0;
-        m_param->toneMapFile[0] = 0;
+        p->toneMapFile[0] = 0;
     }
-    else if (m_param->bDhdr10opt)
+    else if (p->bDhdr10opt)
     {
         x265_log(p, X265_LOG_WARNING, "Disabling dhdr10-opt. dhdr10-info must be enabled.\n");
-        m_param->bDhdr10opt = 0;
+        p->bDhdr10opt = 0;
     }
 #endif
 
     /* enable VUI Frame Field Information */
-    if (m_param->interlaceMode > 0 || m_param->pictureStructure >= 0 || p->bEnableFrameDuplication)
+    if (p->interlaceMode > 0 || p->pictureStructure >= 0 || p->bEnableFrameDuplication)
         p->bEmitFrameFieldInfo = 1;
 
     if (p->uhdBluray)
@@ -4926,7 +4926,7 @@ void Encoder::configure(x265_param *p)
     if (strlen(p->videoSignalTypePreset))     // Default disabled.
         configureVideoSignalTypePreset(p);
 
-    if (strlen(m_param->toneMapFile) || p->bHDR10Opt || p->bEmitHDR10SEI)
+    if (strlen(p->toneMapFile) || p->bHDR10Opt || p->bEmitHDR10SEI)
     {
         if (!p->bRepeatHeaders)
         {
@@ -4946,7 +4946,7 @@ void Encoder::configure(x265_param *p)
         x265_log(p, X265_LOG_WARNING, "Radl requires closed gop structure. Disabling radl.\n");
     }
 
-    if ((p->chunkStart || p->chunkEnd) && p->bOpenGOP && m_param->bResetZoneConfig)
+    if ((p->chunkStart || p->chunkEnd) && p->bOpenGOP && p->bResetZoneConfig)
     {
         p->chunkStart = p->chunkEnd = 0;
         x265_log(p, X265_LOG_WARNING, "Chunking requires closed gop structure. Disabling chunking.\n");
@@ -4967,33 +4967,33 @@ void Encoder::configure(x265_param *p)
         x265_log(p, X265_LOG_WARNING, "Only zone or zonefile can be used. Enabling only zonefile\n");
     }
 
-    if (m_param->rc.zonefileCount && p->bOpenGOP)
+    if (p->rc.zonefileCount && p->bOpenGOP)
     {
         p->bOpenGOP = 0;
         x265_log(p, X265_LOG_WARNING, "Zone encoding requires closed gop structure. Enabling closed GOP.\n");
     }
 
-    if (m_param->rc.zonefileCount && !p->bRepeatHeaders)
+    if (p->rc.zonefileCount && !p->bRepeatHeaders)
     {
         p->bRepeatHeaders = 1;
         x265_log(p, X265_LOG_WARNING, "Turning on repeat - headers for zone encoding\n");
     }
 
-    if (m_param->bEnableHME)
+    if (p->bEnableHME)
     {
-        if (m_param->sourceHeight < 540)
+        if (p->sourceHeight < 540)
         {
             x265_log(p, X265_LOG_WARNING, "Source height < 540p is too low for HME. Disabling HME.\n");
             p->bEnableHME = 0;
         }
     }
 
-    if (m_param->bEnableHME)
+    if (p->bEnableHME)
     {
-        if (m_param->searchMethod != m_param->hmeSearchMethod[2])
-            m_param->searchMethod = m_param->hmeSearchMethod[2];
-        if (m_param->searchRange != m_param->hmeRange[2])
-            m_param->searchRange = m_param->hmeRange[2];
+        if (p->searchMethod != p->hmeSearchMethod[2])
+            p->searchMethod = p->hmeSearchMethod[2];
+        if (p->searchRange != p->hmeRange[2])
+            p->searchRange = p->hmeRange[2];
     }
 
     if (p->bEnableSBRC && (p->rc.rateControlMode != X265_RC_CRF || (p->rc.vbvBufferSize == 0 || p->rc.vbvMaxBitrate == 0)))
