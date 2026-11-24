@@ -186,6 +186,8 @@ public:
     int           m_fullQueueSize;
     int64_t       m_lastKeyframe;
     int           m_lastKeyframeNum;
+    int m_deferredKeyType; // keyframe type moved off a second field, for the next picture to arrive
+    bool m_deferredKeyScenecut; // the moved keyframe was a scenecut
     int           m_8x8Width;
     int           m_8x8Height;
     int           m_8x8Blocks;
@@ -285,6 +287,7 @@ protected:
 
     void    calculateDurations(Frame *frame, Frame *prevFrame);
     void    setDurationsToLowres(Frame *frame);
+    void moveKeyframeTo(Lowres &next, int sliceType, bool bScenecut);
 
     int64_t vbvFrameCost(Lowres **frames, int p0, int p1, int b);
     void    vbvLookahead(Lowres **frames, int numFrames, int keyframes);

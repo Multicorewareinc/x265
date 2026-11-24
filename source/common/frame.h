@@ -205,6 +205,10 @@ public:
     bool allocEncodeData(x265_param *param, const SPS& sps);
     void reinit(const SPS& sps);
     void destroy();
+
+    /* Position of an interlaced field in its frame: 1 for the first field, 2
+     * for the second, 0 for a frame or a field that is not part of a pair */
+    int fieldOfPair() const;
 };
 }
 

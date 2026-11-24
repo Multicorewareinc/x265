@@ -879,10 +879,8 @@ void FrameEncoder::compressFrame(int layer)
                  * output order): 11 = top field paired with the next bottom field,
                  * 10 = bottom field paired with the previous top field (tff frame),
                  * 12 = bottom field paired with the next top field, 9 = top field
-                 * paired with the previous bottom field (bff frame). With --field,
-                 * fieldNum 1 is the first field of the frame; with field input, or
-                 * when a library caller leaves fieldNum at 0, the even POC is. */
-                const bool firstField = slice->m_fieldNum ? (slice->m_fieldNum == 1) : !(slice->m_poc & 1);
+                 * paired with the previous bottom field (bff frame). */
+                const bool firstField = m_frame[layer]->fieldOfPair() != 2;
                 if (m_param->interlaceMode == 2)      /* bff: first field is the bottom field */
                     sei->m_picStruct = firstField ? PIC_STRUCT_BOTTOM_NEXTTOP : PIC_STRUCT_TOP_PREVBOTTOM;
                 else if (m_param->interlaceMode == 1) /* tff: first field is the top field */

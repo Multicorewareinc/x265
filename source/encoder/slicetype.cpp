@@ -1084,6 +1084,8 @@ Lookahead::Lookahead(x265_param *param, ThreadPool* pool, SPS* sps)
 
     m_lastKeyframe = -m_param->keyframeMax;
     m_lastKeyframeNum = -m_param->keyframeMax;
+    m_deferredKeyType = X265_TYPE_AUTO;
+    m_deferredKeyScenecut = false;
     m_sliceTypeBusy = false;
     m_fullQueueSize = X265_MAX(1, m_param->lookaheadDepth);
     m_bAdaptiveQuant = m_param->rc.aqMode ||
@@ -2081,6 +2083,13 @@ void Lookahead::slicetypeDecide()
         ScopedLock lock(m_inputLock);
 
         Frame *curFrame = m_inputQueue.first();
+        if (m_deferredKeyType != X265_TYPE_AUTO)
+        {
+            /* keyframe moved off the second field that ended the previous mini-GOP */
+            moveKeyframeTo(curFrame->m_lowres, m_deferredKeyType, m_deferredKeyScenecut);
+            m_deferredKeyType = X265_TYPE_AUTO;
+            m_deferredKeyScenecut = false;
+        }
         if (m_param->bResetZoneConfig)
         {
             for (int i = 0; i < m_param->rc.zonefileCount; i++)
@@ -2217,6 +2226,14 @@ void Lookahead::slicetypeDecide()
             int64_t durationPicCount = (int64_t)list[bframes]->m_duration;
             int64_t keyintTicksDelta = displayPicCount - m_lastKeyframe + durationPicCount;
 
+            /* Interlaced: a GOP holds whole frames. The keyframe interval of a first field
+             * is measured to the end of its frame, and a second field is not coded as a
+             * keyframe. The first picture of the stream and all-intra coding, where every
+             * field is an IRAP, are left alone. */
+            const int fieldPos = (m_param->keyframeMax > 1 && m_lastKeyframe >= 0) ? list[bframes]->fieldOfPair() : 0;
+            const bool bSecondField = fieldPos == 2;
+            int64_t keyintFrameDelta = keyintTicksDelta + (fieldPos == 1);
+
             if (frm.sliceTypeReq != X265_TYPE_AUTO && frm.sliceTypeReq != frm.sliceType)
                 frm.sliceType = frm.sliceTypeReq;
             /* the B-refs of a second pass with --b-pyramid 2 are the pyramid of the first one */
@@ -2239,8 +2256,9 @@ void Lookahead::slicetypeDecide()
                         frm.frameNum, m_param->maxNumReferences);
                 }
             }
-            if (((!m_param->bIntraRefresh || frm.frameNum == 0) && keyintTicksDelta > m_param->keyframeMax &&
-                (!m_extendGopBoundary || keyintTicksDelta > m_param->keyframeMax + m_param->gopLookahead)) ||
+            if (((!m_param->bIntraRefresh || frm.frameNum == 0) && !bSecondField &&
+                 keyintFrameDelta > m_param->keyframeMax &&
+                 (!m_extendGopBoundary || keyintFrameDelta > m_param->keyframeMax + m_param->gopLookahead)) ||
                 (frm.frameNum == (m_param->chunkStart - 1)) || (frm.frameNum == m_param->chunkEnd))
             {
                 if (frm.sliceType == X265_TYPE_AUTO || frm.sliceType == X265_TYPE_I)
@@ -2257,6 +2275,30 @@ void Lookahead::slicetypeDecide()
             }
             if (frm.bIsFadeEnd){
                 frm.sliceType = m_param->bOpenGOP && m_lastKeyframe >= 0 ? X265_TYPE_I : X265_TYPE_IDR;
+            }
+            if (bSecondField && frm.frameNum != (m_param->chunkStart - 1) && frm.frameNum != m_param->chunkEnd &&
+                (frm.sliceType == X265_TYPE_IDR ||
+                 (frm.sliceType == X265_TYPE_I && keyintTicksDelta > m_param->keyframeMin)))
+            {
+                /* An IRAP on the second field of a frame leaves its first field in the previous
+                 * GOP, and an IDR restarts the POC in the middle of the frame. Code this field
+                 * as an inter picture and move the keyframe to the next picture, the first
+                 * field of the next frame. Chunk and zone boundaries stay where they were set. */
+                if (frm.sliceTypeReq != X265_TYPE_AUTO)
+                    x265_log(m_param, X265_LOG_WARNING,
+                             "specified frame type (%d) at %d is on a second field, keyframe moved to the next field\n",
+                             frm.sliceTypeReq, frm.frameNum);
+                if (list[bframes + 1])
+                    moveKeyframeTo(list[bframes + 1]->m_lowres, frm.sliceType, frm.bScenecut);
+                else
+                {
+                    m_deferredKeyType = frm.sliceType;
+                    m_deferredKeyScenecut = frm.bScenecut;
+                }
+                /* the RADL pictures of a scenecut start at the next field: end the GOP here */
+                frm.sliceType = frm.bScenecut && isClosedGopRadl ? X265_TYPE_P : X265_TYPE_AUTO;
+                frm.sliceTypeReq = X265_TYPE_AUTO;
+                frm.bScenecut = false;
             }
             if (m_param->bResetZoneConfig)
             {
@@ -2285,11 +2327,14 @@ void Lookahead::slicetypeDecide()
                 else
                     frm.sliceType = X265_TYPE_IDR;
             }
-            if (frm.sliceType == X265_TYPE_IDR && frm.bScenecut && isClosedGopRadl)
+            /* Interlaced: the RADL pictures of a scenecut are whole frames, so that the IDR
+             * that follows them is a first field again. An odd count is reduced by one. */
+            const int scenecutRadl = fieldPos == 1 ? m_param->radl & ~1 : m_param->radl;
+            if (frm.sliceType == X265_TYPE_IDR && frm.bScenecut && isClosedGopRadl && scenecutRadl)
             {
-                for (int i = bframes; i < bframes + m_param->radl; i++)
+                for (int i = bframes; i < bframes + scenecutRadl; i++)
                     list[i]->m_lowres.sliceType = X265_TYPE_B;
-                list[(bframes + m_param->radl)]->m_lowres.sliceType = X265_TYPE_IDR;
+                list[(bframes + scenecutRadl)]->m_lowres.sliceType = X265_TYPE_IDR;
             }
             if (frm.sliceType == X265_TYPE_IDR)
             {
@@ -2317,6 +2362,14 @@ void Lookahead::slicetypeDecide()
                 {
                     list[bframes - 1]->m_lowres.sliceType = X265_TYPE_P;
                     bframes--;
+                }
+                else if (bframes > 0 && fieldPos == 1 && list[0]->fieldOfPair() == 2)
+                {
+                    /* The RADL pictures of an IDR are decoded when a decoder starts at it,
+                     * so they have to be whole frames: a second field in front of them
+                     * is coded on its own, as the last picture of the previous GOP. */
+                    list[0]->m_lowres.sliceType = X265_TYPE_P;
+                    bframes = 0;
                 }
             }
             if (bframes == m_param->bframes || !list[bframes + 1])
@@ -2972,12 +3025,30 @@ void Lookahead::setDurationsToLowres(Frame *frame)
 {
     frame->m_lowres.dispPicCount = frame->m_displayPicCount;
     frame->m_lowres.durationPicCount = frame->m_duration;
+    /* a single field lasts one clock tick */
+    frame->m_lowres.pairPicCount = frame->fieldOfPair() == 1 ? 1 : 0;
 
     /* fair assumption: assume the cpb duration is equal to the display duration.
      * It's only an issue with extreme VFR or low delay applications */
     double durationSecs = frame->m_duration * frame->m_timebase;
     frame->m_lowres.dispDurationSecs = durationSecs;
     frame->m_lowres.cpbDurationSecs = durationSecs;
+}
+
+/* Interlaced: gives the keyframe that fell on a second field to the next picture.
+ * It replaces a frame type requested for that picture, and a scenecut moves with
+ * it, so that the keyframe gets its RADL pictures there. */
+void Lookahead::moveKeyframeTo(Lowres &next, int sliceType, bool bScenecut)
+{
+    if (next.sliceType == X265_TYPE_IDR || next.sliceTypeReq == X265_TYPE_IDR)
+        sliceType = X265_TYPE_IDR;
+    if (next.sliceTypeReq != X265_TYPE_AUTO && !IS_X265_TYPE_I(next.sliceTypeReq))
+        x265_log(m_param, X265_LOG_WARNING,
+                 "specified frame type (%d) at %d is replaced by the keyframe moved from the previous field\n",
+                 next.sliceTypeReq, next.frameNum);
+    next.sliceTypeReq = X265_TYPE_AUTO;
+    next.sliceType = sliceType;
+    next.bScenecut |= bScenecut;
 }
 
 void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
@@ -3153,9 +3224,10 @@ void Lookahead::slicetypeAnalyse(Lowres **frames, bool bKeyframe)
         if (!fenc || fenc->sliceType != X265_TYPE_AUTO)
             break;
         durationAhead += fenc->durationPicCount;
-        if (durationAhead <= keyintTimeLimit)
+        /* a first field only fits in the keyframe interval together with its second field */
+        if (durationAhead + fenc->pairPicCount <= keyintTimeLimit)
             ++keyIntFrameCnt;
-        if (durationAhead <= extendedKeyIntTime)
+        if (durationAhead + fenc->pairPicCount <= extendedKeyIntTime)
             ++keyIntFrameCntExtended;
     }
 
@@ -3465,7 +3537,10 @@ void Lookahead::slicetypeAnalyse(Lowres **frames, bool bKeyframe)
             int64_t lastKeyDisp = 0;
             for (int j = keyintLimit + 1; j <= numFrames; ++j)
             {
-                if (j == keyintLimit + 1 || frames[j]->dispPicCount - lastKeyDisp + (int64_t)frames[j]->durationPicCount > m_param->keyframeMax)
+                if (j == keyintLimit + 1 || frames[j]->dispPicCount - lastKeyDisp +
+                                                    (int64_t)frames[j]->durationPicCount +
+                                                    (int64_t)frames[j]->pairPicCount >
+                                                m_param->keyframeMax)
                 {
                     frames[j]->sliceType = X265_TYPE_I;
                     resetStart = X265_MIN(resetStart, j + 1);
