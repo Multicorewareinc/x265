@@ -2456,6 +2456,11 @@ typedef struct x265_param
      * QP, 1 keeps the offsets derived from --pbratio, above 1 makes them steeper. Range
      * 0 to 2. Default 1.0 */
     double   bPyramidQpScale;
+
+    /* Enable the evaluation of intra CUs at the 64x64 size, in addition to the
+     * 32x32 and smaller intra CU sizes. Improves intra compression on large flat
+     * regions at the cost of extra analysis. Default 0 (disabled). */
+    int      bEnableIntra64x64;
 } x265_param;
 
 /* x265_param_alloc:

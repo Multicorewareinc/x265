@@ -212,7 +212,7 @@ bool IntraPredHarness::check_intra_filter_primitive(const intra_filter_t ref, co
 }
 bool IntraPredHarness::testCorrectness(const EncoderPrimitives& ref, const EncoderPrimitives& opt)
 {
-    for (int i = BLOCK_4x4; i <= BLOCK_32x32; i++)
+    for (int i = BLOCK_4x4; i <= BLOCK_64x64; i++)
     {
         const int size = (1 << (i + 2));
         if (opt.cu[i].intra_pred[PLANAR_IDX])
@@ -264,7 +264,7 @@ void IntraPredHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderP
     int width = 64;
     uint16_t srcStride = 96;
 
-    for (int i = BLOCK_4x4; i <= BLOCK_32x32; i++)
+    for (int i = BLOCK_4x4; i <= BLOCK_64x64; i++)
     {
         const int size = (1 << (i + 2));
         if (opt.cu[i].intra_pred[PLANAR_IDX])
