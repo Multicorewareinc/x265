@@ -207,6 +207,8 @@ struct Lowres : public ReferencePlanes
     /* used for vbvLookahead */
     int       plannedType[X265_LOOKAHEAD_MAX + 1];
     int64_t   plannedSatd[X265_LOOKAHEAD_MAX + 1];
+    double    plannedCpbDuration[X265_LOOKAHEAD_MAX + 1];
+    double    plannedBQpCoef[X265_LOOKAHEAD_MAX + 1]; /* B-pyramid exponent of pbratio, 0 for I/P, -1 unknown */
     int       indB;
     int       bframes;
 
@@ -222,6 +224,11 @@ struct Lowres : public ReferencePlanes
     double    frameVariance;
     int*      edgeInclined;
 
+    /* Vbv Lookahead & cuTree durations */
+    double   cpbDurationSecs;
+    double   dispDurationSecs;
+    int64_t  dispPicCount;
+    uint32_t durationPicCount;
 
     /* cutree intermediate data */
     PicQPAdaptationLayer* pAQLayer;

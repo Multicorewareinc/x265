@@ -25,6 +25,7 @@
 #include "common.h"
 #include "slice.h"
 #include "level.h"
+#include "bpyramid.h"
 #include "svt.h"
 
 namespace X265_NS {
@@ -335,6 +336,32 @@ void determineLevel(const x265_param &param, VPS& vps)
              profbuf, levels[i].name, tiers[vps.ptl.tierFlag]);
 }
 
+/* Largest number of pictures that precede a picture in decoding order and follow it in output
+ * order, over every mini-GOP length the lookahead can choose with the hierarchical B-pyramid */
+uint32_t hierarchicalReorderPics(int bframes)
+{
+    uint32_t maxReorder = 0;
+    for (int numB = 1; numB <= bframes; numB++)
+    {
+        /* display indices in coding order: the anchor first, then the B frames of the pyramid */
+        BPyramidNode plan[X265_BFRAME_MAX];
+        int order[X265_BFRAME_MAX + 1];
+        int count = 0;
+        order[count++] = numB + 1;
+        const int numNodes = bPyramidPlan(0, numB + 1, plan);
+        for (int k = 0; k < numNodes; k++)
+            order[count++] = plan[k].b;
+        for (int i = 0; i < count; i++)
+        {
+            uint32_t reorder = 0;
+            for (int j = 0; j < i; j++)
+                reorder += order[j] > order[i];
+            maxReorder = X265_MAX(maxReorder, reorder);
+        }
+    }
+    return maxReorder;
+}
+
 /* enforce a maximum decoder level requirement, in other words assure that a
  * decoder of the specified level may decode the video about to be created.
  * Lower parameters where necessary to ensure the video will be decodable by a
@@ -344,9 +371,17 @@ void determineLevel(const x265_param &param, VPS& vps)
 bool enforceLevel(x265_param& param, VPS& vps)
 {
     vps.maxTempSubLayers = !!param.bEnableTemporalSubLayers ? param.bEnableTemporalSubLayers : 1;
+    uint32_t numReorderPics = (param.bBPyramid && param.bframes > 1) ? 2 : !!param.bframes;
+    /* the hierarchical B-pyramid (used unless temporal sub-layers define the mini-GOP) can need more */
+    if (X265_HIERARCHICAL_BPYRAMID(&param))
+        numReorderPics = X265_MAX(numReorderPics, hierarchicalReorderPics(param.bframes));
     for (uint32_t i = 0; i < vps.maxTempSubLayers; i++)
     {
-        vps.numReorderPics[i] = (i == 0) ? ((param.bBPyramid && param.bframes > 1) ? 2 : !!param.bframes) : i;
+        /* with --b-pyramid 2 a higher sub-layer never has fewer reorder pictures than a lower one */
+        if (param.bBPyramid == X265_B_PYRAMID_HIERARCHICAL)
+            vps.numReorderPics[i] = (i == 0) ? numReorderPics : X265_MAX(i, numReorderPics);
+        else
+            vps.numReorderPics[i] = (i == 0) ? numReorderPics : i;
         vps.maxDecPicBuffering[i] = X265_MIN(MAX_NUM_REF, X265_MAX(vps.numReorderPics[i] + 2, (uint32_t)param.maxNumReferences) + 1) + !!param.bEnableSCC;
     }
 

@@ -26,7 +26,124 @@
 #include "primitives.h"
 #include "entropy.h"
 
+#if X265_ARCH_X86
+#if defined(_WIN32)
+#include <windows.h>
+#else
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
+#endif
+
 using namespace X265_NS;
+
+#if X265_ARCH_X86
+namespace {
+class SaoGuardedBuffer
+{
+public:
+    uint8_t* data;
+    size_t pageSize;
+
+    SaoGuardedBuffer() : data(NULL), pageSize(0)
+    {
+#if defined(_WIN32)
+        SYSTEM_INFO info;
+        GetSystemInfo(&info);
+        pageSize = info.dwPageSize;
+        data = static_cast<uint8_t*>(VirtualAlloc(NULL, 2 * pageSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+        if (data)
+        {
+            DWORD previous;
+            if (!VirtualProtect(data + pageSize, pageSize, PAGE_READONLY, &previous))
+            {
+                VirtualFree(data, 0, MEM_RELEASE);
+                data = NULL;
+            }
+        }
+#else
+        long size = sysconf(_SC_PAGESIZE);
+        if (size <= 0)
+            return;
+        pageSize = (size_t)size;
+        void* mem = mmap(NULL, 2 * pageSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (mem != MAP_FAILED)
+        {
+            data = static_cast<uint8_t*>(mem);
+            if (mprotect(data + pageSize, pageSize, PROT_READ))
+            {
+                munmap(data, 2 * pageSize);
+                data = NULL;
+            }
+        }
+#endif
+    }
+
+    ~SaoGuardedBuffer()
+    {
+        if (data)
+        {
+#if defined(_WIN32)
+            VirtualFree(data, 0, MEM_RELEASE);
+#else
+            munmap(data, 2 * pageSize);
+#endif
+        }
+    }
+
+private:
+    SaoGuardedBuffer(const SaoGuardedBuffer&);
+    SaoGuardedBuffer& operator=(const SaoGuardedBuffer&);
+};
+
+static bool checkSaoBounds(saoCuOrgE2_t refE2, saoCuOrgE2_t optE2,
+                           saoCuOrgE3_t refE3, saoCuOrgE3_t optE3, int ctuWidth)
+{
+    SaoGuardedBuffer refPixels, optPixels, refSigns, optSigns;
+    if (!refPixels.data || !optPixels.data || !refSigns.data || !optSigns.data)
+        return false;
+
+    ALIGN_VAR_16(int8_t, offsets[16]) = { 3, 1, 0, -1, -3 };
+    ALIGN_VAR_16(int8_t, inputSigns[128]);
+    for (int i = 0; i < 128; i++)
+        inputSigns[i] = (int8_t)(i % 3 - 1);
+    for (int i = 0; i < 5; i++)
+        offsets[i] *= 1 << X265_MAX(0, X265_DEPTH - 10);
+
+    for (int trim = 0; trim <= (optE2 ? 2 : 1); trim++)
+    {
+        int end = ctuWidth - trim;
+        for (int start = 0; start <= (optE2 ? 0 : 1); start++)
+        {
+            for (size_t i = 0; i < refPixels.pageSize / sizeof(pixel); i++)
+                reinterpret_cast<pixel*>(refPixels.data)[i] = reinterpret_cast<pixel*>(optPixels.data)[i] = (pixel)((i * 71 + 3) & PIXEL_MAX);
+            for (size_t i = 0; i < refSigns.pageSize; i++)
+                reinterpret_cast<int8_t*>(refSigns.data)[i] = reinterpret_cast<int8_t*>(optSigns.data)[i] = (int8_t)(i % 3) - 1;
+
+            pixel* refRec = reinterpret_cast<pixel*>(refPixels.data + refPixels.pageSize) - end;
+            pixel* optRec = reinterpret_cast<pixel*>(optPixels.data + optPixels.pageSize) - end;
+            int signCount = optE2 ? end + 1 : end - 1;
+            int8_t* refSign = reinterpret_cast<int8_t*>(refSigns.data + refSigns.pageSize) - signCount;
+            int8_t* optSign = reinterpret_cast<int8_t*>(optSigns.data + optSigns.pageSize) - signCount;
+            if (optE2)
+            {
+                refE2(refRec, refSign, inputSigns, offsets, end, 128);
+                optE2(optRec, optSign, inputSigns, offsets, end, 128);
+            }
+            else
+            {
+                refE3(refRec, refSign, offsets, 127, start, end);
+                optE3(optRec, optSign, offsets, 127, start, end);
+            }
+            if (memcmp(refPixels.data, optPixels.data, refPixels.pageSize) ||
+                memcmp(refSigns.data, optSigns.data, refSigns.pageSize))
+                return false;
+        }
+    }
+    return true;
+}
+}
+#endif
 
 /* At HIGH_BIT_DEPTH some cu[] slots are aliases: setupAliasPrimitives() installs
  * the same trampoline in both tables, so ref == opt and the check can never fail.
@@ -1231,12 +1348,14 @@ bool PixelHarness::check_saoCuOrgE2_t(saoCuOrgE2_t ref[2], saoCuOrgE2_t opt[2])
             for (int i = 0; i < ITERS; i++)
             {
                 int width = 16 * (1 << (id * (rand() % 2 + 1))) - (rand() % 2);
+                if (id && i % 3 == 0)
+                    width = 48 - (i / 3) % 3;
                 int stride = width + 1;
 
                 ref[width > 16](ref_dest, psbuf1 + j, psbuf2 + j, psbuf3 + j, width, stride);
                 checked(opt[width > 16], opt_dest, psbuf4 + j, psbuf2 + j, psbuf3 + j, width, stride);
 
-                if (memcmp(psbuf1 + j, psbuf4 + j, width * sizeof(int8_t)))
+                if (memcmp(psbuf1, psbuf4, BUFFSIZE))
                     return false;
 
                 if (memcmp(ref_dest, opt_dest, 64 * 64 * sizeof(pixel)))
@@ -1248,6 +1367,11 @@ bool PixelHarness::check_saoCuOrgE2_t(saoCuOrgE2_t ref[2], saoCuOrgE2_t opt[2])
         }
     }
 
+#if X265_ARCH_X86
+    for (int width = 16; width <= 64; width += 16)
+        if (opt[width > 16] && !checkSaoBounds(ref[width > 16], opt[width > 16], NULL, NULL, width))
+            return false;
+#endif
     return true;
 }
 
@@ -1277,8 +1401,88 @@ bool PixelHarness::check_saoCuOrgE3_t(saoCuOrgE3_t ref, saoCuOrgE3_t opt)
         j += INCR;
     }
 
+#if X265_ARCH_X86
+    if (!checkSaoBounds(NULL, NULL, ref, opt, 16))
+        return false;
+#endif
     return true;
 }
+
+#if X265_ARCH_ARM64
+static bool checkSaoStatsTail(const EncoderPrimitives& ref, const EncoderPrimitives& opt)
+{
+    const int widths[] = { 4, 5, 6, 7, 8, 15, 16, 17, 31, 32, 33, 59, 60, 63 };
+    const int heights[] = { 1, 2, 5, 8 };
+    const int8_t padding[] = { -8, 6, 7, -7, -6, 127, -128 };
+    const intptr_t stride = MAX_CU_SIZE + 32;
+    pixel rec[stride * 10] = { 0 };
+    int16_t diff[MAX_CU_SIZE * 8];
+    for (size_t i = 0; i < sizeof(diff) / sizeof(diff[0]); i++)
+        diff[i] = 7;
+
+    for (size_t w = 0; w < sizeof(widths) / sizeof(widths[0]); w++)
+    {
+        for (size_t h = 0; h < sizeof(heights) / sizeof(heights[0]); h++)
+        {
+            for (size_t p = 0; p < sizeof(padding) / sizeof(padding[0]); p++)
+            {
+                for (int direction = 0; direction < 4; direction++)
+                {
+                    int32_t stats_ref[5] = { 1, 2, 3, 4, 5 }, stats_vec[5] = { 1, 2, 3, 4, 5 };
+                    int32_t count_ref[5] = { 5, 4, 3, 2, 1 }, count_vec[5] = { 5, 4, 3, 2, 1 };
+                    int8_t up_ref[MAX_CU_SIZE + 32], up_vec[MAX_CU_SIZE + 32];
+                    int8_t tmp_ref[MAX_CU_SIZE + 32], tmp_vec[MAX_CU_SIZE + 32];
+                    memset(up_ref, padding[p], sizeof(up_ref));
+                    memset(up_ref + 16, 0, widths[w]);
+                    memcpy(up_vec, up_ref, sizeof(up_ref));
+                    memset(tmp_ref, padding[p], sizeof(tmp_ref));
+                    memcpy(tmp_vec, tmp_ref, sizeof(tmp_ref));
+
+                    if (direction == 0 && opt.saoCuStatsE0)
+                    {
+                        ref.saoCuStatsE0(diff, rec + 16, stride, widths[w], heights[h], stats_ref, count_ref);
+                        opt.saoCuStatsE0(diff, rec + 16, stride, widths[w], heights[h], stats_vec, count_vec);
+                    }
+                    else if (direction == 1 && opt.saoCuStatsE1)
+                    {
+                        ref.saoCuStatsE1(diff, rec + 16, stride, up_ref + 16,
+                                        widths[w], heights[h], stats_ref, count_ref);
+                        opt.saoCuStatsE1(diff, rec + 16, stride, up_vec + 16,
+                                        widths[w], heights[h], stats_vec, count_vec);
+                    }
+                    else if (direction == 2 && opt.saoCuStatsE2)
+                    {
+                        ref.saoCuStatsE2(diff, rec + 16, stride, up_ref + 16, tmp_ref + 16,
+                                        widths[w], heights[h], stats_ref, count_ref);
+                        opt.saoCuStatsE2(diff, rec + 16, stride, up_vec + 16, tmp_vec + 16,
+                                        widths[w], heights[h], stats_vec, count_vec);
+                    }
+                    else if (direction == 3 && opt.saoCuStatsE3)
+                    {
+                        ref.saoCuStatsE3(diff, rec + 16, stride, up_ref + 16,
+                                        widths[w], heights[h], stats_ref, count_ref);
+                        opt.saoCuStatsE3(diff, rec + 16, stride, up_vec + 16,
+                                        widths[w], heights[h], stats_vec, count_vec);
+                    }
+
+                    for (int edge = 0; edge < 5; edge++)
+                    {
+                        if (stats_ref[edge] != stats_vec[edge] || count_ref[edge] != count_vec[edge])
+                        {
+                            printf("saoCuStatsE%d tail failed: %dx%d, padding=%d, edge=%d, "
+                                   "stats=%d/%d, count=%d/%d (ref/opt)\n",
+                                   direction, widths[w], heights[h], padding[p], edge,
+                                   stats_ref[edge], stats_vec[edge], count_ref[edge], count_vec[edge]);
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return true;
+}
+#endif
 
 bool PixelHarness::check_saoCuStatsBO_t(saoCuStatsBO_t ref, saoCuStatsBO_t opt)
 {
@@ -1502,7 +1706,14 @@ bool PixelHarness::check_saoCuOrgE3_32_t(saoCuOrgE3_t ref, saoCuOrgE3_t opt)
     {
         int stride = 32 * (rand() % 2 + 1);
         int start = rand() % 2;
-        int end = (32 * (rand() % 2 + 1)) - rand() % 2;
+        int end = 32 * (rand() % 2 + 1) - rand() % 2;
+        if (i % 3 == 0)
+        {
+            end = 48 - (i / 3) % 2;
+            start = (i / 6) % 2;
+        }
+        if (end > stride)
+            stride = 64;
 
         ref(ref_dest, psbuf2 + j, psbuf1 + j, stride, start, end);
         checked(opt, opt_dest, psbuf5 + j, psbuf1 + j, stride, start, end);
@@ -1514,6 +1725,11 @@ bool PixelHarness::check_saoCuOrgE3_32_t(saoCuOrgE3_t ref, saoCuOrgE3_t opt)
         j += INCR;
     }
 
+#if X265_ARCH_X86
+    for (int width = 32; width <= 64; width += 16)
+        if (!checkSaoBounds(NULL, NULL, ref, opt, width))
+            return false;
+#endif
     return true;
 }
 
@@ -2715,6 +2931,26 @@ bool PixelHarness::testCorrectness(const EncoderPrimitives& ref, const EncoderPr
 
         if (opt.cu[i].psy_cost_pp)
         {
+            if (i == BLOCK_4x4)
+            {
+                ALIGN_VAR_16(pixel, highContrast[16]) =
+                {
+                    PIXEL_MAX, 0, PIXEL_MAX, 0,
+                    0, 0, 0, 0,
+                    0, 0, PIXEL_MAX, PIXEL_MAX,
+                    0, PIXEL_MAX, PIXEL_MAX, 0
+                };
+                ALIGN_VAR_16(pixel, zero[16]) = { 0 };
+                const intptr_t stride = 4;
+                int refCost = ref.cu[i].psy_cost_pp(highContrast, stride, zero, stride);
+                int optCost = (int)checked(opt.cu[i].psy_cost_pp, highContrast, stride, zero, stride);
+                if (refCost != optCost)
+                {
+                    printf("psy_cost_pp[4x4] high-contrast failed: ref=%d opt=%d\n", refCost, optCost);
+                    return false;
+                }
+                reportfail();
+            }
             if (!check_psyCost_pp(ref.cu[i].psy_cost_pp, opt.cu[i].psy_cost_pp))
             {
                 printf("\npsy_cost_pp[%dx%d] failed!\n", 4 << i, 4 << i);
@@ -2974,6 +3210,11 @@ bool PixelHarness::testCorrectness(const EncoderPrimitives& ref, const EncoderPr
             return false;
         }
     }
+
+#if X265_ARCH_ARM64
+    if (!checkSaoStatsTail(ref, opt))
+        return false;
+#endif
 
     if (opt.saoCuStatsBO)
     {

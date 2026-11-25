@@ -36,8 +36,10 @@ namespace X265_NS {
 // private namespace
 
 struct Lowres;
+struct BPyramidNode;
 class Frame;
 class Lookahead;
+class CostEstimateGroup;
 
 #define LOWRES_COST_MASK  ((1 << 14) - 1)
 #define LOWRES_COST_SHIFT 14
@@ -150,6 +152,19 @@ protected:
     bool     allocWeightedRef(Lowres& fenc);
 };
 
+#define X265_COOP_SLICE_SIZE 64
+
+struct CoopSlice
+{
+    int costEst;
+    int costEstAq;
+    int intraMbs;
+#if X265_ENABLE_COOPSLICE_FALSE_SHARING_REDUCTION
+    // x265_malloc aligns the array base; padding keeps each slice on its own cache line.
+    char padding[X265_COOP_SLICE_SIZE - 3 * sizeof(int)];
+#endif
+};
+
 class Lookahead : public JobProvider
 {
 public:
@@ -169,7 +184,8 @@ public:
 
     /* pre-lookahead */
     int           m_fullQueueSize;
-    int           m_lastKeyframe;
+    int64_t       m_lastKeyframe;
+    int           m_lastKeyframeNum;
     int           m_8x8Width;
     int           m_8x8Height;
     int           m_8x8Blocks;
@@ -211,7 +227,15 @@ public:
     OrigPicBuffer*          m_origPicBuf;
     MotionEstimatorTLD*     m_metld;
 
-    Lookahead(x265_param *param, ThreadPool *pool);
+    SPS            *m_sps;           /* for maximum picture re-ordering setting */
+    uint32_t        m_cpbDelay;      /* latest cpb delay in lookahead (ticks) */
+    int64_t         m_codedPicCount; /* latest coded picture count in lookahead (ticks) */
+
+#if X265_ENABLE_COOPSLICE_FALSE_SHARING_REDUCTION
+    CoopSlice*              m_coopSlices;
+#endif
+
+    Lookahead(x265_param *param, ThreadPool *pool, SPS* sps);
 #if DETAILED_CU_STATS
     int64_t       m_slicetypeDecideElapsedTime;
     int64_t       m_preLookaheadElapsedTime;
@@ -257,13 +281,23 @@ protected:
 
     void    slicetypePath(Lowres **frames, int length, char(*best_paths)[X265_LOOKAHEAD_MAX + 1]);
     int64_t slicetypePathCost(Lowres **frames, char *path, int64_t threshold);
+    int64_t slicetypePathCostBPyramid(Lowres **frames, int cur_p, int next_p, int64_t threshold);
+
+    void    calculateDurations(Frame *frame, Frame *prevFrame);
+    void    setDurationsToLowres(Frame *frame);
+
     int64_t vbvFrameCost(Lowres **frames, int p0, int p1, int b);
     void    vbvLookahead(Lowres **frames, int numFrames, int keyframes);
     void    aqMotion(Lowres **frames, bool bintra);
+    void    aqMotionBPyramid(Lowres **frames, CostEstimateGroup& estGroup, int p0, int p1);
     void    calcMotionAdaptiveQuantFrame(Lowres **frames, int p0, int p1, int b);
     /* called by slicetypeAnalyse() to effect cuTree adjustments to adaptive
      * quant offsets */
     void    cuTree(Lowres **frames, int numframes, bool bintra);
+    void    cuTreeBPyramid(Lowres **frames, CostEstimateGroup& estGroup, double averageDuration, int p0, int p1);
+    void    cuTreePropagateBPyramid(Lowres **frames, CostEstimateGroup& estGroup, double averageDuration,
+                                    const BPyramidNode* plan, int first, int end);
+    void    cuTreeFinishBPyramid(Lowres **frames, double averageDuration, int p0, int p1);
     void    estimateCUPropagate(Lowres **frames, double average_duration, int p0, int p1, int b, int referenced);
     void    cuTreeFinish(Lowres *frame, double averageDuration, int ref0Distance);
     void    computeCUTreeQpOffset(Lowres *frame, double averageDuration, int ref0Distance);
@@ -273,6 +307,9 @@ protected:
     /*Compute index for positioning B-Ref frames*/
     void     placeBref(Frame** frames, int start, int end, int num, int *brefs);
     void     compCostBref(Lowres **frame, int start, int end, int num);
+    /*Hierarchical B-pyramid used when the mini-GOP is not defined by temporal sub-layers*/
+    void     placeHierarchicalBref(Frame** list, int bframes, int *brefs);
+    void     compCostHierarchicalBref(Lowres **frames, int p0, int p1, bool bP0Avail);
 };
 
 class PreLookaheadGroup : public BondedTaskGroup
@@ -299,7 +336,14 @@ public:
     Lowres**   m_frames;
     bool       m_batchMode;
 
-    CostEstimateGroup(Lookahead& l, Lowres** f) : m_lookahead(l), m_frames(f), m_batchMode(false) {}
+    // add()/addRow() fill m_estimates before use; estimateFrameCost() sets m_coop
+    // and clears the active m_slice entries before publishing cooperative jobs.
+    // cppcheck-suppress uninitMemberVar
+    CostEstimateGroup(Lookahead& l, Lowres** f) : m_lookahead(l), m_frames(f), m_batchMode(false)
+#if X265_ENABLE_COOPSLICE_FALSE_SHARING_REDUCTION
+        , m_slice(l.m_coopSlices)
+#endif
+    {}
 
     /* Cooperative cost estimate using multiple slices of downscaled frame */
     struct Coop
@@ -309,12 +353,11 @@ public:
     } m_coop;
 
     enum { MAX_COOP_SLICES = 32 };
-    struct Slice
-    {
-        int  costEst;
-        int  costEstAq;
-        int  intraMbs;
-    } m_slice[MAX_COOP_SLICES];
+#if X265_ENABLE_COOPSLICE_FALSE_SHARING_REDUCTION
+    CoopSlice* m_slice; // borrowed from Lookahead; valid until lookahead jobs stop
+#else
+    CoopSlice m_slice[MAX_COOP_SLICES];
+#endif
 
     int64_t singleCost(int p0, int p1, int b, bool intraPenalty = false);
 

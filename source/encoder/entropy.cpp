@@ -923,8 +923,20 @@ void Entropy::codeHrdParameters(const HRDInfo& hrd, int maxSubTLayers)
 
     for (int i = 0; i < maxSubTLayers; i++)
     {
-        WRITE_FLAG(1, "fixed_pic_rate_general_flag");
-        WRITE_UVLC(0, "elemental_duration_in_tc_minus1");
+        /* Only the highest sub-layer is guaranteed to output one picture per
+         * ClockTick (E-76 normalises pic_struct durations by DeltaToDivisor).
+         * Lower sub-layers follow the miniGOP structure, which keyframes,
+         * lookahead decisions and the end of the stream can shorten, so no
+         * fixed picture rate is signalled for them. */
+        bool bFixedPicRate = (i == maxSubTLayers - 1);
+        WRITE_FLAG(bFixedPicRate, "fixed_pic_rate_general_flag");
+        if (bFixedPicRate)
+            WRITE_UVLC(0, "elemental_duration_in_tc_minus1");
+        else
+        {
+            WRITE_FLAG(0, "fixed_pic_rate_within_cvs_flag");
+            WRITE_FLAG(0, "low_delay_hrd_flag");
+        }
         WRITE_UVLC(0, "cpb_cnt_minus1");
 
         WRITE_UVLC(hrd.bitRateValue - 1, "bit_rate_value_minus1");
@@ -1377,17 +1389,17 @@ void Entropy::encodeTransform(const CUData& cu, uint32_t absPartIdx, uint32_t cu
     }
 
     uint32_t absPartIdxC = bSmallChroma ? absPartIdx & 0xFC : absPartIdx;
+    uint32_t cbfY = cu.getCbf(absPartIdx, TEXT_LUMA, curDepth);
+    uint32_t cbfU = cu.getCbf(absPartIdxC, TEXT_CHROMA_U, curDepth);
+    uint32_t cbfV = cu.getCbf(absPartIdxC, TEXT_CHROMA_V, curDepth);
 
-    if (cu.isInter(absPartIdxC) && !curDepth && !cu.getCbf(absPartIdxC, TEXT_CHROMA_U, 0) && !cu.getCbf(absPartIdxC, TEXT_CHROMA_V, 0))
+    if (cu.isInter(absPartIdxC) && !curDepth && !cbfU && !cbfV)
     {
         X265_CHECK(cu.getCbf(absPartIdxC, TEXT_LUMA, 0), "CBF should have been set\n");
     }
     else
-        codeQtCbfLuma(cu.getCbf(absPartIdx, TEXT_LUMA, curDepth), curDepth);
+        codeQtCbfLuma(cbfY, curDepth);
 
-    uint32_t cbfY = cu.getCbf(absPartIdx, TEXT_LUMA, curDepth);
-    uint32_t cbfU = cu.getCbf(absPartIdxC, TEXT_CHROMA_U, curDepth);
-    uint32_t cbfV = cu.getCbf(absPartIdxC, TEXT_CHROMA_V, curDepth);
     if (!(cbfY || cbfU || cbfV))
         return;
 
@@ -1601,9 +1613,10 @@ void Entropy::codeCoeff(const CUData& cu, uint32_t absPartIdx, bool& bCodeDQP, c
 {
     if (!cu.isIntra(absPartIdx))
     {
+        bool rootCbf = cu.getQtRootCbf(absPartIdx);
         if (!(cu.m_mergeFlag[absPartIdx] && cu.m_partSize[absPartIdx] == SIZE_2Nx2N))
-            codeQtRootCbf(cu.getQtRootCbf(absPartIdx));
-        if (!cu.getQtRootCbf(absPartIdx))
+            codeQtRootCbf(rootCbf);
+        if (!rootCbf)
             return;
     }
 

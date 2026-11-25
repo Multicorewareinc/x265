@@ -113,11 +113,57 @@ if(_mode STREQUAL "mri")
         message(FATAL_ERROR "Failed to merge static archives with ${_archiver}: ${_result}")
     endif()
 elseif(_mode STREQUAL "msvc")
-    set(_command "/NOLOGO" "/OUT:${_work}/${_out_name}")
+    # lib.exe combines archives but keeps their identically-named members.
+    # The linker then reports LNK4255 and can intermittently fail with
+    # LNK1236 when it selects one of those duplicate members. Extract every
+    # object under an input-specific prefix and create an archive whose
+    # member names are all unique.
+    set(_msvc_objects "")
     foreach(_input IN LISTS _inputs)
-        list(APPEND _command "${_work}/${_input}")
+        get_filename_component(_input_prefix "${_input}" NAME_WE)
+        execute_process(
+            COMMAND "${_archiver}" /NOLOGO /LIST "${_work}/${_input}"
+            OUTPUT_VARIABLE _msvc_members_raw
+            RESULT_VARIABLE _result)
+        if(NOT _result EQUAL 0)
+            message(FATAL_ERROR "Failed to list ${_input} with ${_archiver}: ${_result}")
+        endif()
+        string(REPLACE "\\" "/" _msvc_members_raw "${_msvc_members_raw}")
+        string(REGEX MATCHALL "[^\r\n]+" _msvc_members "${_msvc_members_raw}")
+        foreach(_member IN LISTS _msvc_members)
+            # Visual Studio archives can list absolute object paths, so the
+            # original member name is only used for extraction. Give the
+            # extracted file a short hash-based name to keep it relative,
+            # unique and within normal Windows path limits.
+            string(SHA256 _member_hash "${_input}:${_member}")
+            get_filename_component(_member_name "${_member}" NAME)
+            set(_object "${_input_prefix}/${_member_hash}-${_member_name}")
+            get_filename_component(_object_dir "${_work}/${_object}" DIRECTORY)
+            file(MAKE_DIRECTORY "${_object_dir}")
+            string(REPLACE "/" "\\" _member_native "${_member}")
+            file(TO_NATIVE_PATH "${_work}/${_object}" _object_native)
+            execute_process(
+                COMMAND "${_archiver}" /NOLOGO
+                        "/EXTRACT:${_member_native}" "/OUT:${_object_native}"
+                        "${_work}/${_input}"
+                RESULT_VARIABLE _result)
+            if(NOT _result EQUAL 0)
+                message(FATAL_ERROR "Failed to extract ${_member} from ${_input} with ${_archiver}: ${_result}")
+            endif()
+            if(NOT EXISTS "${_work}/${_object}")
+                message(FATAL_ERROR "${_archiver} did not extract ${_member} from ${_input}")
+            endif()
+            string(REPLACE "/" "\\" _object_response "${_object}")
+            list(APPEND _msvc_objects "\"${_object_response}\"")
+        endforeach()
     endforeach()
-    execute_process(COMMAND "${_archiver}" ${_command} WORKING_DIRECTORY "${_work}" RESULT_VARIABLE _result)
+    string(REPLACE ";" "\n" _msvc_response "${_msvc_objects}")
+    file(WRITE "${_work}/objects.rsp" "${_msvc_response}\n")
+    execute_process(
+        COMMAND "${_archiver}" /NOLOGO "/OUT:${_work}/${_out_name}"
+                "@${_work}/objects.rsp"
+        WORKING_DIRECTORY "${_work}"
+        RESULT_VARIABLE _result)
     if(NOT _result EQUAL 0)
         message(FATAL_ERROR "Failed to merge static archives with ${_archiver}: ${_result}")
     endif()

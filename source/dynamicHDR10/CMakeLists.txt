@@ -10,7 +10,7 @@ add_library(dynamicHDR10 OBJECT
     hdr10plus.h
     api.cpp )
 
-cmake_minimum_required (VERSION 2.8.11...3.26)
+cmake_minimum_required (VERSION 3.10...3.26)
 project(dynamicHDR10)
 include(CheckIncludeFiles)
 include(CheckFunctionExists)
@@ -22,7 +22,6 @@ SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake" "${CMAKE_MODULE_PATH}")
 if(GCC)
     add_definitions(-Wall -Wextra -Wshadow)
     add_definitions(-D__STDC_LIMIT_MACROS=1)
-    add_definitions(-std=c++11)
     if(ENABLE_PIC)
          add_definitions(-fPIC)
     endif(ENABLE_PIC)

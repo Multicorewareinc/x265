@@ -198,6 +198,7 @@ void x265_param_default(x265_param* param)
     param->lookaheadDepth = 20;
     param->bFrameAdaptive = X265_B_ADAPT_TRELLIS;
     param->bBPyramid = 1;
+    param->bPyramidQpScale = 1.0;
     param->scenecutThreshold = 40; /* Magic number pulled in from x264 */
     param->bHistBasedSceneCut = 0;
     param->lookaheadSlices = 8;
@@ -399,13 +400,19 @@ void x265_param_default(x265_param* param)
     param->maxAUSizeFactor = 1;
     param->naluFile[0] = 0;
 
+    /* ML CTU partition prediction */
+    param->bEnableMLCTUPred = 0;
+    param->mlModelDir[0] = 0;
+
     /* DCT Approximations */
     param->bLowPassDct = 0;
     param->bAnalysisType = 0;
     param->bSingleSeiNal = 0;
+    param->bUserSEIRaw = 0;
 
     /* SEI messages */
     param->preferredTransferCharacteristics = -1;
+    param->framePacking = -1;
     param->pictureStructure = -1;
     param->bEmitCLL = 1;
 
@@ -784,7 +791,6 @@ int x265_scenecut_aware_qp_param_parse(x265_param* p, const char* name, const ch
     return bError ? X265_PARAM_BAD_VALUE : 0;
 }
 
-
 /* internal versions of string-to-int with additional error checking */
 #undef atoi
 #undef atof
@@ -1015,22 +1021,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     }
     OPT("fps")
     {
-        if (sscanf(value, "%u/%u", &p->fpsNum, &p->fpsDenom) == 2)
-            ;
-        else
-        {
-            float fps = (float)atof(value);
-            if (fps > 0 && fps <= INT_MAX / 1000)
-            {
-                p->fpsNum = (int)(fps * 1000 + .5);
-                p->fpsDenom = 1000;
-            }
-            else
-            {
-                p->fpsNum = atoi(value);
-                p->fpsDenom = 1;
-            }
-        }
+        x265_parse_fps(value, p->fpsNum, p->fpsDenom, bError);
     }
     OPT("frame-threads") p->frameNumThreads = atoi(value);
     OPT("pmode") p->bDistributeModeAnalysis = atobool(value);
@@ -1188,7 +1179,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     OPT("hash") p->decodedPictureHashSEI = atoi(value);
     OPT("aud") p->bEnableAccessUnitDelimiters = atobool(value);
     OPT("info") p->bEmitInfoSEI = atobool(value);
-    OPT("b-pyramid") p->bBPyramid = atobool(value);
+    OPT("b-pyramid") p->bBPyramid = atoi(value);
     OPT("hrd") p->bEmitHRDSEI = atobool(value);
     OPT2("ipratio", "ip-factor") p->rc.ipFactor = atof(value);
     OPT2("pbratio", "pb-factor") p->rc.pbFactor = atof(value);
@@ -1350,6 +1341,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     {
         if (0) ;
         OPT("csv") snprintf(p->csvfn, X265_MAX_STRING_SIZE, "%s", value);
+        OPT("b-pyramid-qp-scale") p->bPyramidQpScale = atof(value);
         OPT("csv-log-level") p->csvLogLevel = atoi(value);
         OPT("qpmin") p->rc.qpMin = atoi(value);
         OPT("analyze-src-pics") p->bSourceReferenceEstimation = atobool(value);
@@ -1434,8 +1426,10 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
         OPT("radl") p->radl = atoi(value);
         OPT("max-ausize-factor") p->maxAUSizeFactor = atof(value);
         OPT("dynamic-refine") p->bDynamicRefine = atobool(value);
+        OPT("sei-udu-raw") p->bUserSEIRaw = atobool(value);
         OPT("single-sei") p->bSingleSeiNal = atobool(value);
         OPT("atc-sei") p->preferredTransferCharacteristics = atoi(value);
+        OPT("frame-packing") p->framePacking = atoi(value);
         OPT("pic-struct") p->pictureStructure = atoi(value);
         OPT("chunk-start") p->chunkStart = atoi(value);
         OPT("chunk-end") p->chunkEnd = atoi(value);
@@ -1567,6 +1561,8 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
         OPT("fovea-delta") p->foveaDelta = (float)atof(value);
         OPT("fovea-sigma") p->foveaSigma = (float)atof(value);
         OPT("fovea-gaze-file") p->foveaGazeFile = strdup(value);
+        OPT("ml-ctu-pred") p->bEnableMLCTUPred = atobool(value);
+        OPT("ml-model-dir") snprintf(p->mlModelDir, X265_MAX_STRING_SIZE, "%s", value);
         else
             return X265_PARAM_BAD_NAME;
     }
@@ -1603,6 +1599,28 @@ double x265_atof(const char* str, bool& bError)
         bError = true;
     return v;
 }
+
+void x265_parse_fps(const char *v, uint32_t& num, uint32_t& denom, bool& bError)
+{
+    if (sscanf(v, "%u/%u", &num, &denom) == 2 && num > 0 && denom > 0);
+    else
+    {
+        float fps = (float)x265_atof(v, bError);
+        if (fps > 0 && fps <= INT_MAX / 1000)
+        {
+            num = (int)(fps * 1000 + .5);
+            denom = 1000;
+        }
+        else
+        {
+            num = x265_atoi(v, bError);
+            denom = 1;
+        }
+    }
+    if (!bError)
+        bError = (num == 0 || denom == 0);
+}
+
 
 /* cpu name can be:
  *   auto || true - x265::cpu_detect()
@@ -1880,6 +1898,8 @@ int x265_check_params(x265_param* param)
           "Valid quality based range: -qpBDOffsetY to 51");
     CHECK(param->bFrameAdaptive < 0 || param->bFrameAdaptive > 2,
           "Valid adaptive b scheduling values 0 - none, 1 - fast, 2 - full");
+    CHECK(param->bBPyramid < X265_B_PYRAMID_NONE || param->bBPyramid > X265_B_PYRAMID_HIERARCHICAL,
+          "Valid b-pyramid values 0 - none, 1 - normal, 2 - hierarchical");
     CHECK(param->logLevel<-1 || param->logLevel> X265_LOG_FULL,
           "Valid Logging level -1:none 0:error 1:warning 2:info 3:debug 4:full");
     CHECK(param->scenecutThreshold < 0,
@@ -1919,6 +1939,8 @@ int x265_check_params(x265_param* param)
           "Target bitrate can not be less than zero");
     CHECK(param->rc.qCompress < 0.5 || param->rc.qCompress > 1.0,
           "qCompress must be between 0.5 and 1.0");
+    CHECK(param->bPyramidQpScale < 0 || param->bPyramidQpScale > 2.0,
+          "b-pyramid-qp-scale must be between 0 and 2");
     if (param->noiseReductionIntra)
         CHECK(0 > param->noiseReductionIntra || param->noiseReductionIntra > 2000, "Valid noise reduction range 0 - 2000");
     if (param->noiseReductionInter)
@@ -1961,11 +1983,6 @@ int x265_check_params(x265_param* param)
         CHECK((param->internalCsp != X265_CSP_I420), "Dolby Vision profile - 5, profile - 8.1, profile - 8.2 and profile - 8.4 requires YCbCr 4:2:0 color space\n");
         if (param->dolbyProfile == 81)
             CHECK(param->masteringDisplayColorVolume[0] == 0, "Dolby Vision profile - 8.1 requires Mastering display color volume information\n");
-    }
-    if (param->bField && param->interlaceMode)
-    {
-        CHECK( (param->bFrameAdaptive==0), "Adaptive B-frame decision method should be closed for field feature.\n" );
-        // to do
     }
     CHECK(param->selectiveSAO < 0 || param->selectiveSAO > 4,
         "Invalid SAO tune level. Value must be between 0 and 4 (inclusive)");
@@ -2024,6 +2041,7 @@ int x265_check_params(x265_param* param)
                      || param->bEmitIDRRecoverySEI
                    || !!param->interlaceMode
                      || param->preferredTransferCharacteristics > 1
+                     || param->framePacking > -1
                      || strlen(param->toneMapFile)
                      || strlen(param->naluFile));
 
@@ -2032,6 +2050,10 @@ int x265_check_params(x265_param* param)
         param->bSingleSeiNal = 0;
         x265_log(param, X265_LOG_WARNING, "None of the SEI messages are enabled. Disabling Single SEI NAL\n");
     }
+    CHECK(param->framePacking != -1 && (param->framePacking < 3 || param->framePacking > 5),
+          "Frame packing arrangement type must be 3 (side by side), 4 (top and bottom) or 5 (temporal interleaving)");
+    CHECK(param->framePacking != -1 && param->numViews > 1,
+          "Frame packing arrangement SEI cannot be used with multi-view encoding, each layer is a full view");
     CHECK(param->confWinRightOffset < 0, "Conformance Window Right Offset must be 0 or greater");
     CHECK(param->confWinBottomOffset < 0, "Conformance Window Bottom Offset must be 0 or greater");
     CHECK(param->decoderVbvMaxRate < 0, "Invalid Decoder Vbv Maxrate. Value can not be less than zero");
@@ -2235,6 +2257,11 @@ void x265_print_params(x265_param* param)
     TOOLOPT(param->bEnableConstrainedIntra, "cip");
     TOOLOPT(param->bIntraInBFrames, "b-intra");
     TOOLOPT(param->bEnableFastIntra, "fast-intra");
+    if (param->bBPyramid == X265_B_PYRAMID_HIERARCHICAL && param->bPyramidQpScale != 1.0)
+    {
+        snprintf(tmp, sizeof(tmp), "b-pyramid-qp-scale=%.2f", param->bPyramidQpScale);
+        appendtool(param, buf, sizeof(buf), tmp);
+    }
     TOOLOPT(param->bEnableStrongIntraSmoothing, "strong-intra-smoothing");
     TOOLVAL(param->lookaheadSlices, "lslices=%d");
     TOOLVAL(param->lookaheadThreads, "lthreads=%d")
@@ -2272,7 +2299,7 @@ void x265_print_params(x265_param* param)
     TOOLOPT(param->numViews > 1, "multi-view");
 #endif
 #if ENABLE_HDR10_PLUS
-    TOOLOPT(param->toneMapFile != NULL, "dhdr10-info");
+    TOOLOPT(strlen(param->toneMapFile), "dhdr10-info");
 #endif
     if(param->bEnableTemporalFilter)
     {
@@ -2343,7 +2370,14 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     s += snprintf(s, bufSize - (s - buf), " gop-lookahead=%d", p->gopLookahead);
     s += snprintf(s, bufSize - (s - buf), " bframes=%d", p->bframes);
     s += snprintf(s, bufSize - (s - buf), " b-adapt=%d", p->bFrameAdaptive);
-    BOOL(p->bBPyramid, "b-pyramid");
+    /* 0 and 1 keep the boolean form of the earlier option */
+    if (p->bBPyramid == X265_B_PYRAMID_HIERARCHICAL)
+    {
+        s += snprintf(s, bufSize - (s - buf), " b-pyramid=%d", p->bBPyramid);
+        s += snprintf(s, bufSize - (s - buf), " b-pyramid-qp-scale=%.2f", p->bPyramidQpScale);
+    }
+    else
+        BOOL(p->bBPyramid, "b-pyramid");
     s += snprintf(s, bufSize - (s - buf), " bframe-bias=%d", p->bFrameBias);
     s += snprintf(s, bufSize - (s - buf), " rc-lookahead=%d", p->lookaheadDepth);
     s += snprintf(s, bufSize - (s - buf), " lookahead-slices=%d", p->lookaheadSlices);
@@ -2404,6 +2438,7 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     BOOL(p->bEnableTSkipFast, "tskip-fast");
     BOOL(p->bCULossless, "cu-lossless");
     BOOL(p->bIntraInBFrames, "b-intra");
+    BOOL(p->bEnableMLCTUPred, "ml-ctu-pred");
     BOOL(p->bEnableSplitRdSkip, "splitrd-skip");
     s += snprintf(s, bufSize - (s - buf), " rdpenalty=%d", p->rdPenalty);
     s += snprintf(s, bufSize - (s - buf), " psy-rd=%.2f", p->psyRd);
@@ -2508,6 +2543,8 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     BOOL(p->bHDR10Opt, "hdr10-opt");
     BOOL(p->bDhdr10opt, "dhdr10-opt");
     BOOL(p->bEmitIDRRecoverySEI, "idr-recovery-sei");
+    if (p->framePacking > -1)
+        s += snprintf(s, bufSize - (s - buf), " frame-packing=%d", p->framePacking);
     if (strlen(p->analysisSave))
         s += snprintf(s, bufSize - (s - buf), " analysis-save");
     if (strlen(p->analysisLoad))
@@ -2526,6 +2563,7 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     s += snprintf(s, bufSize - (s - buf), " refine-analysis-type=%d", p->bAnalysisType);
     s += snprintf(s, bufSize - (s - buf), " copy-pic=%d", p->bCopyPicToFrame);
     s += snprintf(s, bufSize - (s - buf), " max-ausize-factor=%.1f", p->maxAUSizeFactor);
+    BOOL(p->bUserSEIRaw, "sei-udu-raw");
     BOOL(p->bDynamicRefine, "dynamic-refine");
     BOOL(p->bSingleSeiNal, "single-sei");
     BOOL(p->rc.hevcAq, "hevc-aq");
@@ -2829,6 +2867,7 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->bFrameAdaptive = src->bFrameAdaptive;
     dst->bFrameBias = src->bFrameBias;
     dst->bBPyramid = src->bBPyramid;
+    dst->bPyramidQpScale = src->bPyramidQpScale;
     dst->lookaheadDepth = src->lookaheadDepth;
     dst->lookaheadSlices = src->lookaheadSlices;
     dst->lookaheadThreads = src->lookaheadThreads;
@@ -2897,6 +2936,7 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->cbQpOffset = src->cbQpOffset;
     dst->crQpOffset = src->crQpOffset;
     dst->preferredTransferCharacteristics = src->preferredTransferCharacteristics;
+    dst->framePacking = src->framePacking;
     dst->pictureStructure = src->pictureStructure;
 
     dst->rc.rateControlMode = src->rc.rateControlMode;
@@ -3042,6 +3082,8 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->vbvBufferEnd = src->vbvBufferEnd;
     dst->vbvEndFrameAdjust = src->vbvEndFrameAdjust;
     dst->bAnalysisType = src->bAnalysisType;
+    dst->bEnableMLCTUPred = src->bEnableMLCTUPred;
+    snprintf(dst->mlModelDir, X265_MAX_STRING_SIZE, "%s", src->mlModelDir);
     dst->bCopyPicToFrame = src->bCopyPicToFrame;
     if (strlen(src->analysisSave)) snprintf(dst->analysisSave, X265_MAX_STRING_SIZE, "%s", src->analysisSave);
     else dst->analysisSave[0] = 0;
@@ -3051,6 +3093,7 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->radl = src->radl;
     dst->selectiveSAO = src->selectiveSAO;
     dst->maxAUSizeFactor = src->maxAUSizeFactor;
+    dst->bUserSEIRaw = src->bUserSEIRaw;
     dst->bEmitIDRRecoverySEI = src->bEmitIDRRecoverySEI;
     dst->bDynamicRefine = src->bDynamicRefine;
     dst->bSingleSeiNal = src->bSingleSeiNal;

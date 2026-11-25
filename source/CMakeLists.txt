@@ -11,7 +11,7 @@ if(POLICY CMP0042)
     cmake_policy(SET CMP0042 NEW) # MACOSX_RPATH
 endif()
 
-cmake_minimum_required (VERSION 2.8.8...3.10) # OBJECT libraries require 2.8.8
+cmake_minimum_required (VERSION 3.10)
 
 if (POLICY CMP0075)
     cmake_policy(SET CMP0075 NEW) # CMAKE_REQUIRED_LIBRARIES warning
@@ -19,6 +19,12 @@ endif()
 
 
 project (x265)
+
+# x265 is built as C++17 (CMake adds -std=c++17 / /std:c++17 for each compiler)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 include(CheckIncludeFiles)
 include(CheckFunctionExists)
 include(CheckSymbolExists)
@@ -32,7 +38,7 @@ option(NATIVE_BUILD "Target the build CPU" OFF)
 option(STATIC_LINK_CRT "Statically link C and C++ runtimes for release builds" OFF)
 mark_as_advanced(FPROFILE_USE FPROFILE_GENERATE NATIVE_BUILD)
 # X265_BUILD must be incremented each time the public API is changed
-set(X265_BUILD 217)
+set(X265_BUILD 222)
 configure_file("${PROJECT_SOURCE_DIR}/x265.def.in"
                "${PROJECT_BINARY_DIR}/x265.def")
 configure_file("${PROJECT_SOURCE_DIR}/x265_config.h.in"
@@ -147,6 +153,12 @@ else()
     message(STATUS "Please add this value near ${CMAKE_CURRENT_LIST_FILE}:${CMAKE_CURRENT_LIST_LINE}")
 endif()
 
+option(ENABLE_COOPSLICE_FALSE_SHARING_REDUCTION
+    "Align cooperative lookahead slices and retry helper recruitment" ${ARM64})
+if(ENABLE_COOPSLICE_FALSE_SHARING_REDUCTION)
+    add_definitions(-DX265_ENABLE_COOPSLICE_FALSE_SHARING_REDUCTION=1)
+endif()
+
 if(X64)
     option(ENABLE_CET "Enable Control-flow Enforcement" OFF)
     if(ENABLE_CET)
@@ -249,6 +261,10 @@ if(MSVC)
     # disable Microsofts suggestions for proprietary secure APIs
     add_definitions(/D_CRT_SECURE_NO_WARNINGS)
 
+    if(MSVC_VERSION LESS 1914)
+        message(FATAL_ERROR "Visual Studio 2017 15.7 (MSVC 19.14) or newer is required to build x265 with C++17")
+    endif()
+
     check_include_files(stdint.h HAVE_STDINT_H)
     if(NOT HAVE_STDINT_H)
         include_directories(compat/msvc)
@@ -280,27 +296,11 @@ if(CC STREQUAL "xlc")
 endif()
 # this option is to enable the inclusion of dynamic HDR10 library to the libx265 compilation
 option(ENABLE_HDR10_PLUS "Enable dynamic HDR10 compilation" OFF)
-if(MSVC AND (MSVC_VERSION LESS 1800) AND ENABLE_HDR10_PLUS)
-    message(FATAL_ERROR "MSVC version 12.0 or above required to support hdr10plus")
-endif()
-if(WIN32 AND (MSVC_VERSION GREATER 1800))
-    if(CMAKE_VERSION VERSION_LESS 3.7)
-        message(FATAL_ERROR "cmake version not compatible for VS 2017. Update the cmake to versions 3.7 or above")
-    endif()
-endif()
 if(GCC)
     add_definitions(-Wall -Wextra -Wshadow)
     add_definitions(-D__STDC_LIMIT_MACROS=1)
     if(NOT INTEL_CXX AND NOT CLANG AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 8.0)
         add_definitions(-Wno-class-memaccess)
-    endif()
-    if(ENABLE_HDR10_PLUS)
-        if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "4.8")
-            message(FATAL_ERROR "gcc version above 4.8 required to support hdr10plus")
-        endif()
-        add_definitions(-std=gnu++11)
-    else()
-        add_definitions(-std=gnu++98)
     endif()
     if(ENABLE_PIC)
          add_definitions(-fPIC)
@@ -534,6 +534,11 @@ int main() {
         if(CPU_HAS_RVV)
             message(STATUS "Found RVV")
             add_definitions(-DHAVE_RVV=1)
+
+            option(RVV_DCT32_OPT "Enable optimized RVV DCT32" ON)
+            if(RVV_DCT32_OPT)
+                add_definitions(-DHAVE_RVV_DCT32_OPT=1)
+            endif()
 
             set(RVV_INTRINSIC_TEST [[
 #include <riscv_vector.h>
@@ -930,6 +935,55 @@ endif()
 configure_file("${PROJECT_SOURCE_DIR}/x265_config.h.in"
                "${PROJECT_BINARY_DIR}/x265_config.h")
 
+option(ENABLE_MLCTUPRED "Enable ML based CTU Partition Prediction" OFF)
+if(ENABLE_MLCTUPRED)
+    list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+    find_package(ONNXRuntime)
+    if(NOT ONNXRuntime_FOUND)
+        message(FATAL_ERROR "ENABLE_MLCTUPRED requires ONNX Runtime (set ONNXRUNTIME_DIR)")
+    endif()
+    message(STATUS "ML CTU Pred: ONNX Runtime found")
+    message(STATUS "  Include: ${ONNX_INCLUDE_DIR}")
+    message(STATUS "  Library: ${ONNX_LIBRARY}")
+    if(ONNX_RUNTIME_DLLS)
+        message(STATUS "  Runtime: ${ONNX_RUNTIME_DLLS}")
+    endif()
+    add_definitions(-DENABLE_MLCTUPRED)
+    include_directories(SYSTEM ${ONNX_INCLUDE_DIR})
+
+    # Model search order: see MLCTUPredictor::resolveModelDir()
+    file(GLOB ML_MODEL_FILES "${PROJECT_SOURCE_DIR}/models/*.onnx")
+    set(ML_MODEL_INSTALL_DIR share/x265/models CACHE STRING "Install location of the ML CTU prediction models")
+    function(ml_install_full_path out dir)
+        file(TO_CMAKE_PATH "${dir}" dir)
+        if(NOT IS_ABSOLUTE "${dir}")
+            file(TO_CMAKE_PATH "${CMAKE_INSTALL_PREFIX}/${dir}" dir)
+        endif()
+        set(${out} "${dir}" PARENT_SCOPE)
+    endfunction()
+    ml_install_full_path(ML_MODEL_INSTALL_FULL_DIR "${ML_MODEL_INSTALL_DIR}")
+    ml_install_full_path(ML_BIN_INSTALL_FULL_DIR "${BIN_INSTALL_DIR}")
+    ml_install_full_path(ML_LIB_INSTALL_FULL_DIR "${LIB_INSTALL_DIR}")
+    # Relative to the CLI or Windows DLL (bin) and a POSIX shared library (lib)
+    file(RELATIVE_PATH ML_MODEL_REL_BIN_DIR "${ML_BIN_INSTALL_FULL_DIR}" "${ML_MODEL_INSTALL_FULL_DIR}")
+    file(RELATIVE_PATH ML_MODEL_REL_LIB_DIR "${ML_LIB_INSTALL_FULL_DIR}" "${ML_MODEL_INSTALL_FULL_DIR}")
+    set_property(DIRECTORY APPEND PROPERTY COMPILE_DEFINITIONS
+                 X265_ML_MODEL_INSTALL_DIR="${ML_MODEL_INSTALL_FULL_DIR}"
+                 X265_ML_MODEL_REL_BIN_DIR="${ML_MODEL_REL_BIN_DIR}"
+                 X265_ML_MODEL_REL_LIB_DIR="${ML_MODEL_REL_LIB_DIR}")
+    install(FILES ${ML_MODEL_FILES} DESTINATION ${ML_MODEL_INSTALL_DIR})
+    # No rpath on Windows; install the ONNX Runtime DLLs with the binaries
+    if(ONNX_RUNTIME_DLLS)
+        install(FILES ${ONNX_RUNTIME_DLLS} DESTINATION ${BIN_INSTALL_DIR})
+    endif()
+    find_package(Threads REQUIRED)
+    if(NOT MSVC)
+        set(OpenMP_pthread_LIBRARY "pthread" CACHE FILEPATH "pthread library for OpenMP")
+    endif()
+    # Only mlctu.cpp is compiled with OpenMP, see encoder/CMakeLists.txt
+    find_package(OpenMP)
+endif()
+
 # Declared before the multilib logic below, which reads it to decide whether
 # the 10/12-bit archives should be merged into the static library.
 option(ENABLE_SHARED "Build shared library" ON)
@@ -1061,6 +1115,7 @@ if((MSVC_IDE OR XCODE OR GCC) AND ENABLE_ASSEMBLY)
         endforeach()
     elseif(X86)
     # compile X86 arch asm files here
+        include(X265NasmFlags)
         foreach(ASM ${MSVC_ASMS})
             set(ASM_SRC ${CMAKE_CURRENT_SOURCE_DIR}/common/x86/${ASM})
             list(APPEND ASM_SRCS ${ASM_SRC})
@@ -1226,6 +1281,20 @@ if(SVTHEVC_FOUND)
         target_link_libraries(x265-static ${SVT_HEVC_LIBRARY})
     endif()
 endif()
+if(ONNXRuntime_FOUND)
+    if(ENABLE_MULTILIB)
+        list(APPEND _x265_static_interface_libs ${ONNX_LIBRARY})
+    else()
+        target_link_libraries(x265-static ${ONNX_LIBRARY})
+    endif()
+endif()
+if(OpenMP_CXX_FOUND)
+    if(ENABLE_MULTILIB)
+        list(APPEND _x265_static_interface_libs ${OpenMP_CXX_LIBRARIES})
+    else()
+        target_link_libraries(x265-static ${OpenMP_CXX_LIBRARIES})
+    endif()
+endif()
 if(ENABLE_MULTILIB AND _x265_static_interface_libs)
     set_target_properties(x265-multilib-static PROPERTIES
         INTERFACE_LINK_LIBRARIES "${_x265_static_interface_libs}")
@@ -1334,6 +1403,14 @@ if(ENABLE_SHARED)
     if(SVTHEVC_FOUND)
         target_link_libraries(x265-shared ${SVT_HEVC_LIBRARY})
     endif(SVTHEVC_FOUND)
+    if(ONNXRuntime_FOUND)
+        target_link_libraries(x265-shared ${ONNX_LIBRARY})
+        # Keep the ONNX Runtime path in the installed rpath
+        set_target_properties(x265-shared PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
+    endif()
+    if(OpenMP_CXX_FOUND)
+        target_link_libraries(x265-shared ${OpenMP_CXX_LIBRARIES})
+    endif()
     if(MSVC)
         set_target_properties(x265-shared PROPERTIES OUTPUT_NAME libx265)
     else()
@@ -1455,6 +1532,17 @@ if(ENABLE_CLI)
         endif()
     endif()
     set_target_properties(cli PROPERTIES OUTPUT_NAME x265)
+    if(ENABLE_MLCTUPRED)
+        set_target_properties(cli PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
+        # Stage models and ONNX Runtime DLLs to run from the build tree
+        add_custom_command(TARGET cli POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:cli>/models"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ML_MODEL_FILES} "$<TARGET_FILE_DIR:cli>/models")
+        if(ONNX_RUNTIME_DLLS)
+            add_custom_command(TARGET cli POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ONNX_RUNTIME_DLLS} "$<TARGET_FILE_DIR:cli>")
+        endif()
+    endif()
     if(LINKER_OPTIONS)
         # set_target_properties can't do list expansion
         string(REPLACE ";" " " LINKER_OPTION_STR "${LINKER_OPTIONS}")

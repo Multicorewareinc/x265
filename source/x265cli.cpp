@@ -66,7 +66,7 @@ namespace X265_NS {
         H0("\nInput Options:\n");
         H0("   --input <filename>            Raw YUV or Y4M input file name. `-` for stdin\n");
         H1("   --y4m                         Force parsing of input stream as YUV4MPEG2 regardless of file extension\n");
-        H0("   --fps <float|rational>        Source frame rate (float or num/denom), auto-detected if Y4M\n");
+        H0("   --fps <integer|float|num/den> Source frame rate, auto-detected if Y4M. Defines the bitstream timescale.\n");
         H0("   --input-res WxH               Source picture size [w x h], auto-detected if Y4M\n");
         H1("   --input-depth <integer>       Bit-depth of input file. Default 8\n");
         H1("   --input-csp <string>          Chroma subsampling, auto-detected if Y4M\n");
@@ -84,8 +84,8 @@ namespace X265_NS {
         H0("   --nalu-file <filename>        Text file containing SEI messages in the following format : <POC><space><PREFIX><space><NAL UNIT TYPE>/<SEI TYPE><space><SEI Payload>\n");
         H0("-f/--frames <integer>            Maximum number of frames to encode. Default all\n");
         H0("   --seek <integer>              First frame to encode\n");
-        H1("   --[no-]interlace <bff|tff>    Indicate input pictures are interlace fields in temporal order. Default progressive\n");
-        H0("   --[no-]field                  Enable or disable field coding. Default %s\n", OPT(param->bField));
+        H1("   --[no-]interlace <bff|tff>    Input pictures are interlaced fields in temporal order (use --field for interlaced frames). Default progressive\n");
+        H0("   --[no-]field                  Input pictures are interlaced frames. Split each into two fields (use with --interlace). Default %s\n", OPT(param->bField));
         H1("   --dither                      Enable dither if downscaling to 8 bit pixels. Default disabled\n");
         H0("   --[no-]copy-pic               Copy buffers of input picture in the frame. Default %s\n", OPT(param->bCopyPicToFrame));
         H0("\nQuality reporting metrics:\n");
@@ -106,6 +106,8 @@ namespace X265_NS {
         H0("   --[no-]pmode                  Parallel mode analysis. Deprecated from release 4.1. Default %s\n", OPT(param->bDistributeModeAnalysis));
         H0("   --[no-]pme                    Parallel motion estimation. Deprecated from release 4.1. Default %s\n", OPT(param->bDistributeMotionEstimation));
         H0("   --[no-]threaded-me            Enables standalone multi-threaded module for motion estimation at CTU level. Default %s\n", OPT(param->bThreadedME));
+        H0("   --[no-]ml-ctu-pred            Enable ML based CTU partition prediction on I-frames. Default %s\n", OPT(param->bEnableMLCTUPred));
+        H1("   --ml-model-dir <dir>          Directory containing the ML CTU partition prediction models. Default: auto\n");
         H0("   --[no-]asm <bool|int|string>  Override CPU detection. Default: auto\n");
         H0("\nPresets:\n");
         H0("-p/--preset <string>             Trade off performance for compression efficiency. Default medium\n");
@@ -177,7 +179,7 @@ namespace X265_NS {
         H0("\nSlice decision options:\n");
         H0("   --[no-]open-gop               Enable open-GOP, allows I slices to be non-IDR. Default %s\n", OPT(param->bOpenGOP));
         H0("   --cra-nal                     Force nal type to CRA to all frames except the first frame, works only with keyint 1. Default %s\n", OPT(param->craNal));
-        H0("-I/--keyint <integer>            Max IDR period in frames. -1 for infinite-gop. Default %d\n", param->keyframeMax);
+        H0("-I/--keyint <integer>            Max IDR period in clock ticks. -1 for infinite-gop. Default %d\n", param->keyframeMax);
         H0("-i/--min-keyint <integer>        Scenecuts closer together than this are coded as I, not IDR. Default: auto\n");
         H0("   --gop-lookahead <integer>     Extends gop boundary if a scenecut is found within this from keyint boundary. Default 0\n");
         H0("   --no-scenecut                 Disable adaptive I-frame decision\n");
@@ -201,7 +203,8 @@ namespace X265_NS {
         H0("-b/--bframes <0..16>             Maximum number of consecutive b-frames. Default %d\n", param->bframes);
         H1("   --bframe-bias <integer>       Bias towards B frame decisions. Default %d\n", param->bFrameBias);
         H0("   --b-adapt <0..2>              0 - none, 1 - fast, 2 - full (trellis) adaptive B frame scheduling. Default %d\n", param->bFrameAdaptive);
-        H0("   --[no-]b-pyramid              Use B-frames as references. Default %s\n", OPT(param->bBPyramid));
+        H0("   --b-pyramid <0..2>            Use B-frames as references. 0 - none, 1 - normal, 2 - hierarchical. Default %d\n", param->bBPyramid);
+        H1("   --b-pyramid-qp-scale <float>  Scale the QP offsets of the B-pyramid layers, 0 to 2. Default %.2f\n", param->bPyramidQpScale);
         H1("   --qpfile <string>             Force frametypes and QPs for some or all frames\n");
         H1("                                 Format of each line: framenumber frametype QP\n");
         H1("                                 QP is optional (none lets x265 choose). Frametypes: I,i,K,P,B,b.\n");
@@ -373,13 +376,27 @@ namespace X265_NS {
         H0("   --[no-]info                   Emit SEI identifying encoder and parameters. Default %s\n", OPT(param->bEmitInfoSEI));
         H0("   --[no-]hrd                    Enable HRD parameters signaling. Default %s\n", OPT(param->bEmitHRDSEI));
         H0("   --[no-]idr-recovery-sei       Emit recovery point infor SEI at each IDR frame \n");
+        H0("   --[no-]sei-udu-raw            Write user data unregistered SEI payloads verbatim (first 16 bytes are the caller's UUID). Default %s\n", OPT(param->bUserSEIRaw));
         H0("   --temporal-layers             Enable a temporal sublayer for unreferenced B frames. Default %s\n", OPT(param->bEnableTemporalSubLayers));
         H0("   --[no-]aud                    Emit access unit delimiters at the start of each access unit. Default %s\n", OPT(param->bEnableAccessUnitDelimiters));
         H0("   --[no-]eob                    Emit end of bitstream nal unit at the end of the bitstream. Default %s\n", OPT(param->bEnableEndOfBitstream));
         H0("   --[no-]eos                    Emit end of sequence nal unit at the end of every coded video sequence. Default %s\n", OPT(param->bEnableEndOfSequence));
         H1("   --hash <integer>              Decoded Picture Hash SEI 0: disabled, 1: MD5, 2: CRC, 3: Checksum. Default %d\n", param->decodedPictureHashSEI);
         H0("   --atc-sei <integer>           Emit the alternative transfer characteristics SEI message where the integer is the preferred transfer characteristic. Default disabled\n");
-        H0("   --pic-struct <integer>        Set the picture structure and emit it in the picture timing SEI message. Values in the range 0..12. See D.3.3 of the HEVC spec. for a detailed explanation.\n");
+        H0("   --frame-packing <integer>     Emit the frame packing arrangement SEI message for stereoscopic video. Other values are an error. Default disabled\n");
+        H0("                                   - 3: side by side - left view on the left, right view on the right\n");
+        H0("                                   - 4: top and bottom - left view on top, right view on the bottom\n");
+        H0("                                   - 5: temporal interleaving - alternate frames are the left and right views. The first encoded picture is the left view\n");
+        H0("                                   An odd --seek swaps the views. With --interlace both fields of a frame belong to the same view\n");
+        H0("                                   With --frame-dup the view follows the input picture, so a dropped duplicate does not swap the views\n");
+        H0("   --pic-struct <integer>        Specify a unique picture structure to emit in every frames' picture timing SEI message. Values in the range 0..12. See D.3.3 of the HEVC spec. for a detailed explanation.\n");
+        H0("   --psfile <filename>           PicStruct file specifying the picture structure for some or all frames.\n");
+        H0("                                 Format of each line: framenum ffo picstruct.\n");
+        H0("                                 ffo is the frame field order (0: progressive, 1: bff, 2: tff) and shall match the encode settings.\n");
+        H0("                                 picstruct value, from H.265 Table D.2 enumeration, shall be compatible with the encode settings.\n");
+        H0("   --prepulldown-fps <integer|float|num/den>  Specify the FPS to pulldown from. The FPS to pulldown to is set by --fps.\n");
+        H0("                                              E.g. --prepulldown-fps 24000/1001 --fps 60000/1001 for 6:4 pulldown.\n");
+        H0("                                              Fractions should be preferred to avoid temporal drift with rounding. Requires VBV + HRD config.\n");
         H0("   --log2-max-poc-lsb <integer>  Maximum of the picture order count\n");
         H0("   --[no-]vui-timing-info        Emit VUI timing information in the bitstream. Default %s\n", OPT(param->bEmitVUITimingInfo));
         H0("   --[no-]vui-hrd-info           Emit VUI HRD information in the bitstream. Default %s\n", OPT(param->bEmitVUIHRDInfo));
@@ -472,6 +489,9 @@ namespace X265_NS {
                 recon[i]->release();
             recon[i] = NULL;
         }
+        if (psfile)
+            fclose(psfile);
+        psfile = NULL;
         if (qpfile)
             fclose(qpfile);
         qpfile = NULL;
@@ -803,6 +823,22 @@ namespace X265_NS {
                 OPT("output-depth")   /* handled above */;
                 OPT("recon-y4m-exec") reconPlayCmd = optarg;
                 OPT("svt")    /* handled above */;
+                OPT("prepulldown-fps")
+                {
+                    uint32_t num, den;
+                    x265_parse_fps(optarg, num, den, bError);
+                    /* swap num and den already: the fpsRatioNum/Denom pair holds the
+                     * ratio between the VUI timescale (--fps) to the prepulldown timescale.
+                     * i.e ratio = (fpsNum * prePdDenom) / (fpsDen * prePdNum) */
+                    this->pulldownFpsRatioNum = den;
+                    this->pulldownFpsRatioDenom = num;
+                }
+                OPT("psfile")
+                {
+                    this->psfile = x265_fopen(optarg, "rb");
+                    if (!this->psfile)
+                        x265_log_file(param, X265_LOG_ERROR, "%s psfile not found or error in opening ps file\n", optarg);
+                }
                 OPT("qpfile")
                 {
                     this->qpfile = x265_fopen(optarg, "rb");
@@ -925,6 +961,17 @@ namespace X265_NS {
             return true;
         }
 
+        if (!!psfile)
+        {
+            if (checkParamsWithCustomPicStruct(param, "psfile"))
+                return true;
+            if (this->pulldownFpsRatioNum > 0)
+            {
+                x265_log(param, X265_LOG_WARNING, "Cannot use --prepulldown-fps with --psfile: disabling pulldown.\n");
+                this->pulldownFpsRatioNum = 0;
+            }
+        }
+
 #ifdef SVT_HEVC
         if (svtEnabled)
         {
@@ -998,10 +1045,6 @@ namespace X265_NS {
         }
 #endif
 
-        /* Force CFR until we have support for VFR */
-        info[0].timebaseNum = param->fpsDenom;
-        info[0].timebaseDenom = param->fpsNum;
-
         if (param->bField && param->interlaceMode)
         {   // Field FPS
             param->fpsNum *= 2;
@@ -1010,6 +1053,9 @@ namespace X265_NS {
             // Number of fields to encode
             param->totalFrames *= 2;
         }
+
+        if (this->pulldownFpsRatioNum > 0 && prepareRatesRatioForPulldown(param))
+            return true;
 
         if (api->param_apply_profile(param, profile))
             return true;
@@ -1118,6 +1164,168 @@ namespace X265_NS {
             }
         }
         return false;
+    }
+
+    bool CLIOptions::prepareRatesRatioForPulldown(const x265_param* globalParam)
+    {
+        /* ensure pic-struct requirements */
+        if (checkParamsWithCustomPicStruct(globalParam, "prepulldown-fps"))
+            return true;
+
+        pulldownFpsRatioNum *= (int64_t)param->fpsNum;
+        pulldownFpsRatioDenom *= (int64_t)param->fpsDenom;
+
+        /* source rate cannot exceed target rate */
+        if (pulldownFpsRatioNum < pulldownFpsRatioDenom || pulldownFpsRatioNum == 0 || pulldownFpsRatioDenom == 0)
+        {
+            x265_log(param, X265_LOG_ERROR, "Pre-pulldown rate cannot exceed bitstream rate.\n");
+            return true;
+        }
+
+        /* 1:1 ratio: just disable */
+        if (pulldownFpsRatioNum == pulldownFpsRatioDenom)
+        {
+            pulldownFpsRatioDenom = 0;
+            pulldownFpsRatioNum = 0;
+        }
+        else
+        {
+            int64_t a = pulldownFpsRatioNum, b = pulldownFpsRatioDenom;
+            while (b > 0)
+            {
+                int64_t c = b;
+                b = a % b;
+                a = c;
+            }
+            pulldownFpsRatioNum /= a;
+            pulldownFpsRatioDenom /= a;
+
+            const double rateRatio = (double)pulldownFpsRatioNum / pulldownFpsRatioDenom;
+            if (rateRatio > 3.0)
+            {
+                x265_log(param, X265_LOG_ERROR, "Target rate to pre-pulldown rate ratio shall not exceed 3, got %.5f.\n", rateRatio);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool CLIOptions::determineStructureForPulldown(x265_picture &pic_org)
+    {
+        /* relies on integer truncation */
+        int frameDuration = (int)((pulldownFpsRatioNum + pulldownCumulatedTickError + (pulldownFpsRatioDenom >> 1)) / pulldownFpsRatioDenom);
+        pulldownCumulatedTickError += (pulldownFpsRatioNum - (int64_t)frameDuration * pulldownFpsRatioDenom);
+
+        /* not achievable with pic-struct marking: give up.
+         * Never happens if the FPS ratio was sanitized prior to encoding. */
+        if (frameDuration > 3)
+            return 0;
+
+        if (frameDuration == 1)
+            pic_org.picStruct = PIC_STRUCT_PROGRESSIVE_FRAME;
+        else
+            pic_org.picStruct = PIC_STRUCT_DOUBLING + (frameDuration - 2);
+        return 1;
+    }
+
+    bool CLIOptions::checkParamsWithCustomPicStruct(const x265_param* globalParam, const char *optName)
+    {
+        if (!globalParam->bEmitHRDSEI)
+        {
+            x265_log(param, X265_LOG_ERROR, "%s requires --hrd.\n", optName);
+            return true;
+        }
+        if (globalParam->bEnableTemporalSubLayers)
+        {
+            x265_log(param, X265_LOG_ERROR, "Cannot use a %s with temporal sublayers.\n", optName);
+            return true;
+        }
+        if (globalParam->interlaceMode)
+        {
+            /* psfile: the encoder must check the field complementary of every frame (field) num.
+             * Only framefieldcoding is useful in interlacing: it can be written to the frame's PicTiming
+             * SEI source_scan_type to aid a decoder to select between deinterlacing or weaving fields. */
+            x265_log(param, X265_LOG_ERROR, "%s with interlacing not supported.\n", optName);
+            return true;
+        }
+        if (globalParam->pictureStructure >= 0)
+        {
+            x265_log(param, X265_LOG_ERROR, "%s incompatible with user pic-struct.\n", optName);
+            return true;
+        }
+        if (globalParam->bEnableFrameDuplication)
+        {
+            x265_log(param, X265_LOG_ERROR, "%s incompatible with --frame-dup.\n", optName);
+            return true;
+        }
+        return false;
+    }
+
+    bool CLIOptions::parsePSFile(x265_picture &pic_org, int interlaceMode)
+    {
+        /* field_seq_flag == 0 or 1
+         * progressive: 0x181: single, doubling, tripling
+         * interlaced: 0x1e06: top, bottom, and the prev/next pairings
+         * note: 0x78 (TB, BT, TBT, BTB) is currently rejected */
+        const uint32_t validPicStructMask = !interlaceMode ? 0x181 : 0x1e06;
+
+        pic_org.picStruct = PIC_STRUCT_AUTO;
+
+        char buff[384];
+        while (1)
+        {
+            uint32_t filePos = ftell(psfile);
+            if (!fgets(buff, sizeof(buff), psfile))
+                return 1;
+
+            if (!strchr(buff, '\n') && !feof(psfile))
+            {
+                int c;
+                while ((c = fgetc(psfile)) != '\0')
+                {
+                    if (c == '\n' || c == EOF)
+                        break;
+                }
+            }
+
+            int32_t num;
+            uint32_t frameFieldCoding, pictureStructure;
+
+            if (sscanf(buff, "%d %u %u", &num, &frameFieldCoding, &pictureStructure) != 3)
+                continue;
+
+            if (num > pic_org.poc)
+            {
+                /* restore as the frame is ahead */
+                fseek(psfile, filePos, SEEK_SET);
+                break;
+            }
+            if (num < pic_org.poc)
+                continue;
+            if (pictureStructure < PIC_STRUCT_COUNT)
+            {
+#define FFO_STR(interlaced) ((interlaced > 0) ? "interlaced" : "progressive")
+                /* todo: report the frame field coding in the PicTiming SEI source_scan_type.
+                 * Progressive can only be progressive encoding, but interlaced could change
+                 * from pure interlaced to segmented frames. */
+                if ((frameFieldCoding > 0) ^ (interlaceMode > 0))
+                    x265_log(NULL, X265_LOG_WARNING, "Ignored structure for pic %d: its scan type (%s) mismatch the configuration (%s).\n",
+                             num, FFO_STR(frameFieldCoding), FFO_STR(interlaceMode));
+                else if ((1 << pictureStructure) & validPicStructMask)
+                    pic_org.picStruct = pictureStructure;
+                else
+                    x265_log(NULL, X265_LOG_WARNING, "Ignored structure for pic %d: not compatible with %s.\n",
+                             num, FFO_STR(interlaceMode));
+                return 1;
+#undef FFO_STR
+            }
+            else
+            {
+                x265_log(NULL, X265_LOG_WARNING, "Ignored invalid picture structure %u for pic %d.", pictureStructure, num);
+            }
+        }
+        /* default */
+        return 1;
     }
 
     bool CLIOptions::parseQPFile(x265_picture &pic_org)

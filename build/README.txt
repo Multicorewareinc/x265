@@ -1,13 +1,12 @@
 = Mandatory Prerequisites =
 
-* GCC, MSVC (9, 10, 11, 12), Xcode or Intel C/C++
-* CMake 2.8.8 or later http://www.cmake.org
-* On linux, ccmake is helpful, usually a package named cmake-curses-gui 
+* GCC 9 or later, Clang 5 or later (Clang 10 or later on glibc 2.31+),
+  Apple Clang 10 (Xcode 10) or later, or MSVC 19.14 (Visual Studio 2017 15.7) or later
+* CMake 3.10 or later http://www.cmake.org
+* On linux, ccmake is helpful, usually a package named cmake-curses-gui
 
-Note: MSVC12 requires cmake 2.8.11 or later
-
-Note: When the SVE/SVE2 instruction set of Arm AArch64 architecture is to be used, the GCC10.x and onwards must
-      be installed in order to compile x265.
+Note: For Arm AArch64, the Neon I8MM and SVE instruction sets need GCC 10 or later,
+      and SVE2 needs GCC 12 or later.
 
 
 = Optional Prerequisites =
@@ -64,6 +63,26 @@ Note: When the SVE/SVE2 instruction set of Arm AArch64 architecture is to be use
    If VisualLeakDetector is not installed, cmake will complain a bit, but
    it is completely harmless.
 
+3. ML CTU partition prediction (--ml-ctu-pred)
+
+   Requires ONNX Runtime 1.17 or later (1.20.1 recommended) and CMake 3.10
+   or later. Download a release archive from
+   https://github.com/microsoft/onnxruntime/releases, then:
+
+   cmake ../source -DENABLE_MLCTUPRED=ON -DONNXRUNTIME_DIR=<onnxruntime dir>
+
+   cmake should print:
+
+   -- ML CTU Pred: ONNX Runtime found
+
+   The ONNX Runtime 1.20.1 Linux archive needs glibc 2.27 or later.
+
+   OpenMP is optional and speeds up preprocessing. Apple clang needs libomp
+   (brew install libomp) and the matching OpenMP_* CMake hints.
+
+   The models are installed to <prefix>/share/x265/models (CMake option
+   ML_MODEL_INSTALL_DIR). See --ml-model-dir for how x265 finds them.
+
 
 = Build Instructions Linux =
 
@@ -75,6 +94,23 @@ Note: When the SVE/SVE2 instruction set of Arm AArch64 architecture is to be use
 
 1. cd build/linux ; ./make-Makefiles.bash
 2. make
+
+
+= False Sharing Reduction =
+
+ENABLE_COOPSLICE_FALSE_SHARING_REDUCTION defaults to ON for AArch64 and OFF for other
+architectures. It uses cache-line-aligned, separately allocated cooperative
+lookahead slices and retries helper recruitment for unassisted frame-cost
+batches. Each slice is padded to 64 bytes and the array is allocated with
+x265_malloc, which provides 64-byte alignment. Profile before enabling.
+
+Other architectures can opt in with:
+
+* cmake -DENABLE_COOPSLICE_FALSE_SHARING_REDUCTION=ON <other configuration options...>
+
+Disable it with -DENABLE_COOPSLICE_FALSE_SHARING_REDUCTION=OFF to retain the unaligned,
+in-class slice array without adding a pointer or allocating separate storage.
+This also retains the original helper recruitment behavior.
 
 
 = Build Instructions Windows =

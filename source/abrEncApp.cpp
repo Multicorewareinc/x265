@@ -502,7 +502,7 @@ namespace X265_NS {
         }
 
 ret:
-        //increment analysis Write counter 
+        //increment analysis Write counter
         m_parent->m_analysisWriteCnt[m_id].incr();
         m_parent->m_analysisWrite[m_id][index].incr();
         return;
@@ -535,7 +535,7 @@ ret:
                 int analysisWrite = m_parent->m_analysisWriteCnt[analysisQId].get();
                 int written = analysisWrite * m_parent->m_passEnc[analysisQId]->m_cliopt.numRefs;
                 int analysisRead = m_parent->m_analysisReadCnt[analysisQId].get();
-                
+
                 while (m_threadActive && written == analysisRead)
                 {
                     analysisWrite = m_parent->m_analysisWriteCnt[analysisQId].waitForChange(analysisWrite);
@@ -762,7 +762,16 @@ ret:
                             m_cliopt.qpfile = NULL;
                         }
                     }
-
+                    if (m_cliopt.psfile)
+                    {
+                        if (!m_cliopt.parsePSFile(pic_orig[view], m_param->interlaceMode))
+                        {
+                            x265_log(NULL, X265_LOG_ERROR, "can't parse psfile for frame %d in %s\n",
+                                pic_in[view]->poc, profileName);
+                            fclose(m_cliopt.psfile);
+                            m_cliopt.psfile = NULL;
+                        }
+                    }
                     if (m_cliopt.framesToBeEncoded && inFrameCount >= m_cliopt.framesToBeEncoded)
                         pic_in[view] = NULL;
                     else if (readPicture(pic_in[view], view)){
@@ -830,12 +839,13 @@ ret:
 
                             if (pic_in[view]->framesize)
                             {
+                                bool bBff = m_param->interlaceMode == 2;
                                 for (int i = 0; i < x265_cli_csps[pic_in[view]->colorSpace].planes; i++)
                                 {
-                                    char* srcP1 = (char*)pic_in[view]->planes[i];
-                                    char* srcP2 = (char*)pic_in[view]->planes[i] + pic_in[view]->stride[i];
-                                    char* p1 = (char*)picField1.planes[i];
-                                    char* p2 = (char*)picField2.planes[i];
+                                    char* srcP1 = static_cast<char*>(pic_in[view]->planes[i]) + (bBff ? pic_in[view]->stride[i] : 0);
+                                    char* srcP2 = static_cast<char*>(pic_in[view]->planes[i]) + (bBff ? 0 : pic_in[view]->stride[i]);
+                                    char* p1 = static_cast<char*>(picField1.planes[i]);
+                                    char* p2 = static_cast<char*>(picField2.planes[i]);
 
                                     int stride = picField1.stride[i];
 
@@ -868,6 +878,18 @@ ret:
                                     goto fail;
                             }
                         }
+                    }
+
+                    if (m_cliopt.pulldownFpsRatioNum > 0)
+                    {
+                        if (view == 0 && !m_cliopt.determineStructureForPulldown(pic_orig[0]))
+                        {
+                            x265_log(NULL, X265_LOG_ERROR, "Cannot determine a valid pulldown pattern for picture %d\n",
+                                pic_in[0]->poc);
+                            goto fail;
+                        }
+                        else /* copy the structure of the main view */
+                            pic_orig[view].picStruct = pic_orig[0].picStruct;
                     }
                 }
 
@@ -970,8 +992,11 @@ ret:
                     int numEncoded = api->encoder_encode(m_encoder, &p_nal, &nal, picInput, pic_recon);
 
                     int idx = (inFrameCount - 1) % m_parent->m_queueSize;
-                    m_parent->m_picIdxReadCnt[m_id][idx].incr();
-                    m_parent->m_picReadCnt[m_id].incr();
+                    if (inputNum == inputPicNum - 1)
+                    {
+                        m_parent->m_picIdxReadCnt[m_id][idx].incr();
+                        m_parent->m_picReadCnt[m_id].incr();
+                    }
                     if (m_cliopt.loadLevel && picInput)
                     {
                         m_parent->m_analysisReadCnt[m_cliopt.refId].incr();

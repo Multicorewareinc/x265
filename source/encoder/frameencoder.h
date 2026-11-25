@@ -44,6 +44,9 @@
 #include "threadedme.h"
 #include "threading.h"
 #include <queue>
+#ifdef ENABLE_MLCTUPRED
+#include "mlctu.h"
+#endif
 
 namespace X265_NS {
 // private x265 namespace
@@ -273,6 +276,12 @@ public:
 
     int                      m_sLayerId;
 
+#ifdef ENABLE_MLCTUPRED
+    MLCTUBuffers             m_mlBuffers;   /* ML model inputs */
+    MLPredictionRequest      m_mlRequest;   /* reused for each I-frame */
+    ThreadSafeInteger        m_mlRowsReady; /* CTU rows with ML predictions ready */
+#endif
+
     std::queue<CTUTask>      m_tmeTasks;
     Lock                     m_tmeTasksLock;
 
@@ -314,7 +323,7 @@ protected:
     void threadMain();
     int  collectCTUStatistics(const CUData& ctu, FrameStats* frameLog);
     void noiseReductionUpdate();
-    void writeTrailingSEIMessages(int layer);
+    void writeTrailingSEIMessages(int layer, uint8_t sliceTempIdPlus1);
     bool writeToneMapInfo(x265_sei_payload *payload);
 
     /* Called by WaveFront::findJob() */

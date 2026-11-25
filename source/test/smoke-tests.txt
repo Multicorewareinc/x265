@@ -28,3 +28,6 @@ CrowdRun_1920x1080_50_10bit_444.yuv,--preset=superfast --bitrate 7000 --sao --li
 
 #Threaded ME tests
 BasketballDrive_1920x1080_50.y4m,--preset=superfast --threaded-me --rect --amp --qp 28
+
+#Frame packing arrangement SEI test
+big_buck_bunny_360p24.y4m,--preset ultrafast --frame-packing 3

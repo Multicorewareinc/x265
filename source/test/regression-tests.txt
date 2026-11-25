@@ -121,7 +121,7 @@ old_town_cross_444_720p50.y4m,--preset veryfast --qp 1 --tune ssim
 old_town_cross_444_720p50.y4m,--preset faster --rd 1 --tune zero-latency
 old_town_cross_444_720p50.y4m,--preset fast --no-cutree --analysis-save pass1_analysis.dat --analysis-save-reuse-level 1 --bitrate 3000 --early-skip::--preset fast --no-cutree --analysis-load pass1_analysis.dat --analysis-save pass2_analysis.dat --analysis-load-reuse-level 1 --analysis-save-reuse-level 1 --bitrate 3000 --early-skip::--preset fast --no-cutree --analysis-load pass2_analysis.dat --analysis-load-reuse-level 1 --bitrate 3000 --early-skip
 old_town_cross_444_720p50.y4m,--preset medium --keyint -1 --no-weightp --ref 6
-old_town_cross_444_720p50.y4m,--preset slow --rdoq-level 1 --early-skip --ref 7 --no-b-pyramid
+old_town_cross_444_720p50.y4m,--preset slow --rdoq-level 1 --early-skip --ref 7 --b-pyramid 0
 old_town_cross_444_720p50.y4m,--preset slower --crf 4 --cu-lossless
 old_town_cross_444_720p50.y4m,--preset veryslow --max-tu-size 4 --min-cu-size 32 --limit-tu 4
 parkrun_ter_720p50.y4m,--preset medium --no-open-gop --sao-non-deblock --crf 4 --cu-lossless
@@ -163,6 +163,13 @@ crowd_run_1920x1080_50.yuv, --preset ultrafast --eob --eos
 # interlace test, even though input YUV is not field seperated
 CrowdRun_1920x1080_50_10bit_422.yuv,--preset faster --interlace tff
 CrowdRun_1920x1080_50_10bit_422.yuv,--preset fast --interlace bff
+
+# field coding test, interlaced frames are split into fields by the CLI
+washdc_422_ntsc.y4m,--preset medium --interlace bff --field
+vtc1nw_422_ntsc.y4m,--preset ultrafast --interlace bff --field
+cut_fox_1920x1080_30.yuv,--preset slow --interlace tff --field
+cut_fox_1920x1080_30.yuv,--preset fast --interlace tff --field --bframes 0
+cut_fox_1920x1080_30.yuv,--preset fast --interlace tff --field --keyint 25
 
 #SEA Implementation Test
 silent_cif_420.y4m,--preset veryslow --me sea
@@ -215,3 +222,13 @@ crowd_run_1080p50.y4m, --bitrate 5000 --selective-mcstf --preset veryslow
 #Fovea tests
 nature_1920x1080_25.yuv,--crf 28 --fovea-gaze 960,540 --fovea-delta 20
 nature_1920x1080_25.yuv,--qp 28 --fovea-delta 20 --fovea-gaze-file gaze_nature.txt
+
+#Frame packing arrangement SEI tests
+big_buck_bunny_360p24.y4m,--preset ultrafast --frame-packing 3
+big_buck_bunny_360p24.y4m,--preset superfast --bframes 4 --frame-packing 4
+big_buck_bunny_360p24.y4m,--preset veryfast --frame-packing 5
+big_buck_bunny_360p24.y4m,--preset veryfast --b-adapt 2 --bframes 0 --interlace tff --field --frame-packing 5
+
+#User data unregistered SEI raw tests
+BasketballDrive_1920x1080_50.y4m,--preset ultrafast --nalu-file udu_sei_raw.txt --sei-udu-raw
+big_buck_bunny_360p24.y4m,--preset superfast --nalu-file udu_sei_raw.txt --sei-udu-raw --single-sei

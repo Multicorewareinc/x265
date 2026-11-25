@@ -329,6 +329,11 @@ typedef int16_t  coeff_t;      // transform coefficient
 
 #define MAX_NUM_REF_PICS            16 // max. number of pictures used for reference
 #define MAX_NUM_REF                 16 // max. number of entries in picture reference list
+
+/* --b-pyramid 2 builds the hierarchical B-pyramid unless temporal sub-layers (--temporal-layers
+ * greater than 2) define the mini-GOP */
+#define X265_HIERARCHICAL_BPYRAMID(param) ((param)->bBPyramid == X265_B_PYRAMID_HIERARCHICAL && (param)->bEnableTemporalSubLayers <= 2)
+
 #define MAX_NUM_SHORT_TERM_RPS      64 // max. number of short term reference picture set in SPS
 
 #define REF_NOT_VALID               -1

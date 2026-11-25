@@ -20,8 +20,8 @@ set(_multilib_source "${CMAKE_CURRENT_SOURCE_DIR}")
 # newer features it can use are version-gated below
 if(CMAKE_VERSION VERSION_LESS 3.10)
     message(FATAL_ERROR "ENABLE_MULTILIB requires CMake 3.10 or later. "
-        "Use build/linux/multilib.sh or the build/vc*-x86_64/multilib.bat "
-        "scripts to build the multi-bit-depth library with older CMake.")
+        "Use build/linux/multilib.sh to build the multi-bit-depth library "
+        "with older CMake.")
 endif()
 
 # CMAKE_CONFIGURATION_TYPES can be set by the user for a single-config
@@ -94,7 +94,9 @@ endif()
 foreach(_option IN ITEMS ENABLE_ASSEMBLY ENABLE_PIC ENABLE_LIBNUMA
                            STATIC_LINK_CRT ENABLE_HDR10_PLUS ENABLE_SVT_HEVC
                            ENABLE_LIBVMAF ENABLE_ALPHA ENABLE_MULTIVIEW
-                           ENABLE_SCC_EXT CHECKED_BUILD
+                           ENABLE_SCC_EXT ENABLE_MLCTUPRED
+                           ENABLE_COOPSLICE_FALSE_SHARING_REDUCTION
+                           CHECKED_BUILD
                            ENABLE_AGGRESSIVE_CHECKS DETAILED_CU_STATS
                            ENABLE_PPA ENABLE_VTUNE
                            WARNINGS_AS_ERRORS FPROFILE_GENERATE FPROFILE_USE
@@ -103,7 +105,7 @@ foreach(_option IN ITEMS ENABLE_ASSEMBLY ENABLE_PIC ENABLE_LIBNUMA
                            AARCH64_WARNINGS_AS_ERRORS ENABLE_NEON
                            ENABLE_NEON_DOTPROD ENABLE_NEON_I8MM ENABLE_SVE
                            ENABLE_SVE2 ENABLE_SVE2_BITPERM
-                           RISCV64_RUNTIME_CPU_DETECT ENABLE_RVV
+                           RISCV64_RUNTIME_CPU_DETECT ENABLE_RVV RVV_DCT32_OPT
                            LOONGARCH64_RUNTIME_CPU_DETECT ENABLE_ALTIVEC
                            CPU_POWER8)
     if(DEFINED ${_option})
@@ -139,6 +141,9 @@ endif()
 if(DEFINED NASM_EXECUTABLE)
     list(APPEND _multilib_common_args "-DNASM_EXECUTABLE=${NASM_EXECUTABLE}")
 endif()
+# ONNX Runtime is located by a cache path when ENABLE_MLCTUPRED is enabled;
+# forward it so all bit-depth sub-builds resolve the same installation.
+x265_multilib_append_d(_multilib_common_args ONNXRUNTIME_DIR)
 # Toolchain target selection (e.g. the Android NDK ABI) is passed on the
 # command line and lives in plain cache variables, not in the toolchain file;
 # forward the common ones so the nested builds target the same ABI. The
@@ -315,7 +320,7 @@ function(x265_define_multilib_variant name dir archive)
     # command line changes. Keep a content-stable stamp for the configure
     # arguments so changing a forwarded option also invalidates the archive.
     string(SHA256 _multilib_args_hash
-        "${_multilib_source_args};${_multilib_common_args};${ARGN};${_archive_dir_args}")
+        "${_multilib_source_args};${_multilib_common_args};${ARGN};${_archive_dir_args};${X265_LATEST_TAG};${X265_TAG_DISTANCE}")
     set(_multilib_args_file "${dir}/x265-multilib-args.txt")
     if(NOT _multilib_generator_is_multi_config)
         # configure_file() updates the output only when its content changes.

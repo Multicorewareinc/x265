@@ -34,9 +34,14 @@ const uint8_t SEIuserDataUnregistered::m_uuid_iso_iec_11578[16] = {
     0xBB, 0x55, 0xA4, 0xFE, 0x7F, 0xC2, 0xFC, 0x4E
 };
 
+void SEI::writeStreamHeaderSEI(Bitstream& bs, const SPS& sps, NALList& list, int isNested)
+{
+    SEI::writeAccessUnitSEI(bs, sps, NAL_UNIT_PREFIX_SEI, list, isNested, 0, 1);
+}
+
 /* marshal a single SEI message sei, storing the marshalled representation
 * in bitstream bs */
-void SEI::writeSEImessages(Bitstream& bs, const SPS& sps, NalUnitType nalUnitType, NALList& list, int isNested, int layer)
+void SEI::writeAccessUnitSEI(Bitstream& bs, const SPS& sps, NalUnitType nalUnitType, NALList& list, int isNested, int layer, uint8_t tIdPlus1)
 {
     if (!isNested)
         bs.resetBits();
@@ -61,14 +66,14 @@ void SEI::writeSEImessages(Bitstream& bs, const SPS& sps, NalUnitType nalUnitTyp
         WRITE_CODE(0xff, 8, "payload_size");
     WRITE_CODE(payloadSize, 8, "payload_size");
 
-    // virtual writeSEI method, write to bs 
+    // virtual writeSEI method, write to bs
     writeSEI(sps);
 
     if (!isNested)
     {
         if (nalUnitType != NAL_UNIT_UNSPECIFIED)
             bs.writeByteAlignment();
-        list.serialize(nalUnitType, bs, layer, (1 + (nalUnitType == NAL_UNIT_CODED_SLICE_TSA_N)));
+        list.serialize(nalUnitType, bs, layer, tIdPlus1);
     }
 }
 

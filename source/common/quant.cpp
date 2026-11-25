@@ -46,7 +46,7 @@ struct coeffGroupRDStats
     int64_t sigCost0;          /* cost of signaling sig coeff bit of coeff 0 */
 };
 
-inline int getICRate(uint32_t absLevel, int32_t diffLevel, const int* greaterOneBits, const int* levelAbsBits, const uint32_t absGoRice, const uint32_t maxVlc, const uint32_t c1c2Rate)
+inline int getICRate(uint32_t absLevel, int32_t diffLevel, const int* greaterOneBits, int levelAbsBits, const uint32_t absGoRice, const uint32_t maxVlc, const uint32_t c1c2Rate)
 {
     X265_CHECK(absGoRice <= 4, "absGoRice check failure\n");
     if (!absLevel)
@@ -54,18 +54,14 @@ inline int getICRate(uint32_t absLevel, int32_t diffLevel, const int* greaterOne
         X265_CHECK(diffLevel < 0, "diffLevel check failure\n");
         return 0;
     }
-    int rate = 0;
-
     if (diffLevel < 0)
     {
         X265_CHECK(absLevel <= 2, "absLevel check failure\n");
-        rate += greaterOneBits[(absLevel == 2)];
-
-        if (absLevel == 2)
-            rate += levelAbsBits[0];
+        return absLevel == 2 ? greaterOneBits[1] + levelAbsBits : greaterOneBits[0];
     }
     else
     {
+        int rate = 0;
         uint32_t symbol = diffLevel;
         bool expGolomb = (symbol > maxVlc);
 
@@ -90,8 +86,8 @@ inline int getICRate(uint32_t absLevel, int32_t diffLevel, const int* greaterOne
 
         rate += numBins << 15;
         rate += c1c2Rate;
+        return rate;
     }
-    return rate;
 }
 
 #if CHECKED_BUILD || _DEBUG
@@ -130,7 +126,7 @@ inline int getICRateLessVlc(uint32_t absLevel, int32_t diffLevel, const uint32_t
 }
 
 /* Calculates the cost for specific absolute transform level */
-inline uint32_t getICRateCost(uint32_t absLevel, int32_t diffLevel, const int* greaterOneBits, const int* levelAbsBits, uint32_t absGoRice, const uint32_t c1c2Rate)
+inline uint32_t getICRateCost(uint32_t absLevel, int32_t diffLevel, const int* greaterOneBits, int levelAbsBits, uint32_t absGoRice, const uint32_t c1c2Rate)
 {
     X265_CHECK(absLevel, "absLevel should not be zero\n");
 
@@ -138,10 +134,7 @@ inline uint32_t getICRateCost(uint32_t absLevel, int32_t diffLevel, const int* g
     {
         X265_CHECK((absLevel == 1) || (absLevel == 2), "absLevel range check failure\n");
 
-        uint32_t rate = greaterOneBits[(absLevel == 2)];
-        if (absLevel == 2)
-            rate += levelAbsBits[0];
-        return rate;
+        return absLevel == 2 ? greaterOneBits[1] + levelAbsBits : greaterOneBits[0];
     }
     else
     {
@@ -767,10 +760,11 @@ uint32_t Quant::rdoQuant(const CUData &cu, int16_t *dstCoeff, TextType ttype, ui
         uint32_t c1Idx       = 0;
         uint32_t c2Idx       = 0;
         /* iterate over coefficients in each group in reverse scan order */
-        const int lastScanPosinCG = X265_MIN(lastScanPos - (cgScanPos << MLS_CG_SIZE), (int)cgSize - 1);
+        const uint32_t scanPosBase = cgScanPos << MLS_CG_SIZE;
+        const int lastScanPosinCG = X265_MIN(lastScanPos - (int)scanPosBase, (int)cgSize - 1);
         for (int scanPosinCG = lastScanPosinCG; scanPosinCG >= 0; scanPosinCG--)
         {
-            scanPos              = (cgScanPos << MLS_CG_SIZE) + scanPosinCG;
+            scanPos              = scanPosBase + scanPosinCG;
             uint32_t blkPos      = scan[scanPos];
             uint32_t maxAbsLevel = dstCoeff[blkPos];                  /* abs(quantized coeff) */
             int signCoef         = m_resiDctCoeff[blkPos];            /* pre-quantization DCT coeff */
@@ -835,7 +829,7 @@ uint32_t Quant::rdoQuant(const CUData &cu, int16_t *dstCoeff, TextType ttype, ui
                 if (maxAbsLevel == 1)
                 {
                     uint32_t levelBits = (c1c2idx & 1) ? greaterOneBits[0] + IEP_RATE : ((1 + goRiceParam) << 15) + IEP_RATE;
-                    X265_CHECK(levelBits == getICRateCost(1, 1 - baseLevel, greaterOneBits, levelAbsBits, goRiceParam, c1c2Rate) + IEP_RATE, "levelBits mistake\n");
+                    X265_CHECK(levelBits == getICRateCost(1, 1 - baseLevel, greaterOneBits, levelAbsBits[0], goRiceParam, c1c2Rate) + IEP_RATE, "levelBits mistake\n");
 
                     int unquantAbsLevel = unQuantLevel >> unquantShift;
                     X265_CHECK(UNQUANT(1) == unquantAbsLevel, "DQuant check failed\n");
@@ -858,8 +852,8 @@ uint32_t Quant::rdoQuant(const CUData &cu, int16_t *dstCoeff, TextType ttype, ui
                 }
                 else if (maxAbsLevel)
                 {
-                    uint32_t levelBits0 = getICRateCost(maxAbsLevel,     maxAbsLevel     - baseLevel, greaterOneBits, levelAbsBits, goRiceParam, c1c2Rate) + IEP_RATE;
-                    uint32_t levelBits1 = getICRateCost(maxAbsLevel - 1, maxAbsLevel - 1 - baseLevel, greaterOneBits, levelAbsBits, goRiceParam, c1c2Rate) + IEP_RATE;
+                    uint32_t levelBits0 = getICRateCost(maxAbsLevel,     maxAbsLevel     - baseLevel, greaterOneBits, levelAbsBits[0], goRiceParam, c1c2Rate) + IEP_RATE;
+                    uint32_t levelBits1 = getICRateCost(maxAbsLevel - 1, maxAbsLevel - 1 - baseLevel, greaterOneBits, levelAbsBits[0], goRiceParam, c1c2Rate) + IEP_RATE;
 
                     const uint32_t preDQuantLevelDiff = (unquantScale[blkPos] << per);
 
@@ -934,9 +928,9 @@ uint32_t Quant::rdoQuant(const CUData &cu, int16_t *dstCoeff, TextType ttype, ui
                     }
                     else
                     {
-                        rate1 = getICRate(level + 0, diff0 + 1, greaterOneBits, levelAbsBits, goRiceParam, maxVlc, c1c2Rate);
-                        rate2 = getICRate(level + 1, diff0 + 2, greaterOneBits, levelAbsBits, goRiceParam, maxVlc, c1c2Rate);
-                        rate0 = getICRate(level - 1, diff0 + 0, greaterOneBits, levelAbsBits, goRiceParam, maxVlc, c1c2Rate);
+                        rate1 = getICRate(level + 0, diff0 + 1, greaterOneBits, levelAbsBits[0], goRiceParam, maxVlc, c1c2Rate);
+                        rate2 = getICRate(level + 1, diff0 + 2, greaterOneBits, levelAbsBits[0], goRiceParam, maxVlc, c1c2Rate);
+                        rate0 = getICRate(level - 1, diff0 + 0, greaterOneBits, levelAbsBits[0], goRiceParam, maxVlc, c1c2Rate);
                     }
                     rateIncUp[blkPos] = rate2 - rate1;
                     rateIncDown[blkPos] = rate0 - rate1;
@@ -979,7 +973,7 @@ uint32_t Quant::rdoQuant(const CUData &cu, int16_t *dstCoeff, TextType ttype, ui
             cgRdStats.sigCost += costSig[scanPos];
         } /* end for (scanPosinCG) */
 
-        X265_CHECK((cgScanPos << MLS_CG_SIZE) == (int)scanPos, "scanPos mistake\n");
+        X265_CHECK(scanPosBase == scanPos, "scanPos mistake\n");
         cgRdStats.sigCost0 = costSig[scanPos];
 
         /* nothing to do at this case */
@@ -1005,7 +999,8 @@ uint32_t Quant::rdoQuant(const CUData &cu, int16_t *dstCoeff, TextType ttype, ui
 
             uint32_t sigCtx = getSigCoeffGroupCtxInc(sigCoeffGroupFlag64, cgPosX, cgPosY, cgBlkPos, cgStride);
 
-            int64_t costZeroCG = totalRdCost + SIGCOST(estBitsSbac.significantCoeffGroupBits[sigCtx][0]);
+            const int64_t sigCost0 = SIGCOST(estBitsSbac.significantCoeffGroupBits[sigCtx][0]);
+            int64_t costZeroCG = totalRdCost + sigCost0;
             costZeroCG += cgRdStats.uncodedDist;       /* add distortion for resetting non-zero levels to zero levels */
             costZeroCG -= cgRdStats.codedLevelAndDist; /* remove distortion and level cost of coded coefficients */
             costZeroCG -= cgRdStats.sigCost;           /* remove signaling cost of significant coeff bitmap */
@@ -1017,10 +1012,10 @@ uint32_t Quant::rdoQuant(const CUData &cu, int16_t *dstCoeff, TextType ttype, ui
             {
                 sigCoeffGroupFlag64 &= ~cgBlkPosMask;
                 totalRdCost = costZeroCG;
-                costCoeffGroupSig[cgScanPos] = SIGCOST(estBitsSbac.significantCoeffGroupBits[sigCtx][0]);
+                costCoeffGroupSig[cgScanPos] = sigCost0;
 
                 /* reset all coeffs to 0. UNCODE THIS COEFF GROUP! */
-                const uint32_t blkPos = scan[cgScanPos * cgSize];
+                const uint32_t blkPos = scan[scanPosBase];
                 memset(&dstCoeff[blkPos + 0 * trSize], 0, 4 * sizeof(*dstCoeff));
                 memset(&dstCoeff[blkPos + 1 * trSize], 0, 4 * sizeof(*dstCoeff));
                 memset(&dstCoeff[blkPos + 2 * trSize], 0, 4 * sizeof(*dstCoeff));

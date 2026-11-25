@@ -159,7 +159,7 @@ public:
     {
         uint32_t   pirStartCol;
         uint32_t   pirEndCol;
-        int        framesSinceLastPir;
+        int        ticksSinceLastPir;
     };
 
     PeriodicIR     m_pir;

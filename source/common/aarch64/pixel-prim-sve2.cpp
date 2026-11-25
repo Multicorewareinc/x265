@@ -1274,7 +1274,7 @@ static inline int calc_energy_4x4(const pixel *source, intptr_t sstride)
     b0 = vabsq_s16(a0);
     b1 = vabsq_s16(a1);
 
-    int sat = vaddvq_u16(vmaxq_u16(vreinterpretq_u16_s16(b0), vreinterpretq_u16_s16(b1)));
+    int sat = vaddlvq_u16(vmaxq_u16(vreinterpretq_u16_s16(b0), vreinterpretq_u16_s16(b1)));
 
     return sat - dc;
 }

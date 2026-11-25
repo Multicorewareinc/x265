@@ -47,8 +47,8 @@
 #ifdef __GNUC__
 
 #define SLEEPBITMAP_BSF(id, x)     (id) = ((unsigned long)__builtin_ctzll(x))
-#define SLEEPBITMAP_OR(ptr, mask)  __sync_fetch_and_or(ptr, mask)
-#define SLEEPBITMAP_AND(ptr, mask) __sync_fetch_and_and(ptr, mask)
+#define SLEEPBITMAP_OR(ptr, mask)  __atomic_fetch_or(ptr, mask, __ATOMIC_SEQ_CST)
+#define SLEEPBITMAP_AND(ptr, mask) __atomic_fetch_and(ptr, mask, __ATOMIC_SEQ_CST)
 
 #elif defined(_MSC_VER)
 
