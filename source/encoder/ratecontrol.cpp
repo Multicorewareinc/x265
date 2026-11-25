@@ -1797,7 +1797,7 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
             }
             if (curFrame->m_forceqp)
             {
-                int qp = (int32_t)(curFrame->m_forceqp + 0.5) - 1;
+                int qp = curFrame->m_forceqp - 1;
                 qp = x265_clip3(m_param->rc.qpMin, m_param->rc.qpMax, qp);
                 rce->newQScale = x265_qp2qScale(qp);
                 rce->qpNoVbv = qp;
@@ -1932,7 +1932,7 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
     if (curFrame->m_forceqp)
     {
         curEncData.m_zoneQpOffset = 0;
-        m_qp = (int32_t)(curFrame->m_forceqp + 0.5) - 1;
+        m_qp = curFrame->m_forceqp - 1;
         m_qp = x265_clip3(m_param->rc.qpMin, m_param->rc.qpMax, m_qp);
         rce->qpaRc = curEncData.m_avgQpRc = curEncData.m_avgQpAq = m_qp;
         if (m_isAbr || m_2pass)
