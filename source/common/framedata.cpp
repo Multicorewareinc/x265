@@ -88,6 +88,8 @@ fail:
 
 void FrameData::reinit(const SPS& sps)
 {
+    m_zoneQpOffset = 0;
+    m_zoneBaseQp = 0;
     memset(m_cuStat, 0, sps.numCUsInFrame * sizeof(*m_cuStat));
     memset(m_rowStat, 0, sps.numCuInHeight * sizeof(*m_rowStat));
     if (m_param->bThreadedME)

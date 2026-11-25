@@ -2502,8 +2502,11 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
                 m_lastQScaleFor[m_sliceType] = qScale;
                 m_lastZoneQpOffset[m_sliceType] = getZoneQpOffset(curFrame, x265_qScale2qp(qScale));
             }
-            else if (zoneOffset && qScale2bits(rce, qScale) > m_bufferFill)
-                qScale = X265_MAX(qScale, clipQscale(curFrame, rce, qScale));
+            else if (zoneOffset)
+            {
+                while (qScale < m_lmax[m_sliceType] && qScale2bits(rce, qScale) > m_bufferFill)
+                    qScale = X265_MIN(qScale * 1.05, m_lmax[m_sliceType]);
+            }
         }
 
         if (m_2pass)
