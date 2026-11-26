@@ -341,6 +341,7 @@ protected:
     int    getPredictorType(int lowresSliceType, int sliceType);
     int    updateVbv(int64_t bits, RateControlEntry* rce);
     void   updatePredictor(Predictor *p, double q, double var, double bits);
+    double clipQscale2Pass(RateControlEntry* rce, double q);
     double clipQscale(Frame* pic, RateControlEntry* rce, double q);
     void   updateVbvPlan(Encoder* enc);
     double predictSize(Predictor *p, double q, double var);

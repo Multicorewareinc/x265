@@ -2476,6 +2476,8 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
             }
         }
 
+        x265_zone* zone = getZone(curFrame->m_sourcePoc);
+        bool forceZoneQp = zone && zone->bForceQp && !curFrame->m_forceqp;
         qScale = applyZone(curFrame, qScale);
         double zoneOffset = curFrame->m_encData->m_zoneQpOffset;
         if (zoneOffset)
@@ -2502,8 +2504,10 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
                 m_lastQScaleFor[m_sliceType] = qScale;
                 m_lastZoneQpOffset[m_sliceType] = getZoneQpOffset(curFrame, x265_qScale2qp(qScale));
             }
-            else if (zoneOffset)
+            else if (zoneOffset || forceZoneQp)
             {
+                if (forceZoneQp && m_param->rc.rateControlMode == X265_RC_ABR)
+                    qScale = clipQscale2Pass(rce, qScale);
                 while (qScale < m_lmax[m_sliceType] && qScale2bits(rce, qScale) > m_bufferFill)
                     qScale = X265_MIN(qScale * 1.05, m_lmax[m_sliceType]);
             }
@@ -2611,23 +2615,7 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
             {
                 if (!m_param->bliveVBV2pass)
                 {
-                    /* Do not overflow vbv */
-                    double expectedSize = qScale2bits(rce, q);
-                    double expectedVbv = m_bufferFill + m_bufferRate * rce->cpbDuration - expectedSize;
-                    double expectedFullness = rce->expectedVbv / m_bufferSize;
-                    double qmax = q * (2 - expectedFullness);
-                    double sizeConstraint = 1 + expectedFullness;
-                    qmax = X265_MAX(qmax, rce->newQScale);
-                    if (expectedFullness < .05)
-                        qmax = lmax;
-                    qmax = X265_MIN(qmax, lmax);
-                    while (((expectedVbv < rce->expectedVbv / sizeConstraint) && (q < qmax)) ||
-                        ((expectedVbv < 0) && (q < lmax)))
-                    {
-                        q *= 1.05;
-                        expectedSize = qScale2bits(rce, q);
-                        expectedVbv = m_bufferFill + m_bufferRate * rce->cpbDuration - expectedSize;
-                    }
+                    q = clipQscale2Pass(rce, q);
                 }
                 else
                 {
@@ -3036,6 +3024,28 @@ double RateControl::tuneQscaleForSBRC(Frame* curFrame, double q)
             else
                 break;
         }
+    }
+    return q;
+}
+
+double RateControl::clipQscale2Pass(RateControlEntry* rce, double q)
+{
+    double lmax = m_lmax[m_sliceType];
+    double expectedSize = qScale2bits(rce, q);
+    double expectedVbv = m_bufferFill + m_bufferRate * rce->cpbDuration - expectedSize;
+    double expectedFullness = rce->expectedVbv / m_bufferSize;
+    double qmax = q * (2 - expectedFullness);
+    double sizeConstraint = 1 + expectedFullness;
+    qmax = X265_MAX(qmax, rce->newQScale);
+    if (expectedFullness < .05)
+        qmax = lmax;
+    qmax = X265_MIN(qmax, lmax);
+    while (((expectedVbv < rce->expectedVbv / sizeConstraint) && (q < qmax)) ||
+        ((expectedVbv < 0) && (q < lmax)))
+    {
+        q = X265_MIN(q * 1.05, lmax);
+        expectedSize = qScale2bits(rce, q);
+        expectedVbv = m_bufferFill + m_bufferRate * rce->cpbDuration - expectedSize;
     }
     return q;
 }
