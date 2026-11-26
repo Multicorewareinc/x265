@@ -231,7 +231,8 @@ public:
     uint64_t                 m_SSDU[MAX_LAYERS];
     uint64_t                 m_SSDV[MAX_LAYERS];
     double                   m_ssim[MAX_LAYERS];
-    uint64_t                 m_accessUnitBits[MAX_LAYERS];
+    uint64_t                 m_accessUnitVclBits[MAX_LAYERS]; /* Only video coding layer NUTs */
+    uint64_t                 m_accessUnitHrdBits[MAX_LAYERS]; /* every possible NUTs */
     uint32_t                 m_ssimCnt[MAX_LAYERS];
 
     AtomicInt32              m_activeWorkerCount;        // count of workers currently encoding or filtering CTUs

@@ -99,7 +99,11 @@ struct RateControlEntry
     double  targetFill;
     bool    vbvEndAdj;
     AtomicDouble frameSizeEstimated; /* hold frameSize, updated from cu level vbv rc */
-    double  frameSizeMaximum;   /* max frame Size according to minCR restrictions and level of the video */
+    double  frameSizeMaximum;   /* max frame Size according to minCR restrictions and level of the video,
+                                 * less nonVclBits: the room for the VCL bits of the AU */
+    double  userNonVclBits;     /* User data attached to the picture */
+    double  nonVclBits;         /* expected non-VCL bits of the AU (parameter sets, SEI, AUD, start codes) generated
+                                 * by the encoder, reserved in the VBV plan when the frame starts */
     int     sliceType;
     int     bframes;
     int     poc;
@@ -168,7 +172,10 @@ public:
     double m_bufferSize;
     AtomicDouble m_bufferFillFinal;  /* real buffer as of the last finished frame */
     double m_unclippedBufferFillFinal; /* real unclipped buffer as of the last finished frame used to log in CSV*/
-    double m_bufferFill;       /* planned buffer, if all in-progress frames hit their bit budget */
+    double m_bufferFill;       /* planned buffer, if all in-progress frames hit their bit budget, less the
+                                * non-VCL bits of the current AU: the room left for its VCL bits.
+                                * Compare it to VCL bits only (predictSize, row estimates). */
+    double m_nonVclBits[2];    /* non-VCL bits of the last AU: [0] other frames, [1] keyframes */
     double m_bufferRate;       /* # of bits added to buffer_fill after each tick */
     double m_vbvMaxRate;       /* in kbps */
     double m_rateFactorMaxIncrement; /* Don't allow RF above (CRF + this value). */
@@ -297,7 +304,10 @@ public:
     int  rateControlStart(Frame* curFrame, RateControlEntry* rce, Encoder* enc);
     void rateControlUpdateStats(RateControlEntry* rce);
     void rateControlWaitEnd(RateControlEntry* rce);
-    int  rateControlEnd(Frame* curFrame, int64_t bits, RateControlEntry* rce, int *filler);
+    int  rateControlEnd(Frame* curFrame, int64_t bits, int64_t hrdBits, RateControlEntry* rce, int *filler);
+
+    /* initial estimate of the non-VCL bits of an AU, refined after every frame */
+    void setNonVclEstimate(bool bKeyframe, double bits) { m_nonVclBits[bKeyframe] = bits; }
     int  rowVbvRateControl(Frame* curFrame, uint32_t row, RateControlEntry* rce, double& qpVbv, uint32_t* m_sliceBaseRow, uint32_t sliceId);
     int  rateControlSliceType(int frameNum);
     bool cuTreeReadFor2Pass(Frame* curFrame);
@@ -340,11 +350,11 @@ protected:
     void   accumPQpUpdate(double qp);
 
     int    getPredictorType(int lowresSliceType, int sliceType);
-    int    updateVbv(int64_t bits, RateControlEntry* rce);
+    int    updateVbv(int64_t vclBits, int64_t hrdBits, RateControlEntry* rce);
     void   updatePredictor(Predictor *p, double q, double var, double bits);
     double clipQscale2Pass(RateControlEntry* rce, double q);
     double clipQscale(Frame* pic, RateControlEntry* rce, double q);
-    void   updateVbvPlan(Encoder* enc);
+    void   updateVbvPlan(Encoder* enc, const RateControlEntry* rce);
     double predictSize(Predictor *p, double q, double var);
     void   checkAndResetABR(RateControlEntry* rce, bool isFrameDone);
     double predictRowsSizeSum(Frame* pic, RateControlEntry* rce, double qpm, int32_t& encodedBits);

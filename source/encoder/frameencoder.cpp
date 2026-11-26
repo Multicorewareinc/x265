@@ -1220,20 +1220,26 @@ void FrameEncoder::compressFrame(int layer)
     /* now that we have all prefix NALUs, concatenate with the slice nals*/
     m_nalList.append(sliceNals);
 
-    uint64_t bytes = 0;
+    uint64_t hrdBytes = 0; /* every bytes for type II conformance */
+    uint64_t sliceBytes = 0; /* slices and refs */
 
     for (const x265_nal& nal : m_nalList)
     {
-        // exclude SEI
-        //if (nal.type != NAL_UNIT_PREFIX_SEI && nal.type != NAL_UNIT_SUFFIX_SEI)
-            bytes += nal.sizeBytes;//m_nalList.getNaluBytesLength(nal);
+        const uint32_t naluSize = m_nalList.m_annexB ? nal.sizeBytes : m_nalList.getNaluBytesLength(nal);
+        /* exclude non-VCL bytes
+         * Note: VCL bytes should not include the start code. We just want a good estimate of the bits
+         * spent on a picture. If it should be excluded, subtract the NALList header size returned val. */
+        if (nal.type < NAL_UNIT_VPS)
+            sliceBytes += naluSize;
+        hrdBytes += naluSize;
     }
 
-    m_accessUnitBits[layer] = (layer) ? (bytes - (m_accessUnitBits[0] >> 3)) << 3 : bytes << 3;
+    m_accessUnitVclBits[layer] = (layer) ? (sliceBytes - (m_accessUnitVclBits[0] >> 3)) << 3 : sliceBytes << 3;
+    m_accessUnitHrdBits[layer] = (layer) ? (hrdBytes - (m_accessUnitHrdBits[0] >> 3)) << 3 : hrdBytes << 3;
 
     int filler = 0;
     /* rateControlEnd may also block for earlier frames to call rateControlUpdateStats */
-    if (!layer && m_top->m_rateControl->rateControlEnd(m_frame[layer], m_accessUnitBits[layer], &m_rce, &filler) < 0)
+    if (!layer && m_top->m_rateControl->rateControlEnd(m_frame[layer], m_accessUnitVclBits[layer], m_accessUnitHrdBits[layer], &m_rce, &filler) < 0)
         m_top->m_aborted = true;
 
 #if ENABLE_ALPHA
@@ -1264,10 +1270,16 @@ void FrameEncoder::compressFrame(int layer)
         bss.writeByteAlignment();
         /* FD unit must carry the same temporalId as the associated frame */
         m_nalList.serialize(NAL_UNIT_FILLER_DATA, bss, layer, sliceTempIdPlus1);
-        bytes += m_nalList.getNaluBytesLength(*m_nalList.back());   // filler
-        m_accessUnitBits[layer] = bytes << 3;
+        hrdBytes += m_nalList.m_annexB ? m_nalList.back()->sizeBytes : m_nalList.getNaluBytesLength(*m_nalList.back());
+        m_accessUnitHrdBits[layer] = hrdBytes << 3;
     }
 
+    /* Inclusion of RPUs in the HRD bytes is up to the application
+     * E.g. on UHD BD, the recommendation is to encode the base layer
+     * at lower rate and to amend the bitstream with the RPUs.
+     *
+     * TODO: make it an option to the user.
+     * This would also improve efficiency of encodes with RPUs. */
     if (m_frame[layer]->m_rpu.payloadSize)
     {
         bss.resetBits();

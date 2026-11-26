@@ -539,6 +539,22 @@ void Encoder::create()
 
     if (!m_rateControl->init(m_sps))
         m_aborted = true;
+
+    /* With repeated headers, the keyframe carries numerous non-VCL NALUs. To do
+     * correct VBV management, these must be weighted and hence known in advance. */
+    if (m_param->rc.vbvBufferSize > 0 && m_param->bRepeatHeaders)
+    {
+        Entropy sbacCoder;
+        Bitstream bs;
+        NALList headers;
+        headers.m_annexB = !!m_param->bAnnexB;
+        getStreamHeaders(headers, sbacCoder, bs);
+
+        uint64_t headerBytes = 0;
+        for (const x265_nal& nal : headers)
+            headerBytes += headers.m_annexB ? nal.sizeBytes : headers.getNaluBytesLength(nal);
+        m_rateControl->setNonVclEstimate(true, (double)(headerBytes << 3));
+    }
     if (!m_lookahead->create())
         m_aborted = true;
 
@@ -1132,7 +1148,9 @@ void Encoder::updateVbvPlan(RateControl* rc)
             double frameSizeEst = encoder->m_rce.frameSizeEstimated;
             double frameSizePlan = encoder->m_rce.frameSizePlanned;
             int64_t bits = m_param->rc.bEnableConstVbv ? (int64_t)frameSizePlan : (int64_t)X265_MAX(frameSizeEst, frameSizePlan);
-            rc->m_bufferFill -= bits;
+
+            /* The access unit cost is the sum of VCL and non-VCL bits together ! */
+            rc->m_bufferFill -= bits + encoder->m_rce.nonVclBits;
             rc->m_bufferFill = X265_MAX(rc->m_bufferFill, 0);
             rc->m_bufferFill += encoder->m_rce.bufferRate * encoder->m_rce.cpbDuration;
             rc->m_bufferFill = X265_MIN(rc->m_bufferFill, rc->m_bufferSize);
@@ -1192,6 +1210,7 @@ void Encoder::calcRefreshInterval(Frame* frameEnc)
 void Encoder::copyUserSEIMessages(Frame *frame, const x265_picture* pic_in)
 {
     x265_sei_payload toneMap;
+    memset(&toneMap, 0, sizeof(x265_sei_payload));
     toneMap.payload = NULL;
     int toneMapPayload = 0;
 
@@ -3286,7 +3305,7 @@ void Encoder::fetchStats(x265_stats *stats, size_t statsSizeBytes, int layer)
 void Encoder::finishFrameStats(Frame* curFrame, FrameEncoder *curEncoder, x265_frame_stats* frameStats, int inPoc, int layer)
 {
     PicYuv* reconPic = curFrame->m_reconPic[0];
-    uint64_t bits = curEncoder->m_accessUnitBits[layer];
+    uint64_t bits = curEncoder->m_accessUnitHrdBits[layer];
 
     //===== calculate PSNR =====
     int width  = reconPic->m_picWidth - m_sps.conformanceWindow.rightOffset;
