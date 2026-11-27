@@ -27,6 +27,10 @@
 #include "common.h"
 #include "threading.h"
 
+#ifndef _WIN32_WINNT_WIN7
+#define _WIN32_WINNT_WIN7 0x0601
+#endif
+
 namespace X265_NS {
 // x265 private namespace
 
