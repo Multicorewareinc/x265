@@ -491,6 +491,7 @@ typedef struct x265_picture
     size_t framesize;
 
     int    height;
+    int    width;
 
     // pts is reordered in the order of encoding.
     int64_t reorderedPts;
@@ -503,10 +504,15 @@ typedef struct x265_picture
     int fieldNum;
 
     /* Pic Timing SEI picture structure signaling. See PicStruct enumeration.
-     * Requires x265_param.bEmitFrameFieldInfo to be set, ignored else. */
+     * Requires x265_param.bEmitFrameFieldInfo to be set. Ignored in VFR. */
     uint32_t picStruct;
 
-    int    width;
+    /* Frame duration for VFR encodes. Ignored if x265_param.bVfrFlag is false.
+     * If HRD + VBV is configured, this also sets the picture display duration.
+     * The duration of a single tick is equal to the VUI timebase (fpsDen/fpsNum).
+     * It shall never be zero: x265 will forcefully clamp it to 1.
+     * For different durations in CFR or VFR-in-CFR, use the picStruct field. */
+    uint32_t durationInTicks;
 
     int   layerID;
     int    format;
@@ -1234,7 +1240,8 @@ typedef struct x265_param
      * pictures */
     int       internalCsp;
 
-    /* Numerator and denominator of frame rate */
+    /* Numerator and denominator of frame rate. The reciprocal of the fps
+     * fraction gives the VUI timebase. */
     uint32_t  fpsNum;
     uint32_t  fpsDenom;
 
@@ -1863,7 +1870,7 @@ typedef struct x265_param
         int      bEnableConstVbv;
 
         /* if only the focused frames would be re-encode or not */
-        int       bEncFocusedFramesOnly;
+        int      bEncFocusedFramesOnly;
 
         /* Share the data with stats file or shared memory.
         It must be one of the X265_DATA_SHARE_MODES enum values
@@ -1872,11 +1879,13 @@ typedef struct x265_param
         The stats file mode would be used among the encoders running in sequence.
         The shared memory mode could only be used among the encoders running in parallel.
         Now only the cutree data could be shared among shared memory. More data would be support in the future.*/
-        int       dataShareMode;
+        int      dataShareMode;
 
         /* Unique shared memory name. Required if the shared memory mode enabled. NULL by default */
-        char sharedMemName[X265_MAX_STRING_SIZE];
+        char     sharedMemName[X265_MAX_STRING_SIZE];
 
+        /* Enable VFR encoding. */
+        int      bVfrFlag;
     } rc;
 
     /*== Video Usability Information ==*/
@@ -2372,7 +2381,7 @@ typedef struct x265_param
     /* Threaded ME */
     /* Number of CTUs processed at once when a worker thread picks up a task from ThreadedME. */
     int      tmeTaskBlockSize;
-    
+
     /* Number of rows upto which ThreadedME processes tasks ahead of WPP */
     int      tmeNumBufferRows;
 

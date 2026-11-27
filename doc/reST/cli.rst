@@ -2691,6 +2691,8 @@ VUI fields must be manually specified.
     Cannot be used concurrently with :option:`--frame-dup`, :option:`--psfile`,
     :option:`--pic-struct`, :option:`--interlace` or :option:`--temporal-layers`.
 
+    **CLI ONLY**
+
 .. option:: --psfile <filename>
 
 	Specify a text file which contains the picture structure for some or all frames.
@@ -2707,6 +2709,25 @@ VUI fields must be manually specified.
 
     Cannot be used concurrently with :option:`--frame-dup`, :option:`--pic-struct`,
     :option:`--interlace`, :option:`--temporal-layers` or :option:`--prepulldown-fps`.
+
+.. option:: --vfr-file <filename>
+
+    Specify a text file with timing information for each frame. Enables VFR encoding.
+
+    The default timebase is 1 millisecond (1000 fps). Different values
+    can be set via :option:`--fps`, which sets the time unit.
+
+    Two file formats are supported: timestamp v2, or timescale v1:
+    - A timestamp v2 file specifies the presentation timestamp (PTS) of every frame.
+      Its header shall be `# timestamp format v2`. There shall be a line for every
+      frame specifying its PTS in milliseconds, as an integer or a float.
+      The PTS delta across frames shall be equal or larger than the bitstream timebase.
+
+    - A timescale v1 file lists sections and their respective frame rate.
+      Its header shall be `# timescale format v1`. Each line shall specify 2 values:
+      framenum (integer) framerate (integer|fraction). Floats are not supported.
+      A framerate is in force from framenum until overriden by a subsequent entry.
+      A section's frame rate cannot exceed 300 fps.
 
 .. option:: --video-signal-type-preset <string>
 

@@ -311,6 +311,27 @@ Structures allocated from the library should eventually be released::
 	 *  allocated by x265_picture_alloc() */
 	void x265_picture_free(x265_picture *);
 
+Frame rate modes
+=================
+
+x265 offers three different frame rate modes:
+- Constant frame rate (CFR, default)
+- Variable frame rate (VFR)
+- Fake VFR ("VFR-in-CFR"), exploiting soft-pulldown.
+
+CFR: the default mode, the frame rate is set by fpsNum/fpsDen.
+
+VFR-in-CFR: uses Pic Timing SEI picture structure marking (**picStruct**)
+to set the display duration of each pic in a CFR bitstream at fpsNum/fpsDen
+rate. Refer to the API PicStruct enumeration or ITU H.265 Table D.2.
+Requires setting **bEmitFrameFieldInfo**, else the picStruct is ignored.
+
+VFR: each picture specifies its own duration (**durationInTicks**). The
+encoder configuration must have the **bVfrFlag** set in this mode.
+The unit timebase (highest pic rate) is set via **fpsNum** and **fpsDen**.
+A single clock tick lasts fpsDen/fpsNum seconds.
+The pic duration only steers the picture bit budgeting. With HRD SEIs,
+it also sets its display duration through the Pic Timing SEI.
 
 Analysis Buffers
 ================

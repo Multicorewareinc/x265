@@ -144,6 +144,7 @@ struct HRDInfo
     uint32_t bitRateValue;
     uint32_t cpbSizeValue;
     bool     cbrFlag;
+    bool     fixedPicRateFlag;
 
     HRDInfo()
         : bitRateScale(0)
@@ -152,6 +153,7 @@ struct HRDInfo
         , cpbRemovalDelayLength(1)
         , dpbOutputDelayLength(1)
         , cbrFlag(false)
+        , fixedPicRateFlag(true)
     {
     }
 };

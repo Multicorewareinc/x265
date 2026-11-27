@@ -28,6 +28,7 @@
 #include "common.h"
 #include "param.h"
 #include "input/input.h"
+#include "input/timeinput.h"
 #include "output/output.h"
 #include "output/reconplay.h"
 
@@ -406,6 +407,7 @@ static const struct option long_options[] =
     { "scenecut-qp-config", required_argument, NULL, 0 },
     { "film-grain", required_argument, NULL, 0 },
     { "aom-film-grain", required_argument, NULL, 0 },
+    { "vfr-file", required_argument, NULL, 0 },
     { "frame-rc",no_argument, NULL, 0 },
     { "no-frame-rc",no_argument, NULL, 0 },
     { "threaded-me", no_argument, NULL, 0 },
@@ -427,6 +429,7 @@ static const struct option long_options[] =
         ReconFile* recon[MAX_LAYERS];
         OutputFile* output;
         FILE*       psfile;
+        TimeInput*  timeInput;    /* --vfr-file: per-frame durations for VFR */
         FILE*       qpfile;
         FILE*       zoneFile;
         FILE*    dolbyVisionRpu;    /* File containing Dolby Vision BL RPU metadata */
@@ -480,6 +483,7 @@ static const struct option long_options[] =
                 inputfn[i] = NULL;
             output = NULL;
             psfile = NULL;
+            timeInput = NULL;
             qpfile = NULL;
             zoneFile = NULL;
             dolbyVisionRpu = NULL;
