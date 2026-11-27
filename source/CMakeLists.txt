@@ -1248,6 +1248,8 @@ if(X265_LATEST_TAG OR NOT GIT_FOUND)
     foreach(LIB ${CMAKE_CXX_IMPLICIT_LINK_LIBRARIES} ${PLATFORM_LIBS})
         if(LIB MATCHES "^-" OR (IS_ABSOLUTE "${LIB}" AND EXISTS "${LIB}"))
             list(APPEND PLIBLIST "${LIB}")
+        elseif(${LIB} MATCHES "-l:libunwind.a") # android toolchain
+            list(APPEND IMPLICITS_LIST "-lunwind")
         else()
             list(APPEND PLIBLIST "-l${LIB}")
         endif()
