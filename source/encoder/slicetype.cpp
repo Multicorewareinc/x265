@@ -3072,6 +3072,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
             frames[nextNonB]->plannedSatd[idx] = vbvFrameCost(frames, p0, curNonB, curNonB);
             frames[nextNonB]->plannedType[idx] = frames[curNonB]->sliceType;
             frames[nextNonB]->plannedBQpCoef[idx] = 0;
+            frames[nextNonB]->plannedUserNonVclBits[idx] = frames[curNonB]->userNonVclBits;
             frames[nextNonB]->plannedCpbDuration[idx] = frames[curNonB]->cpbDurationSecs;
 
             /* Save the nextNonB Cost in each B frame of the current miniGop */
@@ -3082,6 +3083,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
                     frames[j]->plannedSatd[frames[j]->indB] = frames[nextNonB]->plannedSatd[idx];
                     frames[j]->plannedType[frames[j]->indB] = frames[nextNonB]->plannedType[idx];
                     frames[j]->plannedBQpCoef[frames[j]->indB] = 0;
+                    frames[j]->plannedUserNonVclBits[frames[j]->indB] = frames[nextNonB]->userNonVclBits;
                     frames[j]->plannedCpbDuration[frames[j]->indB++] = frames[nextNonB]->cpbDurationSecs;
                 }
             }
@@ -3105,6 +3107,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
                 frames[nextNonB]->plannedSatd[idx] = satdCost;
                 frames[nextNonB]->plannedType[idx] = type;
                 frames[nextNonB]->plannedBQpCoef[idx] = bQpCoef;
+                frames[nextNonB]->plannedUserNonVclBits[idx] = frames[cur.b]->userNonVclBits;
                 frames[nextNonB]->plannedCpbDuration[idx] = frames[cur.b]->cpbDurationSecs;
 
                 /* Save the cost in each B frame of the current miniGop coded before this one */
@@ -3121,6 +3124,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
                     frames[j]->plannedSatd[frames[j]->indB] = satdCost;
                     frames[j]->plannedType[frames[j]->indB] = type;
                     frames[j]->plannedBQpCoef[frames[j]->indB] = bQpCoef;
+                    frames[j]->plannedUserNonVclBits[frames[j]->indB] = frames[cur.b]->userNonVclBits;
                     frames[j]->plannedCpbDuration[frames[j]->indB++] = frames[cur.b]->cpbDurationSecs;
                 }
             }
@@ -3161,6 +3165,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
             frames[nextNonB]->plannedSatd[idx] = satdCost;
             frames[nextNonB]->plannedType[idx] = type;
             frames[nextNonB]->plannedBQpCoef[idx] = bQpCoef;
+            frames[nextNonB]->plannedUserNonVclBits[idx] = frames[i]->userNonVclBits;
             frames[nextNonB]->plannedCpbDuration[idx] = frames[i]->cpbDurationSecs;
 
             /* Save the nextB Cost in each B frame of the current miniGop */
@@ -3173,6 +3178,7 @@ void Lookahead::vbvLookahead(Lowres **frames, int numFrames, int keyframe)
                 frames[j]->plannedSatd[frames[j]->indB] = satdCost;
                 frames[j]->plannedType[frames[j]->indB] = type;
                 frames[j]->plannedBQpCoef[frames[j]->indB] = bQpCoef;
+                frames[j]->plannedUserNonVclBits[frames[j]->indB] = frames[nextB]->userNonVclBits;
                 frames[j]->plannedCpbDuration[frames[j]->indB++] = frames[nextB]->cpbDurationSecs;
             }
         }

@@ -1239,6 +1239,14 @@ void Encoder::copyUserSEIMessages(Frame *frame, const x265_picture* pic_in)
 
     frame->m_userSEI.numPayloads = numPayloads;
 
+    /* exact bits of the user SEI, for the VBV plan (payload, type/size bytes, own NAL unit) */
+    frame->m_lowres.userNonVclBits = 0;
+    for (int i = 0; i < numPayloads; i++)
+    {
+        int size = (i == (numPayloads - 1)) && toneMapPayload ? toneMap.payloadSize : m_enableNal ? seiMsg.payloadSize : pic_in->userSEI.payloads[i].payloadSize;
+        frame->m_lowres.userNonVclBits += 8.0 * (size + 2 + size / 255 + (frame->m_param->bSingleSeiNal ? 0 : 6));
+    }
+
     if (frame->m_userSEI.numPayloads)
     {
         if (!frame->m_userSEI.payloads)

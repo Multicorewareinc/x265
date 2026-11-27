@@ -384,6 +384,7 @@ void Lowres::init(PicYuv* origPic, int poc, bool bEnableTemporalFilter)
             plannedType[i] = X265_TYPE_AUTO;
             plannedBQpCoef[i] = -1;
             plannedCpbDuration[i] = origPic->m_param->fpsDenom / (double)origPic->m_param->fpsNum;
+            plannedUserNonVclBits[i] = 0;
         }
     }
 
