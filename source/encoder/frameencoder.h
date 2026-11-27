@@ -231,7 +231,8 @@ public:
     uint64_t                 m_SSDU[MAX_LAYERS];
     uint64_t                 m_SSDV[MAX_LAYERS];
     double                   m_ssim[MAX_LAYERS];
-    uint64_t                 m_accessUnitBits[MAX_LAYERS];
+    uint64_t                 m_accessUnitVclBits[MAX_LAYERS]; /* Only video coding layer NUTs */
+    uint64_t                 m_accessUnitHrdBits[MAX_LAYERS]; /* every possible NUTs */
     uint32_t                 m_ssimCnt[MAX_LAYERS];
 
     AtomicInt32              m_activeWorkerCount;        // count of workers currently encoding or filtering CTUs
@@ -269,7 +270,6 @@ public:
     CUGeom*                  m_cuGeoms;
     uint32_t*                m_ctuGeomMap;
 
-    Bitstream                m_bs;
     MotionReference          m_mref[2][MAX_NUM_REF + 1];
     Entropy                  m_entropyCoder;
     Entropy                  m_initSliceContext;
@@ -325,7 +325,8 @@ protected:
     void threadMain();
     int  collectCTUStatistics(const CUData& ctu, FrameStats* frameLog);
     void noiseReductionUpdate();
-    void writeTrailingSEIMessages(int layer, uint8_t sliceTempIdPlus1);
+    void writePrefixSEIs(const Slice *slice, Bitstream &bs, int layer, uint8_t sliceTempIdPlus1);
+    void writeTrailingSEIMessages(Bitstream &bs, NALList &nalList, int layer, uint8_t sliceTempIdPlus1);
     bool writeToneMapInfo(x265_sei_payload *payload);
 
     /* Called by WaveFront::findJob() */
@@ -341,7 +342,7 @@ protected:
 #endif
     void collectDynDataFrame(int layer);
     void computeAvgTrainingData(int layer);
-    void collectDynDataRow(CUData& ctu, FrameStats* rowStats);    
+    void collectDynDataRow(CUData& ctu, FrameStats* rowStats);
     void readModel(FilmGrainCharacteristics* m_filmGrain, FILE* filmgrain);
     void readAomModel(AomFilmGrainCharacteristics* m_aomFilmGrain, FILE* Aomfilmgrain);
 };

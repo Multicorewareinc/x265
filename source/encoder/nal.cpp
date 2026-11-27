@@ -57,6 +57,66 @@ void NALList::takeContents(NALList& other)
     other.m_buffer = X265_MALLOC(uint8_t, m_allocSize);
 }
 
+void NALList::append(NALList& other)
+{
+    X265_CHECK(m_annexB == other.m_annexB, "appending NAL units with a different framing\n");
+    X265_CHECK(!other.m_extraOccupancy, "appending a list with pending substreams\n");
+
+    if (!other.m_numNal)
+        return;
+
+    if (m_numNal + other.m_numNal > (uint32_t)MAX_NAL_UNITS)
+    {
+        x265_log(NULL, X265_LOG_ERROR, "NAL count overflow, dropping %u NAL units\n", other.m_numNal);
+        return;
+    }
+
+    uint32_t nextSize = m_occupancy + other.m_occupancy;
+    if (nextSize > m_allocSize)
+    {
+        uint8_t *temp = X265_MALLOC(uint8_t, nextSize);
+        if (!temp)
+        {
+            x265_log(NULL, X265_LOG_ERROR, "Unable to realloc access unit buffer\n");
+            return;
+        }
+        if (m_occupancy)
+            memcpy(temp, m_buffer, m_occupancy);
+
+        /* fixup existing payload pointers */
+        for (uint32_t i = 0; i < m_numNal; i++)
+            m_nal[i].payload = temp + (m_nal[i].payload - m_buffer);
+
+        X265_FREE(m_buffer);
+        m_buffer = temp;
+        m_allocSize = nextSize;
+    }
+
+    uint32_t skip = 0;
+    if (m_annexB && !isAccessUnitStart() && getStartCodeLength(other.m_nal[0]) == 4 &&
+        !(longCodeBitmask & (1ull << other.m_nal[0].type)))
+        skip = 1;
+
+    /* the units of other are contiguous in its buffer, in order */
+    uint8_t *out = m_buffer + m_occupancy;
+    memcpy(out, other.m_buffer + skip, other.m_occupancy - skip);
+    for (uint32_t i = 0; i < other.m_numNal; i++)
+    {
+        x265_nal& nal = m_nal[m_numNal++];
+        nal = other.m_nal[i];
+        /* the first unit starts at out (its zero_byte was dropped), the next ones moved back by skip */
+        nal.payload = out;
+        if (i > 0)
+            nal.payload += (other.m_nal[i].payload - other.m_buffer) - skip;
+    }
+    m_nal[m_numNal - other.m_numNal].sizeBytes -= skip;
+
+    m_occupancy = nextSize - skip;
+
+    other.m_numNal = 0;
+    other.m_occupancy = 0;
+}
+
 void NALList::serialize(NalUnitType nalUnitType, const Bitstream& bs, int layerId, uint8_t temporalID)
 {
     static const char startCodePrefix[] = { 0, 0, 0, 1 };
@@ -235,10 +295,7 @@ uint8_t NALList::getNextStartCodeLength(NalUnitType nalUnitType) const
      * On IRAP frames, x265 prepends the EOS unit of the last CVS to the current list.
      * EOS shall not consume the 4-byte header of the first NALU of the picture. */
     X265_CHECK(nalUnitType < 64, "NAL_UNIT_INVALID\n");
-    const uint64_t longCodeBitmask = ((1ull << NAL_UNIT_ACCESS_UNIT_DELIMITER) |
-        (1ull << NAL_UNIT_VPS) | (1ull << NAL_UNIT_SPS) | (1ull << NAL_UNIT_PPS) | (1ull << NAL_UNIT_UNSPECIFIED));
-
-    if (!m_annexB || (nalUnitType != NAL_UNIT_EOS && (!m_numNal || back()->type == NAL_UNIT_EOS ||
+    if (!m_annexB || (nalUnitType != NAL_UNIT_EOS && (isAccessUnitStart() ||
                                                       longCodeBitmask & (1ull << nalUnitType))))
         return 4;
     return 3;

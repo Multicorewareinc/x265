@@ -209,6 +209,9 @@ struct Lowres : public ReferencePlanes
     int       plannedType[X265_LOOKAHEAD_MAX + 1];
     int64_t   plannedSatd[X265_LOOKAHEAD_MAX + 1];
     double    plannedCpbDuration[X265_LOOKAHEAD_MAX + 1];
+    double    plannedUserNonVclBits[X265_LOOKAHEAD_MAX + 1]; /* Non-VCL data of the frames ahead */
+    bool      plannedKeyframe[X265_LOOKAHEAD_MAX + 1];       /* predicted keyframe flag of the frames ahead */
+    double    userNonVclBits; /* bits of the user-provided non-VCL NALUs attached to this picture (user SEI...) */
     double    plannedBQpCoef[X265_LOOKAHEAD_MAX + 1]; /* B-pyramid exponent of pbratio, 0 for I/P, -1 unknown */
     int       indB;
     int       bframes;
