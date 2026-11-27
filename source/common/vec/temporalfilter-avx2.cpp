@@ -54,6 +54,13 @@ namespace X265_NS {
 
     /* Shared helpers */
 
+    static inline __m128i mcstf_loadu_si32(const void* p)
+    {
+        int v;
+        memcpy(&v, p, sizeof(v));
+        return _mm_cvtsi32_si128(v);
+    }
+
     MCSTF_TARGET_AVX2
         static inline __m256d loadPix4_pd(const pixel* p)
     {
@@ -61,7 +68,7 @@ namespace X265_NS {
         __m128i v = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(p));
         return _mm256_cvtepi32_pd(_mm_cvtepu16_epi32(v));
 #else
-        __m128i v = _mm_cvtsi32_si128(*reinterpret_cast<const int*>(p));
+        __m128i v = mcstf_loadu_si32(p);
         return _mm256_cvtepi32_pd(_mm_cvtepu8_epi32(v));
 #endif
     }
@@ -119,7 +126,7 @@ namespace X265_NS {
 #if X265_DEPTH > 8
         return _mm256_cvtepu16_epi32(_mm_loadl_epi64(reinterpret_cast<const __m128i*>(p)));
 #else
-        return _mm256_cvtepu8_epi32(_mm_cvtsi32_si128(*reinterpret_cast<const int*>(p)));
+        return _mm256_cvtepu8_epi32(mcstf_loadu_si32(p));
 #endif
     }
 
@@ -737,8 +744,8 @@ namespace X265_NS {
                 __m128i s = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(srcPel + y * srcStride));
                 __m128i r = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(refPel + y * refStride));
 #else
-                __m128i s = _mm_cvtepu8_epi16(_mm_cvtsi32_si128(*reinterpret_cast<const int*>(srcPel + y * srcStride)));
-                __m128i r = _mm_cvtepu8_epi16(_mm_cvtsi32_si128(*reinterpret_cast<const int*>(refPel + y * refStride)));
+                __m128i s = _mm_cvtepu8_epi16(mcstf_loadu_si32(srcPel + y * srcStride));
+                __m128i r = _mm_cvtepu8_epi16(mcstf_loadu_si32(refPel + y * refStride));
 #endif
                 drow[y] = _mm_sub_epi16(s, r);
             }

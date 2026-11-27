@@ -4438,9 +4438,6 @@ void Encoder::configure(x265_param *p)
         p->limitReferences = 0;
     }
 
-    if (p->bSelectiveMCSTF && !p->bEnableTemporalFilter)
-        p->bEnableTemporalFilter = 1;
-
     if ((p->bEnableTemporalFilter) && (p->mcstfFrameRange > p->lookaheadDepth))
     {
         x265_log(p, X265_LOG_WARNING, "MCSTF frame range is greater than lookahead depth. Disabling MCSTF.\n");
