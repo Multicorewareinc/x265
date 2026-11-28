@@ -1471,8 +1471,9 @@ Temporal / motion search options
 
 	Gate MCSTF with a per-GOP noise estimate: skip the filter for GOPs whose
 	starting I/IDR frame (or scenecut) is estimated as clean (low noise), and
-	apply it only where it helps. Implicitly enables :option:`--mcstf` if it
-	was not already turned on. When :option:`--csv-log-level` is 2 or higher,
+	apply it only where it helps. This option should be coupled with
+	:option:`--mcstf`; if :option:`--mcstf` is not enabled, selective-mcstf
+	is disabled. When :option:`--csv-log-level` is 2 or higher,
 	adds a Frame Noise and IsMCSTFEnabled column to the per-frame CSV log.
 	Default: disabled
 

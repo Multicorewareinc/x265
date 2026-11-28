@@ -587,6 +587,12 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->maxNumReferences = 4;
             param->limitModes = 1;
             param->lookaheadSlices = 4; // limit parallelism as already enough work exists
+            param->bBPyramid = X265_B_PYRAMID_HIERARCHICAL;
+            param->bPyramidQpScale = 1.0;
+            param->bframes = 8;
+            param->bEnableTemporalFilter = 1;
+            param->bSelectiveMCSTF = 1;
+            param->mcstfFrameRange = 2;
         }
         else if (!strcmp(preset, "slower"))
         {
@@ -608,6 +614,12 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->limitModes = 1;
             param->lookaheadSlices = 0; // disabled for best quality
             param->limitTU = 4;
+            param->bBPyramid = X265_B_PYRAMID_HIERARCHICAL;
+            param->bPyramidQpScale = 1.0;
+            param->bEnableTemporalFilter = 1;
+            param->bSelectiveMCSTF = 1;
+            param->mcstfFrameRange = 4;
+            param->bEnableIntra64x64 = 1;
         }
         else if (!strcmp(preset, "veryslow"))
         {
@@ -615,8 +627,8 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->bEnableWeightedBiPred = 1;
             param->bEnableAMP = 1;
             param->bEnableRectInter = 1;
-            param->lookaheadDepth = 40;
-            param->bframes = 8;
+            param->lookaheadDepth = 48;
+            param->bframes = 15;
             param->tuQTMaxInterDepth = 3;
             param->tuQTMaxIntraDepth = 3;
             param->rdLevel = 6;
@@ -630,6 +642,12 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->limitModes = 0;
             param->lookaheadSlices = 0; // disabled for best quality
             param->limitTU = 0;
+            param->bBPyramid = X265_B_PYRAMID_HIERARCHICAL;
+            param->bPyramidQpScale = 1.0;
+            param->bEnableTemporalFilter = 1;
+            param->bSelectiveMCSTF = 1;
+            param->mcstfFrameRange = 4;
+            param->bEnableIntra64x64 = 1;
         }
         else if (!strcmp(preset, "placebo"))
         {
@@ -637,9 +655,9 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->bEnableWeightedBiPred = 1;
             param->bEnableAMP = 1;
             param->bEnableRectInter = 1;
-            param->lookaheadDepth = 60;
+            param->lookaheadDepth = 64;
             param->searchRange = 92;
-            param->bframes = 8;
+            param->bframes = 15;
             param->tuQTMaxInterDepth = 4;
             param->tuQTMaxIntraDepth = 4;
             param->rdLevel = 6;
@@ -654,6 +672,12 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->limitReferences = 0;
             param->lookaheadSlices = 0; // disabled for best quality
             // TODO: optimized esa
+            param->bBPyramid = X265_B_PYRAMID_HIERARCHICAL;
+            param->bPyramidQpScale = 1.0;
+            param->bEnableTemporalFilter = 1;
+            param->bSelectiveMCSTF = 1;
+            param->mcstfFrameRange = 4;
+            param->bEnableIntra64x64 = 1;
         }
         else
             return -1;
@@ -710,7 +734,7 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
         }
         else if (!strcmp(tune, "animation"))
         {
-            param->bframes = (param->bframes + 2) >= param->lookaheadDepth? param->bframes : param->bframes + 2;
+            param->bframes = ((param->bframes + 2) >= param->lookaheadDepth || (param->bframes + 2) > X265_BFRAME_MAX) ? param->bframes : param->bframes + 2;
             param->psyRd = 0.4;
             param->rc.aqStrength = 0.4;
             param->deblockingFilterBetaOffset = 1;
@@ -1519,7 +1543,12 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
         /* Film grain characterstics model filename */
         OPT("film-grain") p->filmGrain = (char* )value;
         OPT("aom-film-grain") p->aomFilmGrain = (char*)value;
-        OPT("mcstf") p->bEnableTemporalFilter = atobool(value);
+        OPT("mcstf")
+        {
+            p->bEnableTemporalFilter = atobool(value);
+            if (!p->bEnableTemporalFilter)
+                p->bSelectiveMCSTF = 0;
+        }
         OPT("mcstf-ref-range") p->mcstfFrameRange = atoi(value);
         OPT("selective-mcstf") p->bSelectiveMCSTF = atobool(value);
         OPT("sbrc") p->bEnableSBRC = atobool(value);
@@ -2128,6 +2157,14 @@ int x265_check_params(x265_param* param)
     }
     CHECK(!!param->bEnableSCC&& param->rdLevel != 6, "Enabling scc extension in x265 requires rdlevel of 6 ");
 #endif
+
+    if ((param->bEnableTemporalFilter || param->bSelectiveMCSTF) &&
+        (param->bEnableAlpha || param->numViews > 1))
+    {
+        x265_log(param, X265_LOG_WARNING, "mcstf is disabled; not supported with alpha or multiview\n");
+        param->bEnableTemporalFilter = 0;
+        param->bSelectiveMCSTF = 0;
+    }
 
     return check_failed;
 }
